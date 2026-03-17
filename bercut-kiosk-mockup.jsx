@@ -65,15 +65,35 @@ const GS = () => (
 );
 
 // ── Topbar ──
-function Topbar({ step, cartTotal }) {
+function Topbar({ step, cartTotal, onSecretClick }) {
   const [time, setTime] = useState(new Date());
+  const [clicks, setClicks] = useState(0);
+  
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
+
+  const handleLogoClick = () => {
+    setClicks(prev => {
+      const next = prev + 1;
+      if (next >= 3) {
+        onSecretClick();
+        return 0;
+      }
+      return next;
+    });
+    // Reset clicks after 2 seconds
+    const timeout = setTimeout(() => setClicks(0), 2000);
+    return () => clearTimeout(timeout);
+  };
+
   const steps = ["Layanan","Kapster","Waktu","Konfirmasi"];
   return (
     <div style={{ background: C.topBg }}>
       <div style={{ padding:"0 28px", display:"flex", alignItems:"center", justifyContent:"space-between", height:52 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ background:C.accent, padding:"3px 10px", borderRadius:5 }}>
+          <div 
+            onClick={handleLogoClick}
+            style={{ background:C.accent, padding:"3px 10px", borderRadius:5, cursor:"pointer" }}
+          >
             <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:14, color:C.accentText, letterSpacing:"0.1em" }}>BERCUT</span>
           </div>
           <span style={{ color:"#555", fontSize:12 }}>Seminyak</span>
@@ -421,6 +441,30 @@ function StepConfirm({ cart, barber, slot, name, setName, phone, setPhone, onCon
   );
 }
 
+// ── Payment Screen (Secret) ──
+function PaymentScreen({ total, onBack }) {
+  return (
+    <div className="fi" style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20, backdropFilter:"blur(12px)" }}>
+      <div className="si" style={{ background:C.white, borderRadius:24, padding:40, maxWidth:480, width:"100%", textAlign:"center", border:`1px solid ${C.accent}` }}>
+        <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:32, fontWeight:900, marginBottom:8 }}>Selesaikan Pembayaran</div>
+        <div style={{ fontSize:14, color:C.muted, marginBottom:24 }}>Scan QRIS untuk melanjutkan transaksi</div>
+        
+        <div style={{ background:"#f4f4f4", borderRadius:16, padding:20, marginBottom:24, boxShadow:"inset 0 2px 4px rgba(0,0,0,0.05)" }}>
+          <img src="/qris.png" alt="QRIS" style={{ width:"100%", height:"auto", borderRadius:8 }} />
+        </div>
+
+        <div style={{ marginBottom:28 }}>
+          <div style={{ fontSize:12, color:C.muted, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Total Bayar</div>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:48, fontWeight:900, color:C.text }}>{fmt(total)}</div>
+        </div>
+
+        <button className="btnP" onClick={onBack} style={{ background:C.green }}>Transaksi Berhasil</button>
+        <button className="btnG" onClick={onBack} style={{ marginTop:12, border:"none", background:"transparent" }}>Batal</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Done ──
 function Done({ cart, barber, slot, name, total, onReset }) {
   const num = useRef("#B" + Math.floor(100+Math.random()*900)).current;
@@ -472,13 +516,16 @@ export default function App() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [finalTotal, setFinalTotal] = useState(0);
+  const [showPayment, setShowPayment] = useState(false);
+
   const total = cart.reduce((s,id)=>s+(SERVICES.find(x=>x.id===id)?.price||0),0);
-  const reset = () => { setStep(0); setCart([]); setBarber(null); setSlot(null); setName(""); setPhone(""); setFinalTotal(0); };
+  const reset = () => { setStep(0); setCart([]); setBarber(null); setSlot(null); setName(""); setPhone(""); setFinalTotal(0); setShowPayment(false); };
 
   return (
     <>
       <GS/>
-      <Topbar step={step} cartTotal={total}/>
+      <Topbar step={step} cartTotal={total} onSecretClick={() => setShowPayment(true)} />
+      {showPayment && <PaymentScreen total={total || 145000} onBack={() => setShowPayment(false)} />}
       {step===0 && <Welcome onStart={()=>setStep(1)}/>}
       {step===1 && <StepServices cart={cart} setCart={setCart} onNext={()=>setStep(2)} onBack={()=>setStep(0)}/>}
       {step===2 && <StepBarber barber={barber} setBarber={setBarber} onNext={()=>setStep(3)} onBack={()=>setStep(1)}/>}

@@ -6,6 +6,8 @@ import "./styles/global.css";
 import KioskApp from "./apps/kiosk/KioskApp";
 import BarberApp from "./apps/barber/BarberApp";
 import AdminApp  from "./apps/admin/AdminApp";
+import KioskMockup from "./apps/kiosk/Mockup";
+
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30_000 } }
@@ -20,6 +22,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/kiosk/*" element={<KioskApp />} />
           <Route path="/barber/*" element={<BarberApp />} />
           <Route path="/admin/*" element={<AdminApp />} />
+          <Route path="/kiosk-mockup" element={<KioskMockup />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

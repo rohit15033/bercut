@@ -24,7 +24,18 @@ app.get('/api/events', (req, res) => {
 });
 
 // Routes (add as you build each module)
-// import branchRoutes from './src/routes/branches.js';
-// app.use('/api/branches', branchRoutes);
+import branchRoutes from './src/routes/branches.js';
+import servicesRoutes from './src/routes/services.js';
+import barbersRoutes from './src/routes/barbers.js';
+import bookingsRoutes from './src/routes/bookings.js';
+import slotsRoutes from './src/routes/slots.js';
+import bookingGroupsRoutes from './src/routes/bookingGroups.js';
+
+app.use('/api/branches', branchRoutes);
+app.use('/api/services', servicesRoutes);
+app.use('/api/barbers', barbersRoutes);
+app.use('/api/bookings', bookingsRoutes);
+app.use('/api/slots', slotsRoutes);
+app.use('/api/booking-groups', bookingGroupsRoutes);
 
 app.listen(PORT, () => console.log(`Bercut API running on port ${PORT}`));

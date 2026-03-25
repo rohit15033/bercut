@@ -7,83 +7,79 @@ datasource db {
 }
 
 model Branch {
-  id                String   @id @default(cuid())
-  name              String   @db.VarChar(100)
-  address           String?
-  city              String?  @db.VarChar(80)
-  timezone          String?  @default("Asia/Makassar") @db.VarChar(50)
-  geofence_lat      Decimal? @db.Decimal(9, 6)
-  geofence_lng      Decimal? @db.Decimal(9, 6)
-  geofence_radius_m Int?     @default(100)
-  is_active         Boolean  @default(true)
-  created_at        DateTime @default(now())
-
-  barbers           Barber[]
-  bookings          Booking[]
-  booking_groups    BookingGroup[]
-  expenses          Expense[]
-  attendance        Attendance[]
-  inventory_stock   InventoryStock[]
-  inventory_movements InventoryMovements[]
+  id                    String               @id @default(cuid())
+  name                  String               @db.VarChar(100)
+  address               String?
+  city                  String?              @db.VarChar(80)
+  timezone              String?              @default("Asia/Makassar") @db.VarChar(50)
+  geofence_lat          Decimal?             @db.Decimal(9, 6)
+  geofence_lng          Decimal?             @db.Decimal(9, 6)
+  geofence_radius_m     Int?                 @default(100)
+  is_active             Boolean              @default(true)
+  created_at            DateTime             @default(now())
+  attendance            Attendance[]
+  barbers               Barber[]
+  booking_groups        BookingGroup[]
+  bookings              Booking[]
+  branch_settings       BranchSettings?
+  expenses              Expense[]
+  inventory_movements   InventoryMovements[]
+  inventory_stock       InventoryStock[]
   service_branch_prices ServiceBranchPrice[]
-  branch_settings   BranchSettings?
-  tips              Tip[]
+  tips                  Tip[]
 
   @@map("branches")
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique @db.VarChar(200)
-  password_hash String
-  name          String?  @db.VarChar(100)
-  role          String   @default("admin") @db.VarChar(20)
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-
-  expenses         Expense[]
+  id                  String              @id @default(cuid())
+  email               String              @unique @db.VarChar(200)
+  password_hash       String
+  name                String?             @db.VarChar(100)
+  role                String              @default("admin") @db.VarChar(20)
+  is_active           Boolean             @default(true)
+  created_at          DateTime            @default(now())
+  expenses            Expense[]
   service_commissions ServiceCommission[]
 
   @@map("users")
 }
 
 model Barber {
-  id          String   @id @default(cuid())
-  branch_id   String
-  name        String   @db.VarChar(100)
-  specialty   String?  @db.VarChar(100)
-  specialty_id String? @db.VarChar(100)
-  phone       String?  @db.VarChar(20)
-  pin_hash    String?
-  avatar_url  String?
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now())
-
-  branch      Branch   @relation(fields: [branch_id], references: [id])
-  bookings    Booking[]
-  schedules   BarberSchedule[]
-  attendance  Attendance[]
-  inventory_movements InventoryMovements[]
+  id                  String                   @id @default(cuid())
+  branch_id           String
+  name                String                   @db.VarChar(100)
+  specialty           String?                  @db.VarChar(100)
+  specialty_id        String?                  @db.VarChar(100)
+  phone               String?                  @db.VarChar(20)
+  pin_hash            String?
+  avatar_url          String?
+  is_active           Boolean                  @default(true)
+  created_at          DateTime                 @default(now())
+  attendance          Attendance[]
   push_subscriptions  BarberPushSubscription[]
+  schedules           BarberSchedule[]
+  branch              Branch                   @relation(fields: [branch_id], references: [id])
+  bookings            Booking[]
+  inventory_movements InventoryMovements[]
 
   @@map("barbers")
 }
 
 model Service {
-  id               String   @id @default(cuid())
-  name             String   @db.VarChar(100)
-  name_id          String?  @db.VarChar(100)
-  category         String   @db.VarChar(20)
-  base_price       Int
-  duration_minutes Int      @db.SmallInt
-  badge            String?  @db.VarChar(50)
-  description      String?
-  is_active        Boolean  @default(true)
-  sort_order       Int      @default(0) @db.SmallInt
-
-  booking_services    BookingService[]
+  id                    String               @id @default(cuid())
+  name                  String               @db.VarChar(100)
+  name_id               String?              @db.VarChar(100)
+  category              String               @db.VarChar(20)
+  base_price            Int
+  duration_minutes      Int                  @db.SmallInt
+  badge                 String?              @db.VarChar(50)
+  description           String?
+  is_active             Boolean              @default(true)
+  sort_order            Int                  @default(0) @db.SmallInt
+  booking_services      BookingService[]
   service_branch_prices ServiceBranchPrice[]
-  commission          ServiceCommission?
+  commission            ServiceCommission?
 
   @@map("services")
 }
@@ -94,9 +90,8 @@ model ServiceCommission {
   commission_value Decimal  @db.Decimal(10, 2)
   updated_at       DateTime @default(now()) @updatedAt
   updated_by       String?
-
-  service  Service @relation(fields: [service_id], references: [id])
-  user     User?   @relation(fields: [updated_by], references: [id])
+  service          Service  @relation(fields: [service_id], references: [id])
+  user             User?    @relation(fields: [updated_by], references: [id])
 
   @@map("service_commissions")
 }
@@ -105,9 +100,8 @@ model ServiceBranchPrice {
   service_id String
   branch_id  String
   price      Int
-
-  service Service @relation(fields: [service_id], references: [id])
-  branch  Branch  @relation(fields: [branch_id], references: [id])
+  branch     Branch  @relation(fields: [branch_id], references: [id])
+  service    Service @relation(fields: [service_id], references: [id])
 
   @@id([service_id, branch_id])
   @@map("service_branch_prices")
@@ -119,66 +113,64 @@ model BarberSchedule {
   start_time  String? @db.VarChar(5)
   end_time    String? @db.VarChar(5)
   is_off      Boolean @default(false)
-
-  barber Barber @relation(fields: [barber_id], references: [id])
+  barber      Barber  @relation(fields: [barber_id], references: [id])
 
   @@id([barber_id, day_of_week])
   @@map("barber_schedules")
 }
 
 model Customer {
-  id                  String   @id @default(cuid())
-  name                String?  @db.VarChar(100)
-  phone               String?  @unique @db.VarChar(20)
-  total_visits        Int      @default(0)
-  total_spend         Int      @default(0)
+  id                  String    @id @default(cuid())
+  name                String?   @db.VarChar(100)
+  phone               String?   @unique @db.VarChar(20)
+  total_visits        Int       @default(0)
+  total_spend         Int       @default(0)
   preferred_barber_id String?
   first_visit         DateTime? @db.Date
   last_visit          DateTime? @db.Date
-
-  bookings Booking[]
+  bookings            Booking[]
 
   @@map("customers")
 }
 
 model BookingGroup {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   branch_id  String
-  created_at DateTime @default(now())
-
-  branch   Branch    @relation(fields: [branch_id], references: [id])
-  bookings Booking[]
+  created_at DateTime  @default(now())
+  branch     Branch    @relation(fields: [branch_id], references: [id])
+  bookings   Booking[]
 
   @@map("booking_groups")
 }
 
 model Booking {
-  id              String   @id @default(cuid())
-  booking_number  String   @db.VarChar(10)
-  branch_id       String
-  barber_id       String
-  customer_id     String?
-  guest_name      String?  @db.VarChar(100)
-  guest_phone     String?  @db.VarChar(20)
-  scheduled_at    DateTime
-  started_at      DateTime?
-  completed_at    DateTime?
-  acknowledged_at DateTime?
-  paid_at         DateTime?
-  group_id        String?
-  status          String   @default("confirmed") @db.VarChar(20)
-  payment_status  String   @default("unpaid") @db.VarChar(20)
-  payment_method  String?  @db.VarChar(10)
-  payment_ref     String?  @db.VarChar(100)
-  notes           String?
-  rating          Int?     @db.SmallInt
-  created_at      DateTime @default(now())
-
-  branch           Branch         @relation(fields: [branch_id], references: [id])
-  barber           Barber         @relation(fields: [barber_id], references: [id])
-  customer         Customer?      @relation(fields: [customer_id], references: [id])
-  booking_group    BookingGroup?  @relation(fields: [group_id], references: [id])
+  id               String           @id @default(cuid())
+  booking_number   String           @db.VarChar(10)
+  branch_id        String
+  barber_id        String
+  customer_id      String?
+  guest_name       String?          @db.VarChar(100)
+  guest_phone      String?          @db.VarChar(20)
+  scheduled_at     DateTime
+  started_at       DateTime?
+  completed_at     DateTime?
+  acknowledged_at  DateTime?
+  paid_at          DateTime?
+  group_id         String?
+  status           String           @default("confirmed") @db.VarChar(20)
+  payment_status   String           @default("unpaid") @db.VarChar(20)
+  payment_method   String?          @db.VarChar(10)
+  payment_ref      String?          @db.VarChar(100)
+  notes            String?
+  rating           Int?             @db.SmallInt
+  created_at       DateTime         @default(now())
+  total_amount     Int              @default(0)
+  booking_source   String           @default("kiosk") @db.VarChar(20)
   booking_services BookingService[]
+  barber           Barber           @relation(fields: [barber_id], references: [id])
+  branch           Branch           @relation(fields: [branch_id], references: [id])
+  customer         Customer?        @relation(fields: [customer_id], references: [id])
+  booking_group    BookingGroup?    @relation(fields: [group_id], references: [id])
   tip              Tip?
 
   @@map("bookings")
@@ -189,9 +181,8 @@ model BookingService {
   service_id    String
   price_charged Int
   added_mid_cut Boolean @default(false)
-
-  booking Booking @relation(fields: [booking_id], references: [id])
-  service Service @relation(fields: [service_id], references: [id])
+  booking       Booking @relation(fields: [booking_id], references: [id])
+  service       Service @relation(fields: [service_id], references: [id])
 
   @@id([booking_id, service_id])
   @@map("booking_services")
@@ -204,9 +195,8 @@ model Tip {
   amount         Int
   payment_method String?  @db.VarChar(10)
   created_at     DateTime @default(now())
-
-  booking Booking @relation(fields: [booking_id], references: [id])
-  branch  Branch  @relation(fields: [branch_id], references: [id])
+  booking        Booking  @relation(fields: [booking_id], references: [id])
+  branch         Branch   @relation(fields: [branch_id], references: [id])
 
   @@map("tips")
 }
@@ -221,40 +211,37 @@ model Expense {
   receipt_url  String?
   expense_date DateTime @db.Date
   created_at   DateTime @default(now())
-
-  branch Branch @relation(fields: [branch_id], references: [id])
-  user   User?  @relation(fields: [submitted_by], references: [id])
+  branch       Branch   @relation(fields: [branch_id], references: [id])
+  user         User?    @relation(fields: [submitted_by], references: [id])
 
   @@map("expenses")
 }
 
 model Attendance {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   barber_id       String
   branch_id       String
   clock_in_at     DateTime
   clock_out_at    DateTime?
-  clock_in_lat    Decimal? @db.Decimal(9, 6)
-  clock_in_lng    Decimal? @db.Decimal(9, 6)
+  clock_in_lat    Decimal?  @db.Decimal(9, 6)
+  clock_in_lng    Decimal?  @db.Decimal(9, 6)
   within_geofence Boolean?
-  face_verified   Boolean  @default(false)
+  face_verified   Boolean   @default(false)
   selfie_url      String?
-
-  barber Barber @relation(fields: [barber_id], references: [id])
-  branch Branch @relation(fields: [branch_id], references: [id])
+  barber          Barber    @relation(fields: [barber_id], references: [id])
+  branch          Branch    @relation(fields: [branch_id], references: [id])
 
   @@map("attendance")
 }
 
 model InventoryItem {
-  id        String  @id @default(cuid())
-  name      String  @db.VarChar(100)
-  unit      String? @db.VarChar(20)
-  category  String  @db.VarChar(30)
-  is_active Boolean @default(true)
-
-  inventory_stock     InventoryStock[]
+  id                  String               @id @default(cuid())
+  name                String               @db.VarChar(100)
+  unit                String?              @db.VarChar(20)
+  category            String               @db.VarChar(30)
+  is_active           Boolean              @default(true)
   inventory_movements InventoryMovements[]
+  inventory_stock     InventoryStock[]
 
   @@map("inventory_items")
 }
@@ -262,42 +249,39 @@ model InventoryItem {
 model InventoryStock {
   item_id           String
   branch_id         String
-  current_stock     Int     @default(0)
-  reorder_threshold Int     @default(5)
-  updated_at        DateTime @default(now()) @updatedAt
-
-  item   InventoryItem @relation(fields: [item_id], references: [id])
-  branch Branch        @relation(fields: [branch_id], references: [id])
+  current_stock     Int           @default(0)
+  reorder_threshold Int           @default(5)
+  updated_at        DateTime      @default(now()) @updatedAt
+  branch            Branch        @relation(fields: [branch_id], references: [id])
+  item              InventoryItem @relation(fields: [item_id], references: [id])
 
   @@id([item_id, branch_id])
   @@map("inventory_stock")
 }
 
 model InventoryMovements {
-  id            String   @id @default(cuid())
+  id            String        @id @default(cuid())
   item_id       String
   branch_id     String
   logged_by     String?
-  movement_type String   @db.VarChar(5)
+  movement_type String        @db.VarChar(5)
   quantity      Int
   note          String?
-  created_at    DateTime @default(now())
-
-  item   InventoryItem @relation(fields: [item_id], references: [id])
-  branch Branch        @relation(fields: [branch_id], references: [id])
-  barber Barber?       @relation(fields: [logged_by], references: [id])
+  created_at    DateTime      @default(now())
+  branch        Branch        @relation(fields: [branch_id], references: [id])
+  item          InventoryItem @relation(fields: [item_id], references: [id])
+  barber        Barber?       @relation(fields: [logged_by], references: [id])
 
   @@map("inventory_movements")
 }
 
 model BranchSettings {
-  branch_id                String   @id
-  late_start_threshold_min Int      @default(10)
-  speaker_enabled          Boolean  @default(true)
-  push_enabled             Boolean  @default(true)
-  tip_presets              Int[]    @default([10000, 20000, 50000])
-
-  branch Branch @relation(fields: [branch_id], references: [id])
+  branch_id                String  @id
+  late_start_threshold_min Int     @default(10)
+  speaker_enabled          Boolean @default(true)
+  push_enabled             Boolean @default(true)
+  tip_presets              Int[]   @default([10000, 20000, 50000])
+  branch                   Branch  @relation(fields: [branch_id], references: [id])
 
   @@map("branch_settings")
 }
@@ -309,8 +293,7 @@ model BarberPushSubscription {
   p256dh     String
   auth       String
   created_at DateTime @default(now())
-
-  barber Barber @relation(fields: [barber_id], references: [id])
+  barber     Barber   @relation(fields: [barber_id], references: [id])
 
   @@map("barber_push_subscriptions")
 }

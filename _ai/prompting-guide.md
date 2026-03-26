@@ -409,6 +409,107 @@ onDone: () => void
 
 ---
 
+## 05B — Kiosk: Barber Panel
+*Opens after barber selects "Barber / Kapster" and enters PIN in the Topbar AccessModal.*
+
+```
+Build the BarberPanel component for the Bercut kiosk.
+
+## Reference mockup
+mockups/kiosk/BarberPanel.jsx — match this exactly.
+
+## Overview
+Full-screen dark overlay (position fixed, inset 0, z-index 400, background #111110).
+Appears when barber logs in via Topbar logo click → Barber → PIN.
+Two-column layout: left column (clamp(340px,42vw,500px)) + right column (flex:1).
+Close button returns to customer booking flow — booking flow is paused, not destroyed.
+
+## Top bar (background #0a0a08, height clamp(52px,6.5vh,64px))
+Left: BERCUT logo (yellow) + divider + barber name (white bold) + chair label (muted) + status badge
+Right: Break button (☕ Istirahat) when available | End break countdown when on_break | Clock Out button | ← Kembali ke Booking button
+
+Status badges:
+- available: green (#4caf50) text on #1a3a1a bg, "AVAILABLE"
+- busy: red (#ef5350) text on #3a1a1a bg, "MELAYANI"
+- on_break: yellow (#F5E200) text on #2a2a10 bg, "ISTIRAHAT"
+
+## Left column — Active job + Next up
+
+### SEKARANG section (active booking)
+When active booking exists:
+- Dark card (#1a1a18), border #2a2a28
+- Customer name (Inter 800 white large), services list (muted), booking number + total (yellow, right)
+- Elapsed timer: tabular-nums Inter 900, yellow, counts up from started_at
+  → useEffect/setInterval every 1000ms: setElapsed(Date.now() - startedAt)
+- Buttons: "Tambah Layanan +" (dark #2a2a28) | "Selesai ✓" (yellow #F5E200, text #111110, flex:2)
+  → Selesai: PATCH /api/bookings/:id/complete → status: pending_payment
+  → Backend emits SSE event { type: 'payment_trigger', booking_id } on branch channel
+  → Kiosk SSE listener opens PaymentTakeover — call onPaymentTrigger(booking)
+
+When no active booking:
+- Empty state card with scissors icon, "Tidak ada pelanggan aktif"
+
+### BERIKUTNYA section (next confirmed booking)
+Dark card with customer name, services, slot time, total
+Two buttons:
+- "📢 Panggil" → window.speechSynthesis: "Pelanggan atas nama {name}, silakan menuju kursi {chair}" (lang: id-ID)
+  → Button text flips to "✓ Dipanggil" after call
+- "Mulai Layanan →" → PATCH /api/bookings/:id/start → status: in_progress, started_at: now
+  → Disabled if active booking exists (text: "Selesaikan dulu ↑") or on_break (text: "Sedang istirahat")
+  → Button bg: white with dark text when enabled, #2a2a28 with #555 text when disabled
+
+## Right column — Today's queue list
+Header: "📋 Hari Ini — {count} antrian" + "Est. selesai: ~HH:MM"
+Scrollable list of all today's bookings (all statuses except cancelled):
+Each row card (#1a1a18, border #2a2a28):
+- Booking number pill (dark) + slot time + status badge
+- Customer name (Inter 700 white) + services (muted)
+- Total (yellow if active, #888 otherwise, right)
+Active booking row: green-tinted border (#3a4010 bg, #3a4010 border)
+Pending payment row: 50% opacity, green "PEMBAYARAN" badge
+Fade-up stagger animation (i * 0.06s delay)
+
+## Add Service modal (bottom sheet)
+Triggered by "Tambah Layanan +" on active booking.
+Slides up from bottom (alignItems: flex-end on backdrop).
+White card, borderRadius 20px 20px 0 0, maxHeight 75vh.
+Header: barber name + customer name.
+Category filter pills (same 5 categories as kiosk ServiceSelection).
+Service list: each row toggleable — selected = yellow bg (#F5E200), text #111110. Existing services hidden.
+Footer (when items selected): total added amount + "Konfirmasi Tambahan (N) →" dark button.
+On confirm: PATCH /api/bookings/:id/add-services { service_ids[] }
+            → DB: insert booking_services rows with added_mid_cut: true
+            → Running total updates immediately in UI.
+
+## Break selector modal
+3 options: 15 menit, 30 menit, 45 menit.
+On select: POST /api/barber-breaks { barber_id, branch_id, duration_minutes, started_at: now }
+           → barbers.status = 'on_break' → blocks time slots for that duration
+Countdown in top bar counts down from duration. When hits 0: auto end break.
+"Akhiri Istirahat" button: PATCH /api/barber-breaks/:id/end { ended_at: now }
+                           → barbers.status = 'available'
+
+## Clock out
+"Clock Out" button → confirm dialog → POST /api/attendance/clock-out { barber_id, clock_out_at: now }
+→ clears barber session from localStorage → closes BarberPanel
+
+## API connections
+GET  /api/bookings?barber_id=&date=today&branch_id=        — load today's queue
+PATCH /api/bookings/:id/start                               — { started_at: now, status: 'in_progress' }
+PATCH /api/bookings/:id/complete                            — { completed_at: now, status: 'pending_payment' }
+PATCH /api/bookings/:id/add-services                        — { service_ids: [], added_mid_cut: true }
+POST  /api/barber-breaks                                    — start break
+PATCH /api/barber-breaks/:id/end                            — end break
+POST  /api/attendance/clock-out                             — clock out
+SSE   GET /api/events?branch_id=                            — listen for new_booking events (show alert badge)
+
+## Props
+onClose: () => void         — return to customer booking flow
+onPaymentTrigger: (booking) — open PaymentTakeover for this booking
+```
+
+---
+
 ## 05 — Kiosk: Staff Panel
 *Triple-tap hidden access. Temporary — replaced by barber app SSE trigger later.*
 

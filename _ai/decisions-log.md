@@ -48,3 +48,8 @@
 ```
 2026-03-26 | Font system: Inter for headings/prices/names, DM Sans for body/buttons/labels — Barlow Condensed rejected, too blocky for Bercut brand
 2026-03-26 | Tip section redesigned: more aggressive layout with "Popular" badge, removed "No Tip" button for a smaller link, and 100% barber attribution notice.
+2026-03-26 | Auto-cancellation disclaimer moved from bottom to the "Selected Time" confirmation box in TimeSlot.jsx for better visibility and a cleaner layout.
+2026-03-26 | Package Upsell modal: English-first localization applied to all labels; "Switch to Package" button updated to show savings (e.g. -Rp 10.000) instead of total price.
+2026-03-26 | TimeSlot UI: 'Next Available' button hidden if 'Now' is available to prioritize the immediate booking CTA.
+2026-03-26 | Auto-cancellation disclaimer in TimeSlot.jsx is now hidden if 'Now' is selected, as immediate chair assignment makes the rule irrelevant.
+2026-03-26 | BarberPanel.jsx mockup created — full-screen kiosk panel for logged-in barber (queue, active timer, start/complete, add service, break, clock out); Antigravity prompt added as Section 05B in prompting-guide.md

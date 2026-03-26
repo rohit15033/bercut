@@ -87,7 +87,7 @@ function AccessModal({ onAdminAccess, onBarberAccess, onClose }) {
   );
 }
 
-export default function Topbar({ step, cartTotal, groupCount, onAdminAccess, onBarberAccess }) {
+export default function Topbar({ step, cartTotal, groupCount, onHome, onAdminAccess, onBarberAccess }) {
   const [time, setTime] = useState(new Date());
   const [showAccess, setShowAccess] = useState(false);
   useEffect(() => { const t = setInterval(()=>setTime(new Date()),1000); return ()=>clearInterval(t); }, []);
@@ -104,9 +104,19 @@ export default function Topbar({ step, cartTotal, groupCount, onAdminAccess, onB
       )}
       <div style={{ background:C.topBg, userSelect:"none" }}>
       <div style={{ padding:"0 clamp(16px,3vw,28px)", display:"flex", alignItems:"center", justifyContent:"space-between", height:"clamp(48px,6vh,60px)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setShowAccess(true)}>
-          <img src={BERCUT_LOGO} alt="Bercut" style={{ height:"clamp(24px,3.2vh,34px)", width:"auto", objectFit:"contain" }}/>
-          <span style={{ color:"#555", fontSize:"clamp(11px,1.3vw,13px)" }}>Seminyak</span>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <img
+            src={BERCUT_LOGO}
+            alt="Bercut"
+            onClick={onHome}
+            style={{ height:"clamp(24px,3.2vh,34px)", width:"auto", objectFit:"contain", cursor:"pointer" }}
+          />
+          <span
+            style={{ color:"#555", fontSize:"clamp(11px,1.3vw,13px)", cursor:"pointer" }}
+            onClick={()=>setShowAccess(true)}
+          >
+            Seminyak
+          </span>
         </div>
 
         {step > 0 && step < 5 && (

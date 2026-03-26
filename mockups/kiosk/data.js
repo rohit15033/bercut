@@ -15,83 +15,91 @@ export const C = {
 };
 
 export const BLEACH_PRICES = {
-  1: { base:260000, withColor:500000 },
-  2: { base:415000, withColor:650000 },
-  3: { base:525000, withColor:750000 },
+  1: { base: 260000, withColor: 500000 },
+  2: { base: 415000, withColor: 650000 },
+  3: { base: 525000, withColor: 750000 },
 };
 
 // ── Real Bercut Seminyak service catalogue ────────────────────────────────────
 export const SERVICES = [
   // HAIRCUT — washAddon means customer can toggle +Wash for +Rp10k
-  { id:1,  cat:"Haircut",   name:"Just a Haircut",           nameId:"Potong Rambut",          dur:30, price:120000, washAddon:true },
-  { id:2,  cat:"Haircut",   name:"Kids Haircut",             nameId:"Potong Anak",            dur:25, price:120000, washAddon:true },
-  { id:3,  cat:"Haircut",   name:"Skin Fade",                nameId:"Skin Fade",              dur:45, price:130000, washAddon:true },
-  { id:4,  cat:"Haircut",   name:"Head Shaving",             nameId:"Cukur Botak",            dur:30, price:130000 },
-  { id:5,  cat:"Haircut",   name:"Hair Tattoo",              nameId:"Tato Rambut",            dur:45, price:150000 },
+  { id: 1, cat: "Haircut", name: "Just a Haircut", nameId: "Potong Rambut", dur: 30, price: 130000, washAddon: true },
+  { id: 2, cat: "Haircut", name: "Kids Haircut", nameId: "Potong Anak", dur: 25, price: 130000, washAddon: true },
+  { id: 3, cat: "Haircut", name: "Skin Fade", nameId: "Skin Fade", dur: 45, price: 130000, washAddon: true },
+  { id: 4, cat: "Haircut", name: "Head Shaving", nameId: "Cukur Botak", dur: 30, price: 130000 },
+  { id: 5, cat: "Haircut", name: "Hair Tattoo", nameId: "Tato Rambut", dur: 45, price: 150000 },
   // BEARD
-  { id:6,  cat:"Beard",     name:"Beard Trim",               nameId:"Rapikan Jenggot",        dur:20, price:75000  },
-  { id:7,  cat:"Beard",     name:"Beard Shaving",            nameId:"Cukur Jenggot",          dur:25, price:95000  },
-  { id:8,  cat:"Beard",     name:"Beard Coloring",           nameId:"Warna Jenggot",          dur:40, price:125000 },
+  { id: 6, cat: "Beard", name: "Beard Trim", nameId: "Rapikan Jenggot", dur: 20, price: 75000 },
+  { id: 7, cat: "Beard", name: "Beard Shaving", nameId: "Cukur Jenggot", dur: 25, price: 95000 },
+  { id: 8, cat: "Beard", name: "Beard Coloring", nameId: "Warna Jenggot", dur: 40, price: 125000 },
   // TREATMENT
-  { id:9,  cat:"Treatment", name:"Nose Wax",                 nameId:"Wax Hidung",             dur:15, price:95000  },
-  { id:10, cat:"Treatment", name:"Ear Wax",                  nameId:"Wax Telinga",            dur:15, price:95000  },
-  { id:11, cat:"Treatment", name:"Nose Blackhead Remover",   nameId:"Komedo Hidung",          dur:20, price:55000  },
-  { id:12, cat:"Treatment", name:"Face Scrub",               nameId:"Scrub Wajah",            dur:20, price:85000  },
-  { id:13, cat:"Treatment", name:"Black Mask",               nameId:"Masker Hitam",           dur:25, price:85000  },
-  { id:14, cat:"Treatment", name:"Creambath",                nameId:"Creambath",              dur:30, price:95000  },
-  { id:15, cat:"Treatment", name:"Ear Candle",               nameId:"Lilin Telinga",          dur:20, price:75000  },
+  { id: 9, cat: "Treatment", name: "Nose Wax", nameId: "Wax Hidung", dur: 15, price: 95000 },
+  { id: 10, cat: "Treatment", name: "Ear Wax", nameId: "Wax Telinga", dur: 15, price: 95000 },
+  { id: 11, cat: "Treatment", name: "Nose Blackhead Remover", nameId: "Komedo Hidung", dur: 20, price: 55000 },
+  { id: 12, cat: "Treatment", name: "Face Scrub", nameId: "Scrub Wajah", dur: 20, price: 85000 },
+  { id: 13, cat: "Treatment", name: "Black Mask", nameId: "Masker Hitam", dur: 25, price: 85000 },
+  { id: 14, cat: "Treatment", name: "Creambath", nameId: "Creambath", dur: 30, price: 95000 },
+  { id: 15, cat: "Treatment", name: "Ear Candle", nameId: "Lilin Telinga", dur: 20, price: 75000 },
   // PACKAGE
-  { id:16, cat:"Package", name:"Mask Cut Package",  nameId:"Paket Masker Potong", dur:60,  price:205000, badge:"Save 10%",
-    desc:"✂ Haircut or Skin Fade  ·  🖤 Black Mask" },
-  { id:17, cat:"Package", name:"Prestige Package",  nameId:"Paket Prestige",      dur:75,  price:215000, badge:"Popular",
-    desc:"✂ Haircut or Skin Fade  ·  🪒 Beard Trim or Shave  ·  🚿 Wash" },
-  { id:18, cat:"Package", name:"Luxury Package",    nameId:"Paket Luxury",        dur:120, price:445000, badge:"Best Value",
-    desc:"✂ Haircut  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax + Candle  ·  💆 Creambath  ·  🚿 Wash" },
-  { id:19, cat:"Package", name:"President Package", nameId:"Paket President",     dur:150, price:555000, badge:"All-In",
-    desc:"✂ Haircut  ·  🪒 Beard  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax + Candle  ·  💆 Creambath  ·  🚿 Wash" },
+  {
+    id: 16, cat: "Package", name: "Mask Cut Package", nameId: "Paket Masker Potong", dur: 60, price: 205000, badge: "Save 10%",
+    desc: "✂ Haircut or Skin Fade  ·  🖤 Black Mask"
+  },
+  {
+    id: 17, cat: "Package", name: "Prestige Package", nameId: "Paket Prestige", dur: 75, price: 215000, badge: "Popular",
+    desc: "✂ Haircut or Skin Fade  ·  🪒 Beard Trim or Shave  ·  🚿 Wash"
+  },
+  {
+    id: 18, cat: "Package", name: "Luxury Package", nameId: "Paket Luxury", dur: 120, price: 445000, badge: "Best Value",
+    desc: "✂ Haircut  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax + Candle  ·  💆 Creambath  ·  🚿 Wash"
+  },
+  {
+    id: 19, cat: "Package", name: "President Package", nameId: "Paket President", dur: 150, price: 555000, badge: "All-In",
+    desc: "✂ Haircut  ·  🪒 Beard  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax + Candle  ·  💆 Creambath  ·  🚿 Wash"
+  },
   // HAIR COLORING — bleach uses step-selector modal (see HairColorModal)
-  { id:20, cat:"HairColor", name:"Hair Coloring",            nameId:"Pewarnaan Rambut",       dur:60,  price:175000, ownColorPrice:135000, desc:"Basic Color Black/Brown" },
-  { id:21, cat:"HairColor", name:"Hair Bleach",              nameId:"Bleaching Rambut",       dur:90,  price:260000, bleach:true },
-  { id:22, cat:"HairColor", name:"Hair Highlight",           nameId:"Highlight Rambut",       dur:90,  price:625000 },
+  { id: 20, cat: "HairColor", name: "Hair Coloring", nameId: "Pewarnaan Rambut", dur: 60, price: 175000, ownColorPrice: 135000, desc: "Basic Color Black/Brown" },
+  { id: 21, cat: "HairColor", name: "Hair Bleach", nameId: "Bleaching Rambut", dur: 90, price: 260000, bleach: true },
+  { id: 22, cat: "HairColor", name: "Hair Highlight", nameId: "Highlight Rambut", dur: 90, price: 625000 },
 ];
 
 export const CATEGORIES = [
-  { key:"Haircut",   labelEn:"Haircut",       labelId:"Potong Rambut", icon:"✂" },
-  { key:"Beard",     labelEn:"Beard",         labelId:"Jenggot",       icon:"🪒" },
-  { key:"Treatment", labelEn:"Treatment",     labelId:"Perawatan",     icon:"✨" },
-  { key:"Package",   labelEn:"Package",       labelId:"Paket",         icon:"⭐" },
-  { key:"HairColor", labelEn:"Hair Coloring", labelId:"Warna Rambut",  icon:"🎨" },
+  { key: "Haircut", labelEn: "Haircut", labelId: "Potong Rambut", icon: "✂" },
+  { key: "Beard", labelEn: "Beard", labelId: "Jenggot", icon: "🪒" },
+  { key: "Treatment", labelEn: "Treatment", labelId: "Perawatan", icon: "✨" },
+  { key: "Package", labelEn: "Package", labelId: "Paket", icon: "⭐" },
+  { key: "HairColor", labelEn: "Hair Coloring", labelId: "Warna Rambut", icon: "🎨" },
 ];
 
 // ── Real Bercut Seminyak barbers ──────────────────────────────────────────────
 export const BARBERS = [
   // status: available | busy | on_break | clocked_out
-  { id:1, name:"Guntur",   spec:"Haircut & Fade",    specId:"Potong & Fade",    slots:["09:00","09:30","10:30","11:00","14:00","15:30"], rating:4.9, cuts:1240, status:"available",   chair:"A1", nextAvailable:"Now" },
-  { id:2, name:"Pangestu", spec:"Classic & Beard",   specId:"Klasik & Jenggot", slots:["09:30","10:00","11:30","13:00","14:30","16:00"], rating:4.8, cuts:980,  status:"busy",        chair:"A2", nextAvailable:"10:30" },
-  { id:3, name:"Rifky",    spec:"Skin Fade",         specId:"Skin Fade",        slots:["10:00","10:30","12:00","13:30","15:00"],         rating:4.9, cuts:760,  status:"available",   chair:"B1", nextAvailable:"Now" },
-  { id:4, name:"Sep",      spec:"Hair Coloring",     specId:"Pewarnaan",        slots:["09:00","10:30","12:30","14:00","15:00"],         rating:4.7, cuts:890,  status:"on_break",    chair:"B2", nextAvailable:"10:15" },
-  { id:5, name:"Agung",    spec:"Haircut & Beard",   specId:"Potong & Jenggot", slots:["09:00","09:30","11:00","13:00","15:30"],         rating:4.8, cuts:820,  status:"busy",        chair:"C1", nextAvailable:"11:00" },
-  { id:6, name:"Rahmat",   spec:"Treatments",        specId:"Perawatan",        slots:["10:00","11:00","13:00","14:00","16:00"],         rating:4.7, cuts:650,  status:"available",   chair:"C2", nextAvailable:"Now" },
-  { id:7, name:"Axel",     spec:"Skin Fade & Style", specId:"Fade & Gaya",      slots:["09:30","10:30","12:00","14:30","16:00"],         rating:4.9, cuts:910,  status:"available",   chair:"D1", nextAvailable:"Now" },
-  { id:8, name:"Rian",     spec:"Classic Cut",       specId:"Potong Klasik",    slots:["09:00","10:00","11:30","13:30","15:00"],         rating:4.8, cuts:730,  status:"busy",        chair:"D2", nextAvailable:"10:00" },
-  { id:9, name:"Hendra",   spec:"Hair & Beard",      specId:"Rambut & Jenggot", slots:["09:30","11:00","12:30","14:00","15:30"],         rating:4.7, cuts:680,  status:"clocked_out", chair:"E1", nextAvailable:"—" },
+  { id: 1, name: "Guntur", spec: "Haircut & Fade", specId: "Potong & Fade", slots: ["09:00", "09:30", "10:30", "11:00", "14:00", "15:30"], rating: 4.9, cuts: 1240, status: "available", chair: "A1", nextAvailable: "Now" },
+  { id: 2, name: "Pangestu", spec: "Classic & Beard", specId: "Klasik & Jenggot", slots: ["09:30", "10:00", "11:30", "13:00", "14:30", "16:00"], rating: 4.8, cuts: 980, status: "busy", chair: "A2", nextAvailable: "10:30" },
+  { id: 3, name: "Rifky", spec: "Skin Fade", specId: "Skin Fade", slots: ["10:00", "10:30", "12:00", "13:30", "15:00"], rating: 4.9, cuts: 760, status: "available", chair: "B1", nextAvailable: "Now" },
+  { id: 4, name: "Sep", spec: "Hair Coloring", specId: "Pewarnaan", slots: ["09:00", "10:30", "12:30", "14:00", "15:00"], rating: 4.7, cuts: 890, status: "on_break", chair: "B2", nextAvailable: "10:15" },
+  { id: 5, name: "Agung", spec: "Haircut & Beard", specId: "Potong & Jenggot", slots: ["09:00", "09:30", "11:00", "13:00", "15:30"], rating: 4.8, cuts: 820, status: "busy", chair: "C1", nextAvailable: "11:00" },
+  { id: 6, name: "Rahmat", spec: "Treatments", specId: "Perawatan", slots: ["10:00", "11:00", "13:00", "14:00", "16:00"], rating: 4.7, cuts: 650, status: "available", chair: "C2", nextAvailable: "Now" },
+  { id: 7, name: "Axel", spec: "Skin Fade & Style", specId: "Fade & Gaya", slots: ["09:30", "10:30", "12:00", "14:30", "16:00"], rating: 4.9, cuts: 910, status: "available", chair: "D1", nextAvailable: "Now" },
+  { id: 8, name: "Rian", spec: "Classic Cut", specId: "Potong Klasik", slots: ["09:00", "10:00", "11:30", "13:30", "15:00"], rating: 4.8, cuts: 730, status: "busy", chair: "D2", nextAvailable: "10:00" },
+  { id: 9, name: "Hendra", spec: "Hair & Beard", specId: "Rambut & Jenggot", slots: ["09:30", "11:00", "12:30", "14:00", "15:30"], rating: 4.7, cuts: 680, status: "clocked_out", chair: "E1", nextAvailable: "—" },
 ];
 
 // Beverages — shown in TimeSlot after time is selected (max 3 shown at kiosk)
 export const BEVERAGES = [
-  { id:"b1", name:"Mineral Water",  nameId:"Air Mineral",  price:10000, icon:"💧", desc:"Still or sparkling, served cold" },
-  { id:"b2", name:"Iced Coffee",    nameId:"Kopi Es",      price:25000, icon:"☕", desc:"Local robusta, lightly sweetened" },
-  { id:"b3", name:"Coconut Water",  nameId:"Air Kelapa",   price:20000, icon:"🥥", desc:"Fresh young coconut, chilled" },
+  { id: "b1", name: "Mineral Water", nameId: "Air Mineral", price: 10000, icon: "💧", desc: "Still or sparkling, served cold" },
+  { id: "b2", name: "Iced Coffee", nameId: "Kopi Es", price: 25000, icon: "☕", desc: "Local robusta, lightly sweetened" },
+  { id: "b3", name: "Coconut Water", nameId: "Air Kelapa", price: 20000, icon: "🥥", desc: "Fresh young coconut, chilled" },
 ];
 
 // Products — shown in TimeSlot after time is selected (max 3 shown at kiosk)
 export const PRODUCTS = [
-  { id:"p1", name:"Matte Pomade",   nameId:"Pomade Matte", price:85000, icon:"🧴", desc:"Strong hold, low shine — all-day control" },
-  { id:"p2", name:"Sea Salt Spray", nameId:"Spray Rambut", price:70000, icon:"🌊", desc:"Texturising spray for natural beach waves" },
-  { id:"p3", name:"Beard Balm",     nameId:"Balm Jenggot", price:75000, icon:"🪒", desc:"Conditions and shapes beard, light hold" },
+  { id: "p1", name: "Matte Pomade", nameId: "Pomade Matte", price: 85000, icon: "🧴", desc: "Strong hold, low shine — all-day control" },
+  { id: "p2", name: "Sea Salt Spray", nameId: "Spray Rambut", price: 70000, icon: "🌊", desc: "Texturising spray for natural beach waves" },
+  { id: "p3", name: "Beard Balm", nameId: "Balm Jenggot", price: 75000, icon: "🪒", desc: "Conditions and shapes beard, light hold" },
 ];
 
-export const TIPS = [10000, 20000, 50000, 100000];
+export const TIPS = [5000, 10000, 20000, 50000, 100000];
 
 // Review feedback tags per star rating
 export const FEEDBACK_TAGS = {
@@ -102,58 +110,59 @@ export const FEEDBACK_TAGS = {
   5: ["Amazing cut!", "Exactly what I wanted", "Very friendly", "Will come back", "Exceeded expectations"],
 };
 
-export const fmt  = n => "Rp " + (n || 0).toLocaleString("id-ID");
-export const fmtK = n => "Rp " + (n/1000).toFixed(0) + "k";
+export const fmt = n => "Rp " + (n || 0).toLocaleString("id-ID");
+export const fmtK = n => "Rp " + (n / 1000).toFixed(0) + "k";
 
 export const DEMO_QUEUE = [
-  { number:"B101", name:"Budi Santoso", barber:"Guntur",   slot:"10:00", services:"Just a Haircut", cartItems:[{...SERVICES[0]}], total:120000, groupItems:null },
-  { number:"B102", name:"Rizal Ahmad",  barber:"Axel",     slot:"10:30", services:"Skin Fade + Wash, Beard Trim",
-    cartItems:[{...SERVICES[5]},{...SERVICES[8],midCut:true}], total:215000,
-    groupItems:[{ number:"B101", name:"Budi Santoso", barber:"Guntur", slot:"10:00", services:"Just a Haircut", cartItems:[{...SERVICES[0]}], total:120000 }]
+  { number: "B101", name: "Budi Santoso", barber: "Guntur", slot: "10:00", services: "Just a Haircut", cartItems: [{ ...SERVICES[0] }], total: 120000, groupItems: null },
+  {
+    number: "B102", name: "Rizal Ahmad", barber: "Axel", slot: "10:30", services: "Skin Fade + Wash, Beard Trim",
+    cartItems: [{ ...SERVICES[5] }, { ...SERVICES[8], midCut: true }], total: 215000,
+    groupItems: [{ number: "B101", name: "Budi Santoso", barber: "Guntur", slot: "10:00", services: "Just a Haircut", cartItems: [{ ...SERVICES[0] }], total: 120000 }]
   },
-  { number:"B103", name:"Dedi Kurniawan",barber:"Sep",     slot:"11:00", services:"Hair Bleach 1 Step + Color", cartItems:[{...SERVICES[20]}], total:500000, groupItems:null },
+  { number: "B103", name: "Dedi Kurniawan", barber: "Sep", slot: "11:00", services: "Hair Bleach 1 Step + Color", cartItems: [{ ...SERVICES[20] }], total: 500000, groupItems: null },
 ];
 
 export const PINNED_COUNTRIES = [
-  { code:"+62", abbr:"ID", flag:"🇮🇩", name:"Indonesia" },
-  { code:"+7",  abbr:"RU", flag:"🇷🇺", name:"Russia"    },
-  { code:"+61", abbr:"AU", flag:"🇦🇺", name:"Australia" },
-  { code:"+91", abbr:"IN", flag:"🇮🇳", name:"India"     },
+  { code: "+62", abbr: "ID", flag: "🇮🇩", name: "Indonesia" },
+  { code: "+7", abbr: "RU", flag: "🇷🇺", name: "Russia" },
+  { code: "+61", abbr: "AU", flag: "🇦🇺", name: "Australia" },
+  { code: "+91", abbr: "IN", flag: "🇮🇳", name: "India" },
 ];
 export const ALL_COUNTRIES = [
-  { code:"+1",   abbr:"US", flag:"🇺🇸", name:"United States" },
-  { code:"+1",   abbr:"CA", flag:"🇨🇦", name:"Canada"        },
-  { code:"+44",  abbr:"GB", flag:"🇬🇧", name:"United Kingdom"},
-  { code:"+33",  abbr:"FR", flag:"🇫🇷", name:"France"        },
-  { code:"+49",  abbr:"DE", flag:"🇩🇪", name:"Germany"       },
-  { code:"+39",  abbr:"IT", flag:"🇮🇹", name:"Italy"         },
-  { code:"+34",  abbr:"ES", flag:"🇪🇸", name:"Spain"         },
-  { code:"+31",  abbr:"NL", flag:"🇳🇱", name:"Netherlands"   },
-  { code:"+41",  abbr:"CH", flag:"🇨🇭", name:"Switzerland"   },
-  { code:"+46",  abbr:"SE", flag:"🇸🇪", name:"Sweden"        },
-  { code:"+47",  abbr:"NO", flag:"🇳🇴", name:"Norway"        },
-  { code:"+45",  abbr:"DK", flag:"🇩🇰", name:"Denmark"       },
-  { code:"+358", abbr:"FI", flag:"🇫🇮", name:"Finland"       },
-  { code:"+81",  abbr:"JP", flag:"🇯🇵", name:"Japan"         },
-  { code:"+82",  abbr:"KR", flag:"🇰🇷", name:"South Korea"   },
-  { code:"+86",  abbr:"CN", flag:"🇨🇳", name:"China"         },
-  { code:"+852", abbr:"HK", flag:"🇭🇰", name:"Hong Kong"     },
-  { code:"+65",  abbr:"SG", flag:"🇸🇬", name:"Singapore"     },
-  { code:"+60",  abbr:"MY", flag:"🇲🇾", name:"Malaysia"      },
-  { code:"+66",  abbr:"TH", flag:"🇹🇭", name:"Thailand"      },
-  { code:"+84",  abbr:"VN", flag:"🇻🇳", name:"Vietnam"       },
-  { code:"+63",  abbr:"PH", flag:"🇵🇭", name:"Philippines"   },
-  { code:"+880", abbr:"BD", flag:"🇧🇩", name:"Bangladesh"    },
-  { code:"+92",  abbr:"PK", flag:"🇵🇰", name:"Pakistan"      },
-  { code:"+94",  abbr:"LK", flag:"🇱🇰", name:"Sri Lanka"     },
-  { code:"+971", abbr:"AE", flag:"🇦🇪", name:"UAE"           },
-  { code:"+966", abbr:"SA", flag:"🇸🇦", name:"Saudi Arabia"  },
-  { code:"+972", abbr:"IL", flag:"🇮🇱", name:"Israel"        },
-  { code:"+90",  abbr:"TR", flag:"🇹🇷", name:"Turkey"        },
-  { code:"+20",  abbr:"EG", flag:"🇪🇬", name:"Egypt"         },
-  { code:"+27",  abbr:"ZA", flag:"🇿🇦", name:"South Africa"  },
-  { code:"+55",  abbr:"BR", flag:"🇧🇷", name:"Brazil"        },
-  { code:"+52",  abbr:"MX", flag:"🇲🇽", name:"Mexico"        },
-  { code:"+54",  abbr:"AR", flag:"🇦🇷", name:"Argentina"     },
-  { code:"+64",  abbr:"NZ", flag:"🇳🇿", name:"New Zealand"   },
+  { code: "+1", abbr: "US", flag: "🇺🇸", name: "United States" },
+  { code: "+1", abbr: "CA", flag: "🇨🇦", name: "Canada" },
+  { code: "+44", abbr: "GB", flag: "🇬🇧", name: "United Kingdom" },
+  { code: "+33", abbr: "FR", flag: "🇫🇷", name: "France" },
+  { code: "+49", abbr: "DE", flag: "🇩🇪", name: "Germany" },
+  { code: "+39", abbr: "IT", flag: "🇮🇹", name: "Italy" },
+  { code: "+34", abbr: "ES", flag: "🇪🇸", name: "Spain" },
+  { code: "+31", abbr: "NL", flag: "🇳🇱", name: "Netherlands" },
+  { code: "+41", abbr: "CH", flag: "🇨🇭", name: "Switzerland" },
+  { code: "+46", abbr: "SE", flag: "🇸🇪", name: "Sweden" },
+  { code: "+47", abbr: "NO", flag: "🇳🇴", name: "Norway" },
+  { code: "+45", abbr: "DK", flag: "🇩🇰", name: "Denmark" },
+  { code: "+358", abbr: "FI", flag: "🇫🇮", name: "Finland" },
+  { code: "+81", abbr: "JP", flag: "🇯🇵", name: "Japan" },
+  { code: "+82", abbr: "KR", flag: "🇰🇷", name: "South Korea" },
+  { code: "+86", abbr: "CN", flag: "🇨🇳", name: "China" },
+  { code: "+852", abbr: "HK", flag: "🇭🇰", name: "Hong Kong" },
+  { code: "+65", abbr: "SG", flag: "🇸🇬", name: "Singapore" },
+  { code: "+60", abbr: "MY", flag: "🇲🇾", name: "Malaysia" },
+  { code: "+66", abbr: "TH", flag: "🇹🇭", name: "Thailand" },
+  { code: "+84", abbr: "VN", flag: "🇻🇳", name: "Vietnam" },
+  { code: "+63", abbr: "PH", flag: "🇵🇭", name: "Philippines" },
+  { code: "+880", abbr: "BD", flag: "🇧🇩", name: "Bangladesh" },
+  { code: "+92", abbr: "PK", flag: "🇵🇰", name: "Pakistan" },
+  { code: "+94", abbr: "LK", flag: "🇱🇰", name: "Sri Lanka" },
+  { code: "+971", abbr: "AE", flag: "🇦🇪", name: "UAE" },
+  { code: "+966", abbr: "SA", flag: "🇸🇦", name: "Saudi Arabia" },
+  { code: "+972", abbr: "IL", flag: "🇮🇱", name: "Israel" },
+  { code: "+90", abbr: "TR", flag: "🇹🇷", name: "Turkey" },
+  { code: "+20", abbr: "EG", flag: "🇪🇬", name: "Egypt" },
+  { code: "+27", abbr: "ZA", flag: "🇿🇦", name: "South Africa" },
+  { code: "+55", abbr: "BR", flag: "🇧🇷", name: "Brazil" },
+  { code: "+52", abbr: "MX", flag: "🇲🇽", name: "Mexico" },
+  { code: "+54", abbr: "AR", flag: "🇦🇷", name: "Argentina" },
+  { code: "+64", abbr: "NZ", flag: "🇳🇿", name: "New Zealand" },
 ];

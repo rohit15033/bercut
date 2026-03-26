@@ -24,7 +24,7 @@ export default function App() {
           <Route path="/barber/*" element={<BarberApp />} />
           <Route path="/admin/*"  element={<AdminApp />} />
           <Route path="/mockup/kiosk" element={<BercutKioskMockup />} />
-          <Route path="*"         element={<Navigate to="/kiosk" replace />} />
+          <Route path="*"         element={<Navigate to="/mockup/kiosk" replace />} />
         </Routes>
       </div>
     </BrowserRouter>

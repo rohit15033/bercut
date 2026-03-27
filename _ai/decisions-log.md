@@ -53,3 +53,24 @@
 2026-03-26 | TimeSlot UI: 'Next Available' button hidden if 'Now' is available to prioritize the immediate booking CTA.
 2026-03-26 | Auto-cancellation disclaimer in TimeSlot.jsx is now hidden if 'Now' is selected, as immediate chair assignment makes the rule irrelevant.
 2026-03-26 | BarberPanel.jsx mockup created — full-screen kiosk panel for logged-in barber (queue, active timer, start/complete, add service, break, clock out); Antigravity prompt added as Section 05B in prompting-guide.md
+2026-03-27 | Points reward system added — Meeting 3 decision (reverses "no loyalty programme" from Meeting 1) | Bercut requested customer loyalty via points
+2026-03-27 | Points earn rate: Rp 10,000 = 1 point. Earned on cash-paid services + beverages + products. Not earned on points-redeemed services | Meeting 3
+2026-03-27 | Points redemption at Confirm screen (Step 4), not PaymentTakeover — customer decides before service starts; mid-cut barber additions are always cash | Meeting 3
+2026-03-27 | Points tied to phone number — phone stays optional but kiosk shows nudge "Have points? Enter your WhatsApp number" if phone field is empty | Meeting 3
+2026-03-27 | Per-service points toggle in Confirm order summary — customer picks which services to cover with points; packages eligible too | Meeting 3
+2026-03-27 | Zero cash total still goes to PaymentTakeover for tip prompt; if no tip either, "Confirm & Complete" skips EDC entirely | Meeting 3
+2026-03-27 | DB: add customers.points_balance, booking_services.paid_with_points, bookings.points_redeemed + points_earned, new point_transactions table | schema implications of Meeting 3
+2026-03-27 | Kiosk language rule corrected: English primary + Bahasa Indonesia subtitle (was incorrectly documented as Bahasa primary + English subtitle) | Meeting 3 clarification
+2026-03-27 | WA consent checkbox removed from Confirm screen; points loyalty nudge/balance moved to that position | Meeting 3
+2026-03-27 | Any Available on BarberSelection redesigned as first grid card (same size as barber cards) with 🎲 dice icon | Meeting 3
+2026-03-27 | Now and Next Available on TimeSlot redesigned as first two slot cards in the grid (not separate header buttons) | Meeting 3
+2026-03-27 | Upsell popup package cards: treatment photos displayed as horizontal strip at top of card; dark gradient overlay; white text floated over | Meeting 3
+2026-03-27 | Confirm screen columns flipped: inputs (name/phone/points) on LEFT, order summary on RIGHT | Meeting 3; testing showed users missed input fields when summary was dominant on left
+2026-03-27 | Name field on Confirm: auto-focus on mount + pulsing yellow border animation (3 pulses) + instructional placeholder | Meeting 3; user testing showed customers struggled to find/fill name field
+2026-03-27 | Floor plan removed from Confirm screen | Meeting 3; chairs table stays in DB for backend logic, not shown in kiosk UI
+2026-03-27 | Ear Wax and Ear Candle are mutually exclusive (mutex_group: ear_treatment) — selecting one deselects the other | Meeting 3
+2026-03-27 | Beard Trim and Beard Shaving are mutually exclusive (mutex_group: beard_service) — selecting one deselects the other | Meeting 3
+2026-03-27 | Package descriptions updated: Ear Wax + Candle → Ear Wax or Candle; Beard Trim or Shave → Beard Trim or Shaving | Meeting 3
+2026-03-27 | Package treatment images displayed as horizontal photo strip on package cards in ServiceSelection | Meeting 3; big screen warrants visual treatment representation
+2026-03-27 | DB: add image_url TEXT and mutex_group VARCHAR(50) to services table | schema implications of Meeting 3 visual and constraint decisions
+2026-03-27 | Kiosk screen is portrait orientation (40-inch); current mockups remain landscape for laptop review, portrait layout revisit deferred | Meeting 3

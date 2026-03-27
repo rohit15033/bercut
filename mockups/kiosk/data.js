@@ -29,36 +29,40 @@ export const SERVICES = [
   { id: 4, cat: "Haircut", name: "Head Shaving", nameId: "Cukur Botak", dur: 30, price: 130000 },
   { id: 5, cat: "Haircut", name: "Hair Tattoo", nameId: "Tato Rambut", dur: 45, price: 150000 },
   // BEARD
-  { id: 6, cat: "Beard", name: "Beard Trim", nameId: "Rapikan Jenggot", dur: 20, price: 75000 },
-  { id: 7, cat: "Beard", name: "Beard Shaving", nameId: "Cukur Jenggot", dur: 25, price: 95000 },
+  { id: 6, cat: "Beard", name: "Beard Trim", nameId: "Rapikan Jenggot", dur: 20, price: 75000, mutex_group: "beard_service" },
+  { id: 7, cat: "Beard", name: "Beard Shaving", nameId: "Cukur Jenggot", dur: 25, price: 95000, mutex_group: "beard_service" },
   { id: 8, cat: "Beard", name: "Beard Coloring", nameId: "Warna Jenggot", dur: 40, price: 125000 },
   // TREATMENT
-  { id: 9, cat: "Treatment", name: "Nose Wax", nameId: "Wax Hidung", dur: 15, price: 95000 },
-  { id: 10, cat: "Treatment", name: "Ear Wax", nameId: "Wax Telinga", dur: 15, price: 95000 },
+  { id: 9, cat: "Treatment", name: "Nose Wax", nameId: "Wax Hidung", dur: 15, price: 95000, img: "/treatments/nosewax.jpg" },
+  { id: 10, cat: "Treatment", name: "Ear Wax", nameId: "Wax Telinga", dur: 15, price: 95000, img: "/treatments/earcandle.jpg", mutex_group: "ear_treatment" },
   { id: 11, cat: "Treatment", name: "Nose Blackhead Remover", nameId: "Komedo Hidung", dur: 20, price: 55000 },
-  { id: 12, cat: "Treatment", name: "Face Scrub", nameId: "Scrub Wajah", dur: 20, price: 85000 },
-  { id: 13, cat: "Treatment", name: "Black Mask", nameId: "Masker Hitam", dur: 25, price: 85000 },
-  { id: 14, cat: "Treatment", name: "Creambath", nameId: "Creambath", dur: 30, price: 95000 },
-  { id: 15, cat: "Treatment", name: "Ear Candle", nameId: "Lilin Telinga", dur: 20, price: 75000 },
-  // PACKAGE
+  { id: 12, cat: "Treatment", name: "Face Scrub", nameId: "Scrub Wajah", dur: 20, price: 85000, img: "/treatments/facescrub.jpg" },
+  { id: 13, cat: "Treatment", name: "Black Mask", nameId: "Masker Hitam", dur: 25, price: 85000, img: "/treatments/blackmax.jpg" },
+  { id: 14, cat: "Treatment", name: "Creambath", nameId: "Creambath", dur: 30, price: 95000, img: "/treatments/creambath.jpg" },
+  { id: 15, cat: "Treatment", name: "Ear Candle", nameId: "Lilin Telinga", dur: 20, price: 75000, img: "/treatments/earcandle.jpg", mutex_group: "ear_treatment" },
+  // PACKAGE — treatmentImgs: photos of the treatment services included, shown in card
   {
     id: 16, cat: "Package", name: "Mask Cut Package", nameId: "Paket Masker Potong", dur: 60, price: 205000, badge: "Save 10%",
-    desc: "✂ Haircut or Skin Fade  ·  🖤 Black Mask"
+    desc: "✂ Haircut or Skin Fade  ·  🖤 Black Mask",
+    treatmentImgs: ["/treatments/blackmax.jpg"],
   },
   {
     id: 17, cat: "Package", name: "Prestige Package", nameId: "Paket Prestige", dur: 75, price: 215000, badge: "Popular",
-    desc: "✂ Haircut or Skin Fade  ·  🪒 Beard Trim or Shave  ·  🚿 Wash"
+    desc: "✂ Haircut or Skin Fade  ·  🪒 Beard Trim or Shaving  ·  🚿 Wash",
+    treatmentImgs: [],
   },
   {
     id: 18, cat: "Package", name: "Luxury Package", nameId: "Paket Luxury", dur: 120, price: 445000, badge: "Best Value",
-    desc: "✂ Haircut  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax + Candle  ·  💆 Creambath  ·  🚿 Wash"
+    desc: "✂ Haircut  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax or Candle  ·  💆 Creambath  ·  🚿 Wash",
+    treatmentImgs: ["/treatments/blackmax.jpg", "/treatments/nosewax.jpg", "/treatments/earcandle.jpg", "/treatments/creambath.jpg"],
   },
   {
     id: 19, cat: "Package", name: "President Package", nameId: "Paket President", dur: 150, price: 555000, badge: "All-In",
-    desc: "✂ Haircut  ·  🪒 Beard  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax + Candle  ·  💆 Creambath  ·  🚿 Wash"
+    desc: "✂ Haircut  ·  🪒 Beard Trim or Shaving  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax or Candle  ·  💆 Creambath  ·  🚿 Wash",
+    treatmentImgs: ["/treatments/blackmax.jpg", "/treatments/nosewax.jpg", "/treatments/earcandle.jpg", "/treatments/creambath.jpg"],
   },
   // HAIR COLORING — bleach uses step-selector modal (see HairColorModal)
-  { id: 20, cat: "HairColor", name: "Hair Coloring", nameId: "Pewarnaan Rambut", dur: 60, price: 175000, ownColorPrice: 135000, desc: "Basic Color Black/Brown" },
+  { id: 20, cat: "HairColor", name: "Hair Coloring", nameId: "Pewarnaan Rambut", dur: 60, price: 175000, ownColorPrice: 135000, desc: "Basic Color Black/Brown", img: "/treatments/haircolouring.jpg" },
   { id: 21, cat: "HairColor", name: "Hair Bleach", nameId: "Bleaching Rambut", dur: 90, price: 260000, bleach: true },
   { id: 22, cat: "HairColor", name: "Hair Highlight", nameId: "Highlight Rambut", dur: 90, price: 625000 },
 ];
@@ -166,3 +170,15 @@ export const ALL_COUNTRIES = [
   { code: "+54", abbr: "AR", flag: "🇦🇷", name: "Argentina" },
   { code: "+64", abbr: "NZ", flag: "🇳🇿", name: "New Zealand" },
 ];
+
+// ── Points Reward System ──────────────────────────────────────────────────────
+// Rp 10,000 = 1 point. Points redeemable per service at Confirm screen.
+export const POINTS_RATE = 10000; // IDR per point
+
+// Mock customer lookup by phone number (production: GET /api/customers?phone=)
+export const MOCK_CUSTOMERS = {
+  "08123456789": { name: "Budi Santoso", points: 15 },
+  "08987654321": { name: "Sari Dewi", points: 7 },
+  "08555000111": { name: "Agus Pratama", points: 3 },
+  "08111222333": { name: "Ni Made Ayu", points: 0 },
+};

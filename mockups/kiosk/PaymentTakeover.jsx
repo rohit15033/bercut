@@ -107,7 +107,7 @@ function ReviewScreen({ booking, grand, onDone }) {
 }
 
 // ── Payment Takeover ──────────────────────────────────────────────────────────
-export default function PaymentTakeover({ booking, onDone }) {
+export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUsed = 0, cashTotal = null, onDone }) {
   const [method, setMethod] = useState(null);
   const [paid, setPaid] = useState(false);
 
@@ -120,21 +120,30 @@ export default function PaymentTakeover({ booking, onDone }) {
 
   const getTipAmt = num => tips[num] === "custom" ? (parseInt(customTips[num]?.replace(/\D/g, "") || 0)) : (tips[num] || 0);
   const totalTips = allItems.reduce((s, b) => s + getTipAmt(b.number), 0);
-  const subtotal = allItems.reduce((s, b) => s + b.total, 0);
+  const fullSubtotal = allItems.reduce((s, b) => s + b.total, 0);
+  // If cashTotal was passed from Confirm (points applied), use it; otherwise full subtotal
+  const subtotal = cashTotal !== null ? cashTotal : fullSubtotal;
   const grand = subtotal + totalTips;
+  const isPointsCovered = pointsUsed > 0 && subtotal === 0;
 
-  const ServiceRow = ({ s }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "clamp(7px,1vh,10px) 0", borderBottom: "1px solid #2a2a28" }}>
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: "clamp(13px,1.6vw,15px)", fontWeight: 700, color: C.white, fontFamily: "'Inter',sans-serif" }}>{s.name}</div>
-          {s.midCut && <div style={{ background: "#2a2a18", border: "1px solid #c9a050", color: "#c9a050", fontSize: "clamp(8px,1vw,10px)", fontWeight: 700, padding: "1px 6px", borderRadius: 4 }}>+ ADDED</div>}
+  const ServiceRow = ({ s }) => {
+    const isPtsCovered = pointsRedeemed.includes(s.id);
+    return (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "clamp(7px,1vh,10px) 0", borderBottom: "1px solid #2a2a28" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: "clamp(13px,1.6vw,15px)", fontWeight: 700, color: C.white, fontFamily: "'Inter',sans-serif" }}>{s.name}</div>
+            {s.midCut && <div style={{ background: "#2a2a18", border: "1px solid #c9a050", color: "#c9a050", fontSize: "clamp(8px,1vw,10px)", fontWeight: 700, padding: "1px 6px", borderRadius: 4 }}>+ ADDED</div>}
+            {isPtsCovered && <div style={{ background: "#0d1f0d", border: "1px solid #2d7a2d", color: "#6fcf6f", fontSize: "clamp(8px,1vw,10px)", fontWeight: 700, padding: "1px 6px", borderRadius: 4 }}>⭐ POINTS</div>}
+          </div>
+          <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "#666" }}>{s.dur} min</div>
         </div>
-        <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "#666" }}>{s.dur} min</div>
+        <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: isPtsCovered ? "#6fcf6f" : s.midCut ? "#c9a050" : C.white, textDecoration: isPtsCovered ? "line-through" : "none" }}>
+          {isPtsCovered ? "Free" : fmt(s.price)}
+        </div>
       </div>
-      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: s.midCut ? "#c9a050" : C.white }}>{fmt(s.price)}</div>
-    </div>
-  );
+    );
+  };
 
   if (paid) return <ReviewScreen booking={booking} grand={grand} onDone={onDone} />;
 
@@ -172,7 +181,7 @@ export default function PaymentTakeover({ booking, onDone }) {
                   </div>
                   <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, color: "#888", fontSize: "clamp(13px,1.6vw,16px)", flexShrink: 0 }}>{fmt(b.total)}</span>
                 </div>
-                {b.cartItems.map((s, j) => <ServiceRow key={j} s={s} />)}
+                {(b.cartItems || b.services || []).map((s, j) => <ServiceRow key={j} s={s} />)}
 
                 {/* Aggressive Tip Section */}
                 <div style={{
@@ -297,67 +306,83 @@ export default function PaymentTakeover({ booking, onDone }) {
         {/* Right: payment method */}
         <div style={{ width: "clamp(260px,32vw,380px)", borderLeft: "1px solid #1a1a18", background: "#0d0d0b", padding: "clamp(20px,3vw,32px)", display: "flex", flexDirection: "column" }}>
 
-          {/* Scrollable options area */}
-          <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", marginBottom: "clamp(12px,1.8vw,18px)" }}>
-            <div style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 700, letterSpacing: "0.14em", color: "#555", textTransform: "uppercase", marginBottom: 14 }}>Payment Method</div>
-            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#555", marginBottom: 16 }}>Barber selects method, customer pays.</div>
-
-            {/* QRIS */}
-            <div onClick={() => setMethod("qris")} style={{ background: method === "qris" ? "#1a1a18" : "#111110", border: `2px solid ${method === "qris" ? C.accent : "#222"}`, borderRadius: 14, padding: "clamp(16px,2.2vw,22px)", cursor: "pointer", marginBottom: 10, transition: "all 0.18s" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: method === "qris" ? 14 : 0 }}>
-                <div style={{ width: 44, height: 44, background: method === "qris" ? C.accent : "#1a1a18", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>⬛</div>
-                <div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.white }}>QRIS</div>
-                  <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>GoPay · OVO · Dana · Bank Transfer</div>
+          {isPointsCovered && totalTips === 0 ? (
+            /* Points fully cover everything — no EDC needed */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+              <div style={{ fontSize: 48 }}>⭐</div>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,26px)", fontWeight: 800, color: "#6fcf6f" }}>Fully Covered by Points!</div>
+              <div style={{ fontSize: "clamp(12px,1.4vw,14px)", color: "#555" }}>No payment needed · Tidak perlu bayar</div>
+              <button onClick={() => setPaid(true)} style={{ width: "100%", background: "#6fcf6f", color: "#0d1f0d", padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: "pointer", marginTop: 8 }}>
+                Confirm & Complete ✓
+              </button>
+            </div>
+          ) : (
+            /* Cash owed — show payment method selector */
+            <>
+              <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", marginBottom: "clamp(12px,1.8vw,18px)" }}>
+                <div style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 700, letterSpacing: "0.14em", color: "#555", textTransform: "uppercase", marginBottom: 14 }}>Payment Method</div>
+                <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#555", marginBottom: 16 }}>
+                  {isPointsCovered ? "Tip payment only · Pembayaran tip saja" : "Barber selects method, customer pays."}
                 </div>
-                {method === "qris" && <div style={{ marginLeft: "auto", width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText }}>✓</div>}
-              </div>
-              {method === "qris" && (
-                <div style={{ background: "#0d0d0b", borderRadius: 10, padding: 16, textAlign: "center" }}>
-                  <div style={{ width: 120, height: 120, background: C.white, borderRadius: 8, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="100" height="100" viewBox="0 0 100 100">
-                      <rect x="5" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                      <rect x="13" y="13" width="19" height="19" rx="2" fill="#111" />
-                      <rect x="60" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                      <rect x="68" y="13" width="19" height="19" rx="2" fill="#111" />
-                      <rect x="5" y="60" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                      <rect x="13" y="68" width="19" height="19" rx="2" fill="#111" />
-                      <rect x="60" y="60" width="8" height="8" fill="#111" /><rect x="72" y="60" width="8" height="8" fill="#111" />
-                      <rect x="84" y="60" width="11" height="8" fill="#111" /><rect x="60" y="72" width="11" height="8" fill="#111" />
-                      <rect x="76" y="72" width="8" height="8" fill="#111" /><rect x="60" y="84" width="8" height="11" fill="#111" />
-                      <rect x="72" y="84" width="23" height="11" fill="#111" />
-                    </svg>
+
+                {/* QRIS */}
+                <div onClick={() => setMethod("qris")} style={{ background: method === "qris" ? "#1a1a18" : "#111110", border: `2px solid ${method === "qris" ? C.accent : "#222"}`, borderRadius: 14, padding: "clamp(16px,2.2vw,22px)", cursor: "pointer", marginBottom: 10, transition: "all 0.18s" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: method === "qris" ? 14 : 0 }}>
+                    <div style={{ width: 44, height: 44, background: method === "qris" ? C.accent : "#1a1a18", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>⬛</div>
+                    <div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.white }}>QRIS</div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>GoPay · OVO · Dana · Bank Transfer</div>
+                    </div>
+                    {method === "qris" && <div style={{ marginLeft: "auto", width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText }}>✓</div>}
                   </div>
-                  <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>Scan QR code to pay</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.accent, marginTop: 8 }}>{fmt(grand)}</div>
+                  {method === "qris" && (
+                    <div style={{ background: "#0d0d0b", borderRadius: 10, padding: 16, textAlign: "center" }}>
+                      <div style={{ width: 120, height: 120, background: C.white, borderRadius: 8, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="100" height="100" viewBox="0 0 100 100">
+                          <rect x="5" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
+                          <rect x="13" y="13" width="19" height="19" rx="2" fill="#111" />
+                          <rect x="60" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
+                          <rect x="68" y="13" width="19" height="19" rx="2" fill="#111" />
+                          <rect x="5" y="60" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
+                          <rect x="13" y="68" width="19" height="19" rx="2" fill="#111" />
+                          <rect x="60" y="60" width="8" height="8" fill="#111" /><rect x="72" y="60" width="8" height="8" fill="#111" />
+                          <rect x="84" y="60" width="11" height="8" fill="#111" /><rect x="60" y="72" width="11" height="8" fill="#111" />
+                          <rect x="76" y="72" width="8" height="8" fill="#111" /><rect x="60" y="84" width="8" height="11" fill="#111" />
+                          <rect x="72" y="84" width="23" height="11" fill="#111" />
+                        </svg>
+                      </div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>Scan QR code to pay</div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.accent, marginTop: 8 }}>{fmt(grand)}</div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* Card */}
-            <div onClick={() => setMethod("card")} style={{ background: method === "card" ? "#1a1a18" : "#111110", border: `2px solid ${method === "card" ? C.accent : "#222"}`, borderRadius: 14, padding: "clamp(16px,2.2vw,22px)", cursor: "pointer", transition: "all 0.18s" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: method === "card" ? 14 : 0 }}>
-                <div style={{ width: 44, height: 44, background: method === "card" ? C.accent : "#1a1a18", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>💳</div>
-                <div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.white }}>Card</div>
-                  <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>BCA EDC · Tap or Insert</div>
+                {/* Card */}
+                <div onClick={() => setMethod("card")} style={{ background: method === "card" ? "#1a1a18" : "#111110", border: `2px solid ${method === "card" ? C.accent : "#222"}`, borderRadius: 14, padding: "clamp(16px,2.2vw,22px)", cursor: "pointer", transition: "all 0.18s" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: method === "card" ? 14 : 0 }}>
+                    <div style={{ width: 44, height: 44, background: method === "card" ? C.accent : "#1a1a18", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>💳</div>
+                    <div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.white }}>Card</div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>BCA EDC · Tap or Insert</div>
+                    </div>
+                    {method === "card" && <div style={{ marginLeft: "auto", width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText }}>✓</div>}
+                  </div>
+                  {method === "card" && (
+                    <div style={{ background: "#0d0d0b", borderRadius: 10, padding: 16, textAlign: "center" }}>
+                      <div style={{ fontSize: 40, marginBottom: 8 }}>🏦</div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: C.white, marginBottom: 4 }}>Tap or insert card</div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666", marginBottom: 8 }}>Tap or insert card on BCA EDC terminal</div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.accent }}>{fmt(grand)}</div>
+                    </div>
+                  )}
                 </div>
-                {method === "card" && <div style={{ marginLeft: "auto", width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText }}>✓</div>}
               </div>
-              {method === "card" && (
-                <div style={{ background: "#0d0d0b", borderRadius: 10, padding: 16, textAlign: "center" }}>
-                  <div style={{ fontSize: 40, marginBottom: 8 }}>🏦</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: C.white, marginBottom: 4 }}>Tap or insert card</div>
-                  <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666", marginBottom: 8 }}>Tap or insert card on BCA EDC terminal</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.accent }}>{fmt(grand)}</div>
-                </div>
-              )}
-            </div>
-          </div>{/* end scrollable options */}
 
-          <button onClick={() => setPaid(true)} disabled={!method} style={{ width: "100%", background: method ? C.accent : C.surface2, color: method ? C.accentText : C.muted, padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: method ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.2s" }}>
-            {method === "qris" ? "Confirm QRIS Payment ✓" : method === "card" ? "Confirm Card Payment ✓" : "Select Payment Method"}
-          </button>
+              <button onClick={() => setPaid(true)} disabled={!method} style={{ width: "100%", background: method ? C.accent : C.surface2, color: method ? C.accentText : C.muted, padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: method ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.2s" }}>
+                {method === "qris" ? "Confirm QRIS Payment ✓" : method === "card" ? "Confirm Card Payment ✓" : "Select Payment Method"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

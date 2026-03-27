@@ -108,7 +108,7 @@ export default function Topbar({ step, cartTotal, groupCount, onHome, onAdminAcc
           <img
             src={BERCUT_LOGO}
             alt="Bercut"
-            onClick={onHome}
+            onClick={() => setShowAccess(true)}
             style={{ height:"clamp(24px,3.2vh,34px)", width:"auto", objectFit:"contain", cursor:"pointer" }}
           />
           <span

@@ -55,78 +55,60 @@ export default function TimeSlot({ barber, slot, setSlot, selectedBeverages, set
         <div style={{ fontSize: "clamp(12px,1.4vw,14px)", color: C.muted, marginTop: 4 }}>{barber?.name} · {today} · Kapan Anda ingin dipotong?</div>
       </div>
 
-      {/* ── NOW / NEXT AVAILABLE (primary CTAs) ─────────────────────────────── */}
-      <div className="fu" style={{
-        animationDelay: "0.05s",
-        display: "grid",
-        gridTemplateColumns: canNow ? "1fr" : "1fr 1fr",
-        gap: "clamp(10px,1.4vw,16px)",
-        marginBottom: "clamp(18px,2.4vw,26px)"
-      }}>
-
-        {/* NOW button */}
-        <button
-          onClick={() => canNow && setSlot("Now")}
-          style={{
-            padding: "clamp(16px,2.2vw,22px)", borderRadius: 14, border: `2.5px solid ${slot === "Now" ? C.topBg : canNow ? C.topBg : C.border}`,
-            background: slot === "Now" ? C.topBg : canNow ? "#f7f6f2" : C.surface2,
-            opacity: canNow ? 1 : 0.85,
-            cursor: canNow ? "pointer" : "not-allowed", textAlign: "left", transition: "all 0.15s", minHeight: "clamp(80px,10vh,100px)"
-          }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div style={{
-              fontFamily: "'Inter',sans-serif",
-              fontSize: "clamp(22px,3vw,32px)",
-              fontWeight: 900,
-              color: slot === "Now" ? C.topText : canNow ? C.topBg : C.muted,
-              marginBottom: 4,
-              textDecoration: canNow ? "none" : "line-through"
-            }}>
-              Now ⚡
-            </div>
-            {canNow && <div style={{ fontSize: 14, fontWeight: 700, color: slot === "Now" ? C.white : C.topBg }}>Select →</div>}
-          </div>
-          <div style={{ marginTop: 4 }}>
-            {canNow ? (
-              <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: slot === "Now" ? "#aaa" : C.muted }}>
-                Available now / Langsung ke kursi
-              </div>
-            ) : (
-              <div style={{ color: "#991B1B", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700 }}>
-                {status.text} · Next available {barber?.nextAvailable}
-              </div>
-            )}
-          </div>
-        </button>
-
-        {/* NEXT AVAILABLE button — Only shown if 'Now' is unavailable */}
-        {!canNow && (
-          <button
-            onClick={() => setSlot(`Next: ${barber?.nextAvailable || "10:30"}`)}
-            style={{
-              padding: "clamp(16px,2.2vw,22px)", borderRadius: 14,
-              border: `2.5px solid ${slot?.startsWith("Next:") ? C.topBg : C.border}`,
-              background: slot?.startsWith("Next:") ? C.topBg : "#f7f6f2",
-              cursor: "pointer", textAlign: "left", transition: "all 0.15s", minHeight: "clamp(80px,10vh,100px)"
-            }}>
-            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(22px,3vw,32px)", fontWeight: 900, color: slot?.startsWith("Next:") ? C.topText : C.topBg, marginBottom: 4 }}>
-              Next →
-            </div>
-            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: slot?.startsWith("Next:") ? "#aaa" : C.muted }}>
-              Take next available · {barber?.nextAvailable || "10:30"}
-            </div>
-          </button>
-        )}
-      </div>
-
-      {/* ── TIME GRID ────────────────────────────────────────────────────────── */}
-      <div className="fu" style={{ animationDelay: "0.07s", marginBottom: "clamp(20px,3vw,32px)" }}>
-        <div style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 700, letterSpacing: "0.12em", color: C.muted, textTransform: "uppercase", marginBottom: "clamp(10px,1.4vw,14px)" }}>
-          Or pick a specific time / Atau pilih waktu spesifik
-        </div>
+      {/* ── TIME GRID — Now/Next as first cards, then specific slots ─────────── */}
+      <div className="fu" style={{ animationDelay: "0.05s", marginBottom: "clamp(20px,3vw,32px)" }}>
         <div className="slot-grid">
+
+          {/* NOW — first card */}
+          <button onClick={() => canNow && setSlot("Now")}
+            style={{
+              padding: "clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)", borderRadius: 12,
+              fontSize: "clamp(15px,2vw,20px)", fontFamily: "'Inter',sans-serif", fontWeight: 700,
+              background: slot === "Now" ? C.topBg : canNow ? C.white : C.surface2,
+              color: slot === "Now" ? C.white : canNow ? C.text : C.muted,
+              border: `2px solid ${slot === "Now" ? C.topBg : canNow ? C.topBg : C.border}`,
+              transition: "all 0.15s", minWidth: "clamp(80px,10vw,110px)", minHeight: "clamp(52px,7vh,64px)",
+              cursor: canNow ? "pointer" : "not-allowed", opacity: canNow ? 1 : 0.6,
+              animation: "fadeUp 0.28s ease 0s both",
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+            }}>
+            <span>Now ⚡</span>
+            <span style={{ fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 400, color: slot === "Now" ? "rgba(255,255,255,0.7)" : canNow ? C.muted : C.muted }}>
+              {canNow ? "Langsung" : status.text}
+            </span>
+          </button>
+
+          {/* NEXT AVAILABLE — second card, only when Now is unavailable */}
+          {!canNow && (
+            <button onClick={() => setSlot(`Next: ${barber?.nextAvailable || "10:30"}`)}
+              style={{
+                padding: "clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)", borderRadius: 12,
+                fontSize: "clamp(15px,2vw,20px)", fontFamily: "'Inter',sans-serif", fontWeight: 700,
+                background: slot?.startsWith("Next:") ? C.topBg : C.white,
+                color: slot?.startsWith("Next:") ? C.white : C.text,
+                border: `2px solid ${slot?.startsWith("Next:") ? C.topBg : C.border}`,
+                transition: "all 0.15s", minWidth: "clamp(80px,10vw,110px)", minHeight: "clamp(52px,7vh,64px)",
+                animation: "fadeUp 0.28s ease 0.04s both",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+              }}>
+              <span>Next →</span>
+              <span style={{ fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 400, color: slot?.startsWith("Next:") ? "rgba(255,255,255,0.7)" : C.muted }}>
+                {barber?.nextAvailable || "10:30"}
+              </span>
+            </button>
+          )}
+
+          {/* Specific time slots */}
           {(barber?.slots || []).map((s, i) => (
-            <button key={s} onClick={() => setSlot(s)} style={{ padding: "clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)", borderRadius: 12, fontSize: "clamp(15px,2vw,20px)", fontFamily: "'Inter',sans-serif", fontWeight: 700, background: slot === s ? C.topBg : C.white, color: slot === s ? C.white : C.text, border: `2px solid ${slot === s ? C.topBg : C.border}`, transition: "all 0.15s", minWidth: "clamp(80px,10vw,110px)", minHeight: "clamp(52px,7vh,64px)", animation: `fadeUp 0.28s ease ${i * 0.04}s both` }}>{s}</button>
+            <button key={s} onClick={() => setSlot(s)}
+              style={{
+                padding: "clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)", borderRadius: 12,
+                fontSize: "clamp(15px,2vw,20px)", fontFamily: "'Inter',sans-serif", fontWeight: 700,
+                background: slot === s ? C.topBg : C.white, color: slot === s ? C.white : C.text,
+                border: `2px solid ${slot === s ? C.topBg : C.border}`,
+                transition: "all 0.15s", minWidth: "clamp(80px,10vw,110px)", minHeight: "clamp(52px,7vh,64px)",
+                animation: `fadeUp 0.28s ease ${(i + (canNow ? 1 : 2)) * 0.04}s both`,
+              }}>{s}</button>
           ))}
         </div>
       </div>

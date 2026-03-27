@@ -162,13 +162,7 @@ export default function Details({ name, setName, phone, setPhone, onNext, onBack
 
           {/* Info cards */}
           <div style={{ display:"flex", flexDirection:"column", gap:"clamp(8px,1.2vw,10px)", marginBottom:"clamp(20px,2.6vw,28px)" }}>
-            <div style={{ background:C.surface, borderRadius:10, padding:"clamp(10px,1.4vw,14px) clamp(12px,1.6vw,16px)", display:"flex", alignItems:"flex-start", gap:10 }}>
-              <span style={{ fontSize:18, flexShrink:0 }}>📣</span>
-              <div style={{ fontSize:"clamp(11px,1.3vw,13px)", color:C.text2, lineHeight:1.6 }}>
-                <strong>Your barber will call your name</strong> when it's your turn.<br/>
-                <span style={{ color:C.muted }}>Kapster akan memanggil nama Anda saat giliran tiba.</span>
-              </div>
-            </div>
+
             <div style={{ background:C.surface, borderRadius:10, padding:"clamp(10px,1.4vw,14px) clamp(12px,1.6vw,16px)", display:"flex", alignItems:"flex-start", gap:10 }}>
               <span style={{ fontSize:18, flexShrink:0 }}>📱</span>
               <div style={{ fontSize:"clamp(11px,1.3vw,13px)", color:C.text2, lineHeight:1.6 }}>

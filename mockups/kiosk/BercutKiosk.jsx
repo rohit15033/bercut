@@ -38,7 +38,8 @@ const GS = () => (
     @keyframes scaleIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
     @keyframes pop     { 0%{transform:scale(1)} 45%{transform:scale(1.08)} 100%{transform:scale(1)} }
     @keyframes ticker  { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
-    @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    @keyframes pulse      { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    @keyframes namePulse  { 0%{box-shadow:0 0 0 0 rgba(245,226,0,0.7)} 60%{box-shadow:0 0 0 8px rgba(245,226,0,0)} 100%{box-shadow:0 0 0 0 rgba(245,226,0,0)} }
     .fu { animation: fadeUp  0.3s  ease both; }
     .fi { animation: fadeIn  0.22s ease both; }
     .si { animation: scaleIn 0.28s ease both; }
@@ -60,10 +61,10 @@ const GS = () => (
       .layout-split { flex-direction:column; }
       .sidebar { width:100% !important; border-left:none !important; border-top:1px solid ${C.border}; max-height:280px; }
     }
-    .card-grid-fluid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(clamp(200px,28vw,300px),1fr)); gap:clamp(10px,1.4vw,16px); }
+     .card-grid-fluid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(clamp(260px,33vw,420px),1fr)); gap:clamp(14px,2vw,24px); }
     .barber-grid-fluid { display:grid; grid-template-columns:repeat(auto-fill,minmax(clamp(160px,20vw,220px),1fr)); gap:clamp(10px,1.4vw,16px); }
     .slot-grid         { display:flex; flex-wrap:wrap; gap:clamp(8px,1.2vw,14px); }
-    .confirm-layout    { display:grid; grid-template-columns:1fr clamp(260px,30vw,340px); gap:clamp(16px,2vw,28px); }
+    .confirm-layout    { display:grid; grid-template-columns:1fr clamp(280px,32vw,440px); gap:clamp(20px,2.5vw,36px); }
     @media (max-width:900px) { .confirm-layout { grid-template-columns:1fr; } }
 
     .step-header { margin-bottom: clamp(18px,2.4vw,28px); }
@@ -152,16 +153,43 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
     const treatmentSvcs = SERVICES.filter(s => s.cat === "Treatment");
     const miniCard = (s) => {
       const sel = extras.includes(s.id);
+      // Treatment cards with a photo: full photo background, white text
+      if (s.img) {
+        return (
+          <div key={s.id} onClick={() => toggleExtra(s.id)}
+            style={{ position: "relative", borderRadius: 14, overflow: "hidden", cursor: "pointer", minHeight: "clamp(100px,12vw,130px)", display: "flex", flexDirection: "column", justifyContent: "flex-end", transition: "transform 0.12s" }}>
+            {/* Photo background */}
+            <img src={s.img} alt={s.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+            {/* Gradient + optional yellow tint when selected */}
+            <div style={{ position: "absolute", inset: 0, background: sel ? "rgba(245,226,0,0.3)" : "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.05) 100%)" }} />
+            {/* Yellow border when selected */}
+            {sel && <div style={{ position: "absolute", inset: 0, border: `3px solid ${C.accent}`, borderRadius: 14, zIndex: 2 }} />}
+            {/* Content */}
+            <div style={{ position: "relative", zIndex: 3, padding: "clamp(8px,1.2vw,12px)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                <div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>{s.name}</div>
+                  <div style={{ fontSize: "clamp(9px,1.1vw,11px)", color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{s.nameId} · {s.dur} min</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0, marginLeft: 6 }}>
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 800, color: sel ? C.accent : "#fff" }}>{fmt(s.price)}</span>
+                  {sel && <div style={{ width: 18, height: 18, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: C.accentText }}>✓</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      // Beard cards (no photo): plain card, yellow when selected
       return (
         <div key={s.id} onClick={() => toggleExtra(s.id)}
-          style={{ background: sel ? C.accent : C.white, border: `1.5px solid ${sel ? C.accent : C.border}`, borderRadius: 12, padding: "clamp(10px,1.4vw,14px)", cursor: "pointer", minHeight: 72, transition: "all 0.15s" }}>
-          <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(13px,1.6vw,15px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{s.name}</div>
+          style={{ background: sel ? C.accent : C.white, border: `1.5px solid ${sel ? C.accent : C.border}`, borderRadius: 14, padding: "clamp(12px,1.6vw,16px)", cursor: "pointer", minHeight: "clamp(80px,10vh,100px)", transition: "all 0.15s", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{s.name}</div>
           <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "rgba(17,17,16,0.55)" : C.muted, marginTop: 2 }}>{s.nameId}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
             <span style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "rgba(17,17,16,0.45)" : C.muted }}>⏱ {s.dur} min</span>
-            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(13px,1.6vw,16px)", fontWeight: 800, color: sel ? C.accentText : C.text }}>{fmt(s.price)}</span>
+            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 800, color: sel ? C.accentText : C.text }}>{fmt(s.price)}</span>
           </div>
-          {sel && <div style={{ marginTop: 5, fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, color: C.accentText, textAlign: "right" }}>✓ Added</div>}
         </div>
       );
     };
@@ -221,14 +249,38 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px,3vw,32px)" }} onClick={onClose}>
       <div className="si" style={{ background: C.white, borderRadius: 20, width: "100%", maxWidth: "clamp(360px,58vw,580px)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div style={{ background: C.topBg, padding: "clamp(14px,1.8vw,20px) clamp(20px,2.6vw,28px)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(17px,2.2vw,24px)", color: C.topText }}>✨ {headlineLine}</div>
-            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#aaa", marginTop: 4 }}>{pkg.name} · {pkg.nameId}</div>
+        {/* Treatment photo strip — shown when package has treatment images */}
+        {pkg.treatmentImgs && pkg.treatmentImgs.length > 0 && (
+          <div style={{ position: "relative", height: "clamp(110px,14vw,160px)", overflow: "hidden" }}>
+            <div style={{ display: "flex", height: "100%" }}>
+              {pkg.treatmentImgs.map((src, i) => (
+                <div key={i} style={{ flex: 1, overflow: "hidden", borderRight: i < pkg.treatmentImgs.length - 1 ? "2px solid rgba(255,255,255,0.15)" : "none" }}>
+                  <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </div>
+              ))}
+            </div>
+            {/* Dark gradient overlay so header text reads cleanly */}
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 60%, rgba(0,0,0,0) 100%)" }} />
+            {/* Package name + badge float over photo */}
+            <div style={{ position: "absolute", top: "clamp(12px,1.6vw,18px)", left: "clamp(18px,2.4vw,26px)", right: "clamp(18px,2.4vw,26px)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(17px,2.2vw,24px)", color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>✨ {headlineLine}</div>
+                <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "rgba(255,255,255,0.8)", marginTop: 3 }}>{pkg.name} · {pkg.nameId}</div>
+              </div>
+              {pkg.badge && <div style={{ background: C.accent, color: C.accentText, fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 800, padding: "4px 10px", borderRadius: 6, flexShrink: 0, marginLeft: 12 }}>{pkg.badge}</div>}
+            </div>
           </div>
-          {pkg.badge && <div style={{ background: C.accent, color: C.accentText, fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 800, padding: "4px 10px", borderRadius: 6, flexShrink: 0, marginLeft: 12, marginTop: 2 }}>{pkg.badge}</div>}
-        </div>
+        )}
+        {/* Fallback header for packages without treatment photos (e.g. Prestige) */}
+        {(!pkg.treatmentImgs || pkg.treatmentImgs.length === 0) && (
+          <div style={{ background: C.topBg, padding: "clamp(14px,1.8vw,20px) clamp(20px,2.6vw,28px)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(17px,2.2vw,24px)", color: C.topText }}>✨ {headlineLine}</div>
+              <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#aaa", marginTop: 4 }}>{pkg.name} · {pkg.nameId}</div>
+            </div>
+            {pkg.badge && <div style={{ background: C.accent, color: C.accentText, fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 800, padding: "4px 10px", borderRadius: 6, flexShrink: 0, marginLeft: 12, marginTop: 2 }}>{pkg.badge}</div>}
+          </div>
+        )}
         <div style={{ padding: "clamp(16px,2.2vw,24px) clamp(20px,2.6vw,28px)" }}>
           {/* Visual price breakdown — 3 columns */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: "clamp(6px,1vw,10px)", marginBottom: "clamp(14px,1.8vw,20px)", background: C.surface, borderRadius: 12, padding: "clamp(12px,1.6vw,18px) clamp(14px,1.8vw,20px)", alignItems: "center" }}>
@@ -313,6 +365,9 @@ export default function App() {
   const [barberPanelOpen, setBarberPanelOpen] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [group, setGroup] = useState([]);
+  const [pointsRedeemed, setPointsRedeemed] = useState([]);
+  const [pointsUsed, setPointsUsed] = useState(0);
+  const [cashTotal, setCashTotal] = useState(null);
 
   const tapCount = useRef(0);
   const tapTimer = useRef(null);
@@ -330,7 +385,7 @@ export default function App() {
 
   const reset = () => {
     setStep(0); setCart([]); setBarber(null); setSlot(null);
-    setName(""); setPhone(""); setGroup([]); setOwnColorToggles({});
+    setName(""); setPhone(""); setGroup([]); setOwnColorToggles({}); setPointsRedeemed([]); setPointsUsed(0); setCashTotal(null);
     setSelectedBeverages([]); setSelectedProducts([]); setShowUpsell(false); setUpsellExtras([]);
   };
 
@@ -350,6 +405,8 @@ export default function App() {
     setActiveBooking(booking);
     setPaymentPending(true);
     setStaffPanelOpen(false);
+    setBarberPanelOpen(false);
+    setAdminPanelOpen(false);
   };
 
   // After service selection → check for upsell before proceeding to barber step
@@ -382,15 +439,15 @@ export default function App() {
       {barberPanelOpen && <BarberPanel onClose={() => setBarberPanelOpen(false)} onHome={() => { setBarberPanelOpen(false); reset(); }} onPaymentTrigger={openPayment} />}
       {adminPanelOpen && <AdminPanel onClose={() => setAdminPanelOpen(false)} onHome={() => { setAdminPanelOpen(false); reset(); }} onPaymentTrigger={openPayment} />}
       {paymentPending && activeBooking && (
-        <PaymentTakeover booking={activeBooking} onDone={() => { setPaymentPending(false); setActiveBooking(null); }} />
+        <PaymentTakeover booking={activeBooking} pointsRedeemed={pointsRedeemed} pointsUsed={pointsUsed} cashTotal={cashTotal} onDone={() => { setPaymentPending(false); setActiveBooking(null); }} />
       )}
       <Topbar step={step} cartTotal={total} groupCount={group.length} onHome={reset} onBarberAccess={() => setBarberPanelOpen(true)} onAdminAccess={() => setAdminPanelOpen(true)} />
       {step === 0 && <Welcome onStart={() => setStep(1)} />}
       {step === 1 && <ServiceSelection cart={showUpsell ? [...cart, ...upsellExtras] : cart} setCart={setCart} washToggles={{}} setWashToggles={() => { }} ownColorToggles={ownColorToggles} setOwnColorToggles={setOwnColorToggles} onNext={handleServicesNext} onBack={() => { group.length > 0 ? setStep(5) : setStep(0); }} />}
       {step === 2 && <BarberSelection barber={barber} setBarber={setBarber} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
       {step === 3 && <TimeSlot barber={barber} slot={slot} setSlot={setSlot} selectedBeverages={selectedBeverages} setSelectedBeverages={setSelectedBeverages} selectedProducts={selectedProducts} setSelectedProducts={setSelectedProducts} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-      {step === 4 && <Confirm cart={cart} services={SERVICES} barber={barber} slot={slot} beverages={selectedBeverages} products={selectedProducts} name={name} setName={setName} phone={phone} setPhone={setPhone} onConfirm={() => setStep(5)} onBack={() => setStep(3)} />}
-      {step === 5 && <QueueNumber cart={cart} services={SERVICES} barber={barber} slot={slot} name={name} phone={phone} group={group} onAddAnother={addAnother} onReset={reset} />}
+      {step === 4 && <Confirm cart={cart} services={SERVICES} barber={barber} slot={slot} beverages={selectedBeverages} products={selectedProducts} name={name} setName={setName} phone={phone} setPhone={setPhone} onConfirm={({ pointsRedeemed: pr, pointsUsed: pu, cashTotal: ct }) => { setPointsRedeemed(pr); setPointsUsed(pu); setCashTotal(ct); setStep(5); }} onBack={() => setStep(3)} />}
+      {step === 5 && <QueueNumber cart={cart} services={SERVICES} barber={barber} slot={slot} name={name} phone={phone} group={group} pointsUsed={pointsUsed} onAddAnother={addAnother} onReset={reset} />}
     </>
   );
 }

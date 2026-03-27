@@ -1118,4 +1118,3 @@ tip_presets: INTEGER[] DEFAULT [10000, 20000, 50000]
 | Admin dashboard shows all data unfiltered | AI builds single-tenant dashboard | "Admin dashboard is multi-branch. Default view shows ALL branches. Branch filter is a dropdown. When a specific branch is selected, all data filters to that branch." |
 | Triple-tap doesn't work | Timer logic or ref not persisting correctly | "Use useRef (not useState) for tapCount and tapTimer — setState causes re-renders that break the tap timing. tapCount.current increments on each click of the hidden div." |
 
-> **Golden rule:** Always paste the Master System Prompt (Section 02) at the start of every session. It contains the colour rules, payment model, and language requirements that the AI will get wrong without explicit context.

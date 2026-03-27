@@ -56,7 +56,7 @@ export default function Welcome({ onStart }) {
         </div>
 
         {/* CTA */}
-        <div className="fu" style={{ width:"100%", maxWidth:"clamp(320px,52vw,560px)", animationDelay:"0.16s" }}>
+        <div className="fu" style={{ width:"100%", maxWidth:"clamp(320px,58vw,700px)", animationDelay:"0.16s" }}>
           <button onClick={onStart}
             style={{ width:"100%", background:C.accent, color:C.accentText, padding:"clamp(20px,3vh,28px) 28px", borderRadius:14, border:"none", cursor:"pointer", fontFamily:"'Inter',sans-serif", fontSize:"clamp(18px,2.4vw,24px)", fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", gap:14, transition:"transform 0.12s, background 0.15s", letterSpacing:"0.01em" }}
             onMouseEnter={e=>e.currentTarget.style.background="#ffe44d"}

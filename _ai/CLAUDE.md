@@ -381,7 +381,7 @@ export const tokens = {
 
 | App | Language rule |
 |---|---|
-| Kiosk | Bahasa Indonesia primary label + English subtitle below every label |
+| Kiosk | English primary label + Bahasa Indonesia subtitle below every label |
 | Barber App | Bahasa Indonesia only — no English anywhere |
 | Admin Dashboard | English primary |
 

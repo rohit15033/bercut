@@ -174,12 +174,6 @@ export default function ServiceSelection({ cart, setCart, ownColorToggles, setOw
   const catRefs = useRef({});
   const BLEACH_ID = 21; // id of Hair Bleach in SERVICES
 
-  // Placeholder icon per service — shown in image placeholder until real photos are added
-  const SVC_ICON = {
-    9: "👃", 10: "👂", 11: "🔍", 12: "🧴", 13: "🎭", 14: "💆", 15: "🕯",  // Treatments
-    16: "✂", 17: "👑", 18: "💎", 19: "🏆",                              // Packages
-  };
-
   // Non-bleach HairColor services rendered as regular cards
   const regularCats = CATEGORIES; // now all cats render inline
   const nonBleachColors = SERVICES.filter(s => s.cat === "HairColor" && s.id !== BLEACH_ID);
@@ -231,6 +225,15 @@ export default function ServiceSelection({ cart, setCart, ownColorToggles, setOw
     if (svc.cat === "Package") {
       setCart(c => {
         const without = c.filter(x => SERVICES.find(s => s.id === x)?.cat !== "Package");
+        return [...without, id];
+      });
+      return;
+    }
+
+    // Mutex group: selecting one removes others in the same group (ear_treatment, beard_service)
+    if (svc.mutex_group) {
+      setCart(c => {
+        const without = c.filter(x => SERVICES.find(s => s.id === x)?.mutex_group !== svc.mutex_group);
         return [...without, id];
       });
       return;
@@ -301,7 +304,6 @@ export default function ServiceSelection({ cart, setCart, ownColorToggles, setOw
                         {cat.icon} {cat.labelEn}
                         <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(11px,1.3vw,13px)", fontWeight: 400, color: C.muted, marginLeft: "clamp(6px,0.8vw,8px)" }}>{cat.labelId}</span>
                       </div>
-                      {/* "choose one" hint for single-select categories */}
 
                       <div style={{ flex: 1, height: 1, background: C.border }} />
                     </div>
@@ -309,39 +311,110 @@ export default function ServiceSelection({ cart, setCart, ownColorToggles, setOw
                       {services.map((s, i) => {
                         const sel = cart.includes(s.id);
                         return (
-                          <div key={s.id} className={`card ${sel ? "sel" : ""}`}
-                            style={{ padding: "clamp(14px,1.8vw,18px)", cursor: "pointer", animation: `fadeUp 0.3s ease ${ci * 0.07 + i * 0.05}s both` }}
+                          <div key={s.id}
+                            className={s.cat === "Treatment" || s.cat === "Package" ? "" : `card ${sel ? "sel" : ""}`}
+                            style={{
+                              padding: s.cat === "Treatment" || s.cat === "Package" ? 0 : "clamp(14px,1.8vw,18px)",
+                              cursor: "pointer",
+                              animation: `fadeUp 0.3s ease ${ci * 0.07 + i * 0.05}s both`,
+                              borderRadius: 14,
+                              overflow: "hidden",
+                              ...(s.cat !== "Treatment" && s.cat !== "Package" && { border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : C.white }),
+                            }}
                             onClick={() => toggle(s.id)}>
-                            {/* Image placeholder — Treatment & Package cards only */}
-                            {(s.cat === "Treatment" || s.cat === "Package") && (
-                              <div style={{ width: "100%", height: "clamp(72px,9vw,108px)", background: sel ? "rgba(0,0,0,0.07)" : "linear-gradient(135deg,#F2F0EB 0%,#ECEAE4 100%)", borderRadius: 10, marginBottom: "clamp(8px,1.2vw,12px)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
-                                <span style={{ fontSize: "clamp(28px,3.8vw,44px)", opacity: 0.35 }}>{SVC_ICON[s.id] || "📷"}</span>
-                                <span style={{ position: "absolute", bottom: 4, right: 8, fontSize: "clamp(8px,0.9vw,9px)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: sel ? "rgba(17,17,16,0.35)" : "#B0AFA8" }}>Photo</span>
+
+                            {/* ── Treatment: full photo background, white text ── */}
+                            {s.cat === "Treatment" && s.img ? (
+                              <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", minHeight: "clamp(110px,14vw,150px)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                                <img src={s.img} alt={s.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.05) 100%)" }} />
+                                {sel && <div style={{ position: "absolute", inset: 0, border: `3px solid ${C.accent}`, borderRadius: 14, zIndex: 2 }} />}
+                                <div style={{ position: "relative", zIndex: 3, padding: "clamp(10px,1.4vw,14px)" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                                    <div>
+                                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(13px,1.6vw,16px)", fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>{s.name}</div>
+                                      <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "rgba(255,255,255,0.72)", marginTop: 2 }}>{s.nameId} · {s.dur} min</div>
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0, marginLeft: 8 }}>
+                                      <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 800, color: sel ? C.accent : "#fff" }}>{fmt(effPrice(s))}</span>
+                                      {sel && <div style={{ width: 20, height: 20, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: C.accentText }}>✓</div>}
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                            )}
-                            {s.badge && (
-                              <div style={{ display: "inline-block", background: sel ? C.accentText : C.topBg, color: sel ? C.accent : C.white, fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, padding: "2px 8px", borderRadius: 4, marginBottom: 8 }}>{s.badge}</div>
-                            )}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,17px)", fontWeight: 700, color: sel ? C.accentText : C.text, lineHeight: 1.2 }}>{s.name}</div>
-                                <div style={{ fontSize: "clamp(11px,1.3vw,12px)", color: sel ? "#1a1a1899" : C.muted, marginTop: 2 }}>{s.nameId}</div>
-                                {s.desc && (
-                                  s.cat === "Package"
-                                    ? <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: "clamp(3px,0.5vw,5px)" }}>
-                                      {s.desc.split("  ·  ").map((item, k) => (
-                                        <span key={k} style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "#1a1a1888" : C.muted, background: sel ? "rgba(0,0,0,0.08)" : C.surface, borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap" }}>{item}</span>
+
+                            /* ── Package: photo zone on top, white chip strip below ── */
+                            ) : s.cat === "Package" ? (
+                              <div style={{ borderRadius: 14, overflow: "hidden", border: `${sel ? "3px" : "1.5px"} solid ${sel ? C.accent : C.border}` }}>
+
+                                {/* TOP — tiled photos, clean — just badge + name + price */}
+                                <div style={{ position: "relative", height: "clamp(120px,16vw,170px)" }}>
+                                  {s.treatmentImgs && s.treatmentImgs.length > 0 ? (
+                                    <div style={{ position: "absolute", inset: 0, display: "flex" }}>
+                                      {s.treatmentImgs.map((src, ti) => (
+                                        <div key={ti} style={{ flex: 1, overflow: "hidden" }}>
+                                          <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                        </div>
                                       ))}
                                     </div>
-                                    : <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "#1a1a1888" : C.muted, marginTop: 3, lineHeight: 1.4 }}>{s.desc}</div>
+                                  ) : (
+                                    <div style={{ position: "absolute", inset: 0, background: C.topBg }} />
+                                  )}
+                                  {/* Subtle gradient — just enough for text at bottom */}
+                                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0) 100%)" }} />
+                                  {/* Badge — top left */}
+                                  {s.badge && (
+                                    <div style={{ position: "absolute", top: "clamp(8px,1vw,12px)", left: "clamp(10px,1.2vw,14px)", background: C.accent, color: C.accentText, fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 800, padding: "3px 9px", borderRadius: 5, zIndex: 2 }}>{s.badge}</div>
+                                  )}
+                                  {/* Name + price — bottom of photo */}
+                                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 2, padding: "clamp(10px,1.4vw,14px)", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                                    <div>
+                                      <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 800, color: "#fff", lineHeight: 1.1 }}>{s.name}</div>
+                                      <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "rgba(255,255,255,0.65)", marginTop: 2 }}>{s.nameId} · {s.dur} min</div>
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0, marginLeft: 8 }}>
+                                      <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(15px,2vw,20px)", fontWeight: 800, color: sel ? C.accent : "#fff" }}>{fmt(effPrice(s))}</span>
+                                      {sel && <div style={{ width: 20, height: 20, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: C.accentText }}>✓</div>}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* BOTTOM — black strip with included service chips */}
+                                {s.desc && (
+                                  <div style={{ background: C.topBg, padding: "clamp(10px,1.2vw,14px) clamp(12px,1.4vw,16px)", display: "flex", flexWrap: "wrap", gap: "clamp(4px,0.6vw,6px)" }}>
+                                    {s.desc.split("  ·  ").map((item, k) => (
+                                      <span key={k} style={{ fontSize: "clamp(10px,1.2vw,12px)", color: sel ? C.accentText : "rgba(255,255,255,0.75)", background: sel ? C.accent : "rgba(255,255,255,0.1)", borderRadius: 5, padding: "3px 8px", whiteSpace: "nowrap" }}>{item}</span>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
-                              {sel && <div style={{ width: 22, height: 22, background: C.accentText, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.accent, fontWeight: 800, flexShrink: 0 }}>✓</div>}
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "clamp(10px,1.4vw,14px)" }}>
-                              <span style={{ fontSize: "clamp(11px,1.3vw,12px)", color: sel ? "#1a1a1888" : C.muted }}>⏱ {effDur(s)} min</span>
-                              <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{fmt(effPrice(s))}</span>
-                            </div>
+
+                            /* ── All other cards (Haircut, Beard, HairColor): existing layout ── */
+                            ) : (
+                              <>
+                                {/* HairColor: single photo */}
+                                {s.cat === "HairColor" && (
+                                  <div style={{ width: "100%", height: "clamp(80px,12vw,120px)", background: "linear-gradient(135deg,#F2F0EB 0%,#ECEAE4 100%)", borderRadius: 10, marginBottom: "clamp(10px,1.4vw,14px)", overflow: "hidden" }}>
+                                    {s.img && <img src={s.img} alt={s.name} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: sel ? 0.6 : 1 }} />}
+                                  </div>
+                                )}
+                                {s.badge && (
+                                  <div style={{ display: "inline-block", background: sel ? C.accentText : C.topBg, color: sel ? C.accent : C.white, fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, padding: "2px 8px", borderRadius: 4, marginBottom: 8 }}>{s.badge}</div>
+                                )}
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,17px)", fontWeight: 700, color: sel ? C.accentText : C.text, lineHeight: 1.2 }}>{s.name}</div>
+                                    <div style={{ fontSize: "clamp(11px,1.3vw,12px)", color: sel ? "#1a1a1899" : C.muted, marginTop: 2 }}>{s.nameId}</div>
+                                    {s.desc && <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "#1a1a1888" : C.muted, marginTop: 3, lineHeight: 1.4 }}>{s.desc}</div>}
+                                  </div>
+                                  {sel && <div style={{ width: 22, height: 22, background: C.accentText, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.accent, fontWeight: 800, flexShrink: 0 }}>✓</div>}
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "clamp(10px,1.4vw,14px)" }}>
+                                  <span style={{ fontSize: "clamp(11px,1.3vw,12px)", color: sel ? "#1a1a1888" : C.muted }}>⏱ {effDur(s)} min</span>
+                                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{fmt(effPrice(s))}</span>
+                                </div>
+                              </>
+                            )}
                             {s.washAddon && (
                               <div style={{ marginTop: 8, fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "#1a1a1877" : C.muted }}>
                                 🚿 Optional wash available · Cuci rambut opsional

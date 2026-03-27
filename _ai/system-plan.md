@@ -345,6 +345,8 @@ Global catalogue — price can be overridden per branch.
 | description | TEXT | | Short description for kiosk |
 | is_active | BOOLEAN | | |
 | sort_order | SMALLINT | | Display order on kiosk |
+| image_url | TEXT | | Photo for service card background and package treatment strips |
+| mutex_group | VARCHAR(50) | | Nullable. Services sharing a group are mutually exclusive (e.g. `ear_treatment`, `beard_service`) |
 
 ### service_branch_prices
 Optional price overrides per branch.
@@ -375,6 +377,7 @@ Optional — only created when customer provides contact info at kiosk.
 | phone | VARCHAR(20) | UNIQUE | WhatsApp number — unique identifier |
 | total_visits | INTEGER | | Denormalised counter |
 | total_spend | INTEGER | | Running total in IDR |
+| points_balance | INTEGER | | DEFAULT 0. Current redeemable points. |
 | preferred_barber_id | UUID | FK → barbers | Most frequently booked barber |
 | first_visit | DATE | | |
 | last_visit | DATE | | |
@@ -413,6 +416,7 @@ Junction table — one row per service in a booking.
 | service_id | UUID | FK → services | |
 | price_charged | INTEGER | | Actual price at time of booking |
 | added_mid_cut | BOOLEAN | | True if added after booking was started |
+| paid_with_points | BOOLEAN | | DEFAULT FALSE. True if customer redeemed points for this service at Confirm. |
 
 ### barber_schedules *(see above)*
 
@@ -526,6 +530,26 @@ Beverages and products added to a booking (by customer at kiosk or by barber mid
 | added_by | VARCHAR(20) | | `customer` \| `barber` |
 | created_at | TIMESTAMPTZ | | |
 
+### point_transactions
+Immutable log of every points earn and redeem event per customer.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| id | UUID | PK | |
+| customer_id | UUID | FK → customers | |
+| booking_id | UUID | FK → bookings (nullable) | |
+| type | VARCHAR(10) | | `earn` \| `redeem` |
+| amount | INTEGER | | Points delta (always positive) |
+| balance_after | INTEGER | | Snapshot of points_balance after this transaction |
+| created_at | TIMESTAMPTZ | | |
+
+**Points rules:**
+- Earn rate: Rp 10,000 = 1 point (rounded up per service)
+- Earned on: cash-paid services + beverages + products
+- Not earned on: services paid with points
+- Points are deducted at `confirmed` status; credited at `completed` status
+- Mid-cut barber additions are always cash — never redeemable with points
+
 ### Column additions to existing tables
 
 **barbers** — add:
@@ -539,6 +563,8 @@ Beverages and products added to a booking (by customer at kiosk or by barber mid
 |---|---|---|
 | auto_cancel_at | TIMESTAMPTZ | Set to confirmed_at + 15 min; cleared when customer arrives |
 | cancellation_reason | TEXT | Admin-entered reason (stored after cancellation) |
+| points_redeemed | INTEGER | DEFAULT 0. Points used at Confirm to cover services. |
+| points_earned | INTEGER | DEFAULT 0. Points credited to customer after payment completes. |
 
 **customers** — add:
 | Column | Type | Description |
@@ -603,7 +629,7 @@ CREATE INDEX idx_inventory_movements_item ON inventory_movements(item_id, branch
 |---|---|---|
 | ✅ | Payment Model | Postpaid, cashless only. QRIS and card via BCA EDC direct integration. Cash not accepted. |
 | ✅ | Receipt Printer | ESC/POS thermal printer per kiosk. Auto-prints after payment. |
-| ✅ | Loyalty Programme | Not required. |
+| ✅ | Loyalty Programme | Points system added (Meeting 3). Rp 10,000 = 1 point. Earned on cash spend. Redeemable per service at Confirm screen. Tracked per phone number. |
 | ✅ | Online Booking | Via WhatsApp. Admin manually inputs — no bot for Phase 1. |
 | ✅ | Tipping | Prompt at payment screen. Presets Rp 10k/20k/50k + custom. Pooled per branch. |
 | ✅ | Attendance Tracking | GPS-based clock-in via barber PWA. Geofenced per branch. Optional Face ID. |

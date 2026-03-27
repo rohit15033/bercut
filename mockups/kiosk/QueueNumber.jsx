@@ -13,9 +13,53 @@
  * Reference prompt: _ai/prompting-guide.md Section 03
  */
 
+import { useState, useEffect } from "react";
 import { C, fmt } from "./data.js";
 
-export default function QueueNumber({ cart, services, barber, slot, name, phone, group, onAddAnother, onReset }) {
+export default function QueueNumber({ cart, services, barber, slot, name, group, pointsUsed = 0, onAddAnother, onReset }) {
+  const [, setCalledAt] = useState(null);   // tracks last call time for escalation logic
+  const [calling,  setCalling]  = useState(false);  // speech in progress
+
+  const isNow = slot === "Now";
+
+  const [escalateIn, setEscalateIn] = useState(null); // seconds until next auto re-announce
+
+  const ESCALATE_AFTER = 120; // re-announce if barber hasn't started within 2 min
+
+  const callBarber = () => {
+    if (!barber || calling) return;
+    setCalling(true);
+    const customerName = name || "tamu";
+    const text = `Panggil kapster ${barber.name}. Customer atas nama ${customerName} sedang menunggu.`;
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "id-ID";
+      u.rate = 0.95;
+      u.onend  = () => setCalling(false);
+      u.onerror = () => setCalling(false);
+      window.speechSynthesis.speak(u);
+    } else {
+      setTimeout(() => setCalling(false), 2000);
+    }
+    setCalledAt(new Date());
+    setEscalateIn(ESCALATE_AFTER);
+    // Production: POST /api/bookings/:id/notify-barber → SSE event fires on barber panel
+    // Escalation cancelled when barber taps "Mulai" → SSE 'booking_started' event received here
+  };
+
+  // "Now" bookings: fire immediately — customer is already walking to the chair.
+  // Future bookings: stay silent here. The BarberPanel fires the jemput announcement
+  // when the barber taps "Panggil" or completes the previous customer.
+  useEffect(() => { if (isNow) callBarber(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Escalation countdown — re-announce automatically if barber hasn't started
+  useEffect(() => {
+    if (escalateIn === null) return;
+    if (escalateIn <= 0) { callBarber(); return; }
+    const t = setTimeout(() => setEscalateIn(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [escalateIn]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = cart.reduce((s, id) => s + (services.find(x => x.id === id)?.price || 0), 0);
   const dur = cart.reduce((s, id) => s + (services.find(x => x.id === id)?.dur || 0), 0);
   const groupTotal = group.reduce((s, b) => s + b.total, 0) + total;
@@ -91,16 +135,16 @@ export default function QueueNumber({ cart, services, barber, slot, name, phone,
         )}
 
         {/* Barber status + chair assignment */}
-        {!isGrouped && (
-          <div style={{ background: barber?.status === "available" ? "#e8f5e9" : C.surface, border: `1.5px solid ${barber?.status === "available" ? "#4caf50" : C.border}`, borderRadius: 12, padding: "clamp(12px,1.6vh,18px) clamp(14px,2vw,20px)", marginBottom: "clamp(10px,1.4vw,14px)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
-            <span style={{ fontSize: "clamp(22px,2.8vw,28px)" }}>{barber?.status === "available" ? "✂" : "⏳"}</span>
-            {barber?.status === "available" ? (
+        {!isGrouped && barber && (
+          <div style={{ background: isNow ? "#e8f5e9" : C.surface, border: `1.5px solid ${isNow ? "#4caf50" : C.border}`, borderRadius: 12, padding: "clamp(12px,1.6vh,18px) clamp(14px,2vw,20px)", marginBottom: "clamp(10px,1.4vw,14px)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
+            <span style={{ fontSize: "clamp(22px,2.8vw,28px)" }}>{isNow ? "✂" : "⏳"}</span>
+            {isNow ? (
               <>
                 <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(16px,2vw,20px)", fontWeight: 800, color: "#1a5c1a" }}>
-                  Proceed to chair {barber?.chair}! · Langsung ke kursi {barber?.chair}
+                  {barber.name} will greet you at chair {barber.chair}
                 </div>
                 <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#2e7d32" }}>
-                  <strong>{barber?.name}</strong> is ready now · siap sekarang
+                  Langsung ke kursi {barber.chair} · siap sekarang
                 </div>
               </>
             ) : (
@@ -109,13 +153,23 @@ export default function QueueNumber({ cart, services, barber, slot, name, phone,
                   Please Wait · Silakan Tunggu
                 </div>
                 <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: C.text2 }}>
-                  <strong style={{ fontWeight: 800 }}>{barber?.name}</strong> ✂ akan memanggil nama Anda · will call your name
+                  <strong style={{ fontWeight: 800 }}>{barber.name}</strong> ✂ akan memanggil nama Anda · will call your name
                 </div>
               </>
             )}
           </div>
         )}
 
+
+        {/* Points used note */}
+        {pointsUsed > 0 && (
+          <div style={{ background: "#0d1f0d", border: "1px solid #1a4d1a", borderRadius: 12, padding: "clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)", marginBottom: "clamp(10px,1.4vw,14px)", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18 }}>⭐</span>
+            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#6fcf6f", lineHeight: 1.5 }}>
+              <strong>{pointsUsed} points applied</strong> to this reservation · {pointsUsed} poin digunakan untuk reservasi ini
+            </div>
+          </div>
+        )}
 
         {/* Payment note */}
         <div style={{ background: C.topBg, borderRadius: 12, padding: "clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)", marginBottom: "clamp(16px,2.2vw,22px)", fontSize: "clamp(11px,1.3vw,13px)", color: "#888", lineHeight: 1.6, textAlign: "left" }}>

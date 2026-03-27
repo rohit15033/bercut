@@ -333,7 +333,7 @@ export default function AdminPanel({ onClose, onHome, onPaymentTrigger }) {
         {/* ── TAB: SETTINGS ──────────────────────────────────────────────────── */}
         {tab === "settings" && (
           <div style={{ flex:1, overflowY:"auto", padding:"clamp(16px,2vw,22px) clamp(16px,2.4vw,28px)", WebkitOverflowScrolling:"touch" }}>
-            <div style={{ maxWidth:600 }}>
+            <div style={{ maxWidth:700, margin:"0 auto" }}>
 
               {/* Notifications */}
               <Section title="Notifikasi & Pengumuman">
@@ -363,31 +363,31 @@ export default function AdminPanel({ onClose, onHome, onPaymentTrigger }) {
 
               {/* Tip presets */}
               <Section title="Preset Tip">
-                <div style={{ fontSize:"clamp(11px,1.3vw,13px)", color:"#666", marginBottom:14 }}>
-                  Tiga nominal tip yang ditampilkan di layar pembayaran kiosk.
-                </div>
-                <div style={{ display:"flex", gap:10 }}>
-                  {tipPresets.map((val, i) => (
-                    <div key={i} style={{ flex:1 }}>
-                      <div style={{ fontSize:"clamp(10px,1.1vw,11px)", color:"#555", marginBottom:6 }}>Preset {i+1}</div>
-                      <div style={{ display:"flex", alignItems:"center", background:"#1a1a18", borderRadius:9, border:"1.5px solid #2a2a28", overflow:"hidden" }}>
-                        <span style={{ padding:"0 10px", color:"#555", fontFamily:"'DM Sans',sans-serif", fontSize:13 }}>Rp</span>
-                        <input
-                          type="number"
-                          value={val / 1000}
-                          onChange={e => {
-                            const v = [...tipPresets];
-                            v[i] = parseInt(e.target.value || 0) * 1000;
-                            setTipPresets(v);
-                          }}
-                          style={{ flex:1, background:"none", border:"none", color:C.white, fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:"clamp(14px,1.7vw,16px)", padding:"clamp(10px,1.4vw,13px) 8px", width:"100%", textAlign:"right" }}
-                        />
-                        <span style={{ padding:"0 10px", color:"#555", fontFamily:"'DM Sans',sans-serif", fontSize:13 }}>rb</span>
+                <SettingCard
+                  label="Nominal Tip di Kiosk"
+                  sub="Tiga nominal tip yang akan ditampilkan kepada pelanggan di layar pembayaran."
+                >
+                  <div style={{ display:"flex", gap:8 }}>
+                    {tipPresets.map((val, i) => (
+                      <div key={i} style={{ width:110 }}>
+                        <div style={{ display:"flex", alignItems:"center", background:"#111110", borderRadius:9, border:"1.5px solid #2a2a28", overflow:"hidden" }}>
+                          <span style={{ padding:"0 6px", color:"#555", fontFamily:"'DM Sans',sans-serif", fontSize:12 }}>Rp</span>
+                          <input
+                            type="number"
+                            value={val / 1000}
+                            onChange={e => {
+                              const v = [...tipPresets];
+                              v[i] = parseInt(e.target.value || 0) * 1000;
+                              setTipPresets(v);
+                            }}
+                            style={{ flex:1, background:"none", border:"none", color:C.white, fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:"clamp(13px,1.5vw,15px)", padding:"10px 4px", width:"100%", textAlign:"right" }}
+                          />
+                          <span style={{ padding:"0 6px", color:"#555", fontFamily:"'DM Sans',sans-serif", fontSize:12 }}>rb</span>
+                        </div>
                       </div>
-                      <div style={{ fontSize:"clamp(10px,1.1vw,11px)", color:"#666", marginTop:4, textAlign:"right" }}>{fmt(val)}</div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </SettingCard>
               </Section>
 
               {/* Save */}
@@ -415,43 +415,47 @@ export default function AdminPanel({ onClose, onHome, onPaymentTrigger }) {
 
 function Section({ title, children }) {
   return (
-    <div style={{ marginBottom:28 }}>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:"clamp(14px,1.7vw,17px)", color:C.white, marginBottom:14, paddingBottom:10, borderBottom:"1px solid #2a2a28" }}>{title}</div>
-      <div style={{ display:"flex", flexDirection:"column", gap:16 }}>{children}</div>
+    <div style={{ marginBottom:32 }}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:"clamp(14px,1.7vw,17px)", color:C.accent, marginBottom:16, letterSpacing:"0.02em" }}>{title}</div>
+      <div style={{ display:"grid", gap:12 }}>{children}</div>
+    </div>
+  );
+}
+
+function SettingCard({ label, sub, children }) {
+  return (
+    <div style={{ background:"#1a1a18", borderRadius:14, padding:"clamp(14px,1.8vw,18px)", border:"1.5px solid #2a2a28", display:"flex", alignItems:"center", justifyContent:"space-between", gap:16 }}>
+      <div style={{ flex:1 }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:"clamp(12px,1.4vw,14px)", color:C.white }}>{label}</div>
+        {sub && <div style={{ fontSize:"clamp(10px,1.2vw,12px)", color:"#666", marginTop:4, lineHeight:1.4 }}>{sub}</div>}
+      </div>
+      <div style={{ flexShrink:0 }}>{children}</div>
     </div>
   );
 }
 
 function ToggleRow({ label, sub, checked, onChange }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16 }}>
-      <div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:"clamp(12px,1.5vw,14px)", color:C.white }}>{label}</div>
-        {sub && <div style={{ fontSize:"clamp(10px,1.2vw,12px)", color:"#555", marginTop:3 }}>{sub}</div>}
-      </div>
+    <SettingCard label={label} sub={sub}>
       <div onClick={() => onChange(!checked)}
-        style={{ width:48, height:26, borderRadius:13, background: checked ? C.accent : "#2a2a28", position:"relative", cursor:"pointer", flexShrink:0, transition:"background 0.2s" }}>
+        style={{ width:48, height:26, borderRadius:13, background: checked ? C.accent : "#2a2a28", position:"relative", cursor:"pointer", transition:"background 0.2s" }}>
         <div style={{ position:"absolute", top:3, left: checked ? 25 : 3, width:20, height:20, borderRadius:"50%", background: checked ? C.accentText : "#555", transition:"left 0.2s" }} />
       </div>
-    </div>
+    </SettingCard>
   );
 }
 
 function NumberRow({ label, sub, value, onChange, unit, min, max }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:16 }}>
-      <div style={{ flex:1 }}>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:"clamp(12px,1.5vw,14px)", color:C.white }}>{label}</div>
-        {sub && <div style={{ fontSize:"clamp(10px,1.2vw,12px)", color:"#555", marginTop:3 }}>{sub}</div>}
-      </div>
-      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+    <SettingCard label={label} sub={sub}>
+      <div style={{ display:"flex", alignItems:"center", background:"#111110", borderRadius:10, padding:4 }}>
         <button onClick={() => onChange(Math.max(min, value - 1))}
-          style={{ width:32, height:32, borderRadius:8, background:"#2a2a28", color:C.white, border:"none", cursor:"pointer", fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:16 }}>−</button>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:"clamp(16px,2vw,20px)", color:C.white, minWidth:32, textAlign:"center" }}>{value}</div>
+          style={{ width:32, height:32, borderRadius:8, background:"#2a2a28", color:C.white, border:"none", cursor:"pointer", fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>−</button>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:"clamp(14px,1.8vw,18px)", color:C.white, minWidth:44, textAlign:"center" }}>{value}</div>
         <button onClick={() => onChange(Math.min(max, value + 1))}
-          style={{ width:32, height:32, borderRadius:8, background:"#2a2a28", color:C.white, border:"none", cursor:"pointer", fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:16 }}>+</button>
-        <span style={{ fontSize:"clamp(11px,1.3vw,13px)", color:"#555" }}>{unit}</span>
+          style={{ width:32, height:32, borderRadius:8, background:"#2a2a28", color:C.white, border:"none", cursor:"pointer", fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
+        <div style={{ padding:"0 10px", fontSize:"clamp(11px,1.3vw,13px)", color:"#555", fontWeight:600 }}>{unit}</div>
       </div>
-    </div>
+    </SettingCard>
   );
 }

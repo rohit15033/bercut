@@ -16,10 +16,83 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { C, BEVERAGES, PRODUCTS, fmt, MOCK_CUSTOMERS, POINTS_RATE } from "./data.js";
+import { C, BEVERAGES, PRODUCTS, fmt, MOCK_CUSTOMERS, POINTS_RATE, PINNED_COUNTRIES, ALL_COUNTRIES } from "./data.js";
+
+// ── Country Code Picker ───────────────────────────────────────────────────────
+function CountryPicker({ selected, onSelect, onClose }) {
+  const [search, setSearch] = useState("");
+  const searchRef = useRef(null);
+
+  useEffect(() => { searchRef.current?.focus(); }, []);
+
+  const q = search.toLowerCase().trim();
+  const filteredAll = ALL_COUNTRIES.filter(c =>
+    c.name.toLowerCase().includes(q) || c.code.includes(q) || c.abbr.toLowerCase().includes(q)
+  );
+
+  const Row = ({ c }) => (
+    <div onClick={() => { onSelect(c); onClose(); }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "clamp(10px,1.4vh,13px) clamp(12px,1.6vw,16px)", cursor: "pointer", borderRadius: 8, background: selected.code === c.code && selected.abbr === c.abbr ? C.surface : "transparent", transition: "background 0.12s" }}
+      onMouseEnter={e => e.currentTarget.style.background = C.surface}
+      onMouseLeave={e => e.currentTarget.style.background = selected.code === c.code && selected.abbr === c.abbr ? C.surface : "transparent"}>
+      <span style={{ fontSize: "clamp(18px,2.4vw,24px)", lineHeight: 1, flexShrink: 0 }}>{c.flag}</span>
+      <span style={{ flex: 1, fontSize: "clamp(13px,1.5vw,15px)", fontWeight: 500, color: C.text }}>{c.name}</span>
+      <span style={{ fontSize: "clamp(13px,1.5vw,15px)", fontWeight: 700, color: C.muted, fontFamily: "'Inter',sans-serif" }}>{c.code}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px,2.4vw,28px)" }}
+      onClick={onClose}>
+      <div className="si" style={{ background: C.white, borderRadius: 18, width: "clamp(320px,48vw,520px)", maxHeight: "76vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ padding: "clamp(14px,2vw,20px) clamp(16px,2.2vw,22px)", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <div>
+            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(15px,2vw,19px)", fontWeight: 800, color: C.text }}>Select Country Code</div>
+            <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: C.muted, marginTop: 2 }}>Pilih kode negara</div>
+          </div>
+          <button onClick={onClose} style={{ background: C.surface2, border: "none", borderRadius: 8, width: 34, height: 34, fontSize: 18, cursor: "pointer", color: C.text2, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+        </div>
+
+        {/* Search */}
+        <div style={{ padding: "clamp(10px,1.4vw,14px) clamp(16px,2.2vw,22px)", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search country or code…"
+            style={{ width: "100%", padding: "clamp(10px,1.4vh,13px) 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: "clamp(13px,1.5vw,15px)", background: C.surface, fontFamily: "'DM Sans',sans-serif", color: C.text }} />
+        </div>
+
+        {/* List */}
+        <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" }}>
+          {!q && (
+            <>
+              <div style={{ padding: "clamp(6px,0.8vw,8px) clamp(16px,2.2vw,22px) 4px", fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted }}>Pinned</div>
+              {PINNED_COUNTRIES.map(c => <Row key={c.abbr} c={c} />)}
+              <div style={{ height: 1, background: C.border, margin: "clamp(6px,0.8vw,8px) clamp(16px,2.2vw,22px)" }} />
+              <div style={{ padding: "clamp(6px,0.8vw,8px) clamp(16px,2.2vw,22px) 4px", fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted }}>All Countries</div>
+              {ALL_COUNTRIES.map(c => <Row key={c.abbr + c.code} c={c} />)}
+            </>
+          )}
+          {q && (
+            <>
+              {[...PINNED_COUNTRIES, ...ALL_COUNTRIES].filter(c =>
+                c.name.toLowerCase().includes(q) || c.code.includes(q) || c.abbr.toLowerCase().includes(q)
+              ).map(c => <Row key={c.abbr + c.code} c={c} />)}
+              {filteredAll.length === 0 && PINNED_COUNTRIES.filter(c => c.name.toLowerCase().includes(q) || c.code.includes(q)).length === 0 && (
+                <div style={{ padding: "clamp(20px,3vw,28px)", textAlign: "center", color: C.muted, fontSize: "clamp(12px,1.4vw,14px)" }}>No countries found</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Confirm({ cart, services, barber, slot, beverages = [], products = [], name, setName, phone, setPhone, onConfirm, onBack }) {
   const [pointsToggled, setPointsToggled] = useState(new Set());
+  const [selectedCountry, setSelectedCountry] = useState(PINNED_COUNTRIES[0]); // default Indonesia +62
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const nameRef = useRef(null);
 
   const svcTotal = cart.reduce((s, id) => s + (services.find(x => x.id === id)?.price || 0), 0);
@@ -110,12 +183,29 @@ export default function Confirm({ cart, services, barber, slot, beverages = [], 
               <label style={{ fontSize: "clamp(13px,1.5vw,15px)", fontWeight: 700, display: "block", marginBottom: 7, color: C.text }}>
                 WhatsApp <span style={{ fontSize: "clamp(11px,1.3vw,13px)", fontWeight: 400, color: C.muted }}>(Optional / Opsional)</span>
               </label>
-              <input value={phone} type="tel" onChange={e => setPhone(e.target.value)} placeholder="+62 812 3456 7890"
-                style={{ width: "100%", padding: "clamp(13px,1.7vh,17px) 14px", borderRadius: 11, border: `1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, fontSize: "clamp(14px,1.7vw,16px)", background: C.white, fontFamily: "'DM Sans',sans-serif" }}
-                onFocus={e => e.target.style.borderColor = C.topBg}
-                onBlur={e => e.target.style.borderColor = phone.trim().length > 0 ? C.topBg : C.border}
-              />
+              <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                {/* Country code trigger */}
+                <button type="button" onClick={() => setShowCountryPicker(true)}
+                  style={{ display: "flex", alignItems: "center", gap: "clamp(4px,0.6vw,7px)", padding: "0 clamp(10px,1.4vw,14px)", borderRadius: 11, border: `1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, background: C.white, cursor: "pointer", flexShrink: 0, minHeight: "clamp(48px,6vh,56px)", transition: "border-color 0.15s, background 0.12s", whiteSpace: "nowrap" }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.surface}
+                  onMouseLeave={e => e.currentTarget.style.background = C.white}>
+                  <span style={{ fontSize: "clamp(18px,2.4vw,24px)", lineHeight: 1 }}>{selectedCountry.flag}</span>
+                  <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(13px,1.5vw,15px)", fontWeight: 700, color: C.text }}>{selectedCountry.code}</span>
+                  <span style={{ fontSize: "clamp(9px,1.1vw,11px)", color: C.muted, marginLeft: 1 }}>▾</span>
+                </button>
+                {/* Number input */}
+                <input value={phone} type="tel" onChange={e => setPhone(e.target.value)}
+                  placeholder="812 3456 7890"
+                  style={{ flex: 1, minWidth: 0, padding: "clamp(13px,1.7vh,17px) 14px", borderRadius: 11, border: `1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, fontSize: "clamp(14px,1.7vw,16px)", background: C.white, fontFamily: "'DM Sans',sans-serif", transition: "border-color 0.15s" }}
+                  onFocus={e => e.target.style.borderColor = C.topBg}
+                  onBlur={e => e.target.style.borderColor = phone.trim().length > 0 ? C.topBg : C.border}
+                />
+              </div>
             </div>
+
+            {showCountryPicker && (
+              <CountryPicker selected={selectedCountry} onSelect={setSelectedCountry} onClose={() => setShowCountryPicker(false)} />
+            )}
 
             {/* Points — shown in place of old checkbox */}
             {customer && pointsAvailable > 0 && (

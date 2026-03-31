@@ -69,15 +69,18 @@ Priority levels: **P1 Must Have** | **P2 Should Have** | **P3 Nice to Have**
 
 | Feature | Priority | Description |
 |---|---|---|
-| Service Selection | P1 | Browse and select one or more services (Haircut, Beard, Color, Packages). Shows price, duration, description. |
-| Barber Selection | P1 | Pick preferred barber or "Any available". Shows name, specialty, next available time. |
-| Time Slot Booking | P1 | Live slots based on barber availability, service duration, existing queue. Blocks in real time. |
+| Service Selection | P1 | Browse and select one or more services (Haircut, Beard, Treatment, Hair Color, Packages). Shows price, duration, description, image. Category pills filter the grid. |
+| Hair Bleach Configurator | P1 | Step-based bleach modal triggered when Hair Bleach is selected. 3 intensity tiers (1 step Rp 260k / 2 steps Rp 415k / 3 steps Rp 525k) each with optional +Color add-on. Visual gradient slider shows expected lift result. Step and color_added are stored on the booking_service row. |
+| Barber Selection | P1 | Pick preferred barber or "Any Available" (first card, dice icon). Shows name, specialty, rating, cut count, next available time. |
+| Time Slot Booking | P1 | Live slots based on barber availability, service duration, existing queue. "Now" and "Next Available" appear as first two slot cards; remaining slots fill the grid. Blocks in real time. |
 | Payment at Kiosk — Postpaid | P1 | Customer pays **after service** at the kiosk counter. Kiosk switches to payment mode when barber marks job complete. Supports QRIS and card via BCA EDC direct integration. |
-| Booking Confirmation & Queue Number | P1 | Unique booking number shown on screen. Optionally printed or sent via WhatsApp. |
+| Booking Confirmation & Queue Number | P1 | Unique booking number shown on screen. Optionally printed or sent via WhatsApp. Kiosk announces barber name via Web Speech API. |
 | Dual-Mode Kiosk Screen | P1 | Two modes: Booking Mode (next walk-in) and Payment Mode (triggered by barber completing job). Must coexist — payment overlay or split screen. |
-| Optional Name & Phone Capture | P2 | Customer may enter name and WhatsApp for confirmations. Not required. |
+| Post-Service Rating + Feedback Tags | P1 | 1–5 star rating shown immediately after payment (in the same PaymentTakeover flow). Contextual tag chips appear based on star rating (e.g. "Amazing cut!" at 5 stars, "Too rushed" at 1 star). 5-minute timeout + skip. Rating and selected tags stored per booking. |
+| Optional Name & Phone Capture | P2 | Name required, WhatsApp optional. Phone field has international country code picker (pinned: ID, AU, RU, IN + full list). Phone stored in E.164 format. If phone entered, kiosk looks up loyalty points balance. |
+| Group Booking | P2 | Multiple customers can be linked into a single payment session at PaymentTakeover. StaffPanel shows grouped bookings with per-person breakdown and combined total. Group formed at payment time (not at booking time). |
 | Live Wait Time Display | P2 | Estimated wait per barber, updates in real time. |
-| Post-Service Rating | P3 | 1–5 star prompt after completion, via QR on receipt or next visit. |
+| Notify Barber — Escalation | P1 | After queue number shown, kiosk plays Web Speech announcement calling the barber. Re-announces automatically after 2 minutes if barber has not tapped Start. Escalation cancelled on `booking_started` SSE event. |
 
 ### B. Barber Queue App
 
@@ -102,8 +105,10 @@ Priority levels: **P1 Must Have** | **P2 Should Have** | **P3 Nice to Have**
 | Service Catalogue Management | P1 | Create, update, deactivate services. Set pricing (optionally per branch). |
 | Customer Data & History | P1 | View customers who provided contact info. See visit history, preferred barber, total spend. |
 | Notification & Operations Settings | P1 | Per branch: late start threshold, speaker on/off, tip presets, Web Push settings. |
+| Kiosk UI Configuration | P2 | Per branch (or global): configure upsell popup copy, upsell rules, package badge text, service display order, welcome screen copy, CTA labels (bilingual), and colour/logo overrides. Changes propagate to kiosk on next load or via SSE push. |
 | Barber Scheduling & Attendance | P2 | Set weekly schedules. Track clock-in/out. View attendance records, flag absences. |
-| Barber Commission Tracking | P2 | Set commission rate per barber (% of service revenue). Auto-calculates earnings for payroll. |
+| Barber Commission Tracking | P2 | Set commission rate per barber (% of service revenue). Part of payroll system. |
+| Payroll Management | P2 | Monthly payroll runs per branch. Barbers on salary + commission. Auto-calculates base salary, commission from completed services, individual tips. Admin adds uang rajin and other bonuses with configurable reasons. Kasbon (salary advance) tracked with configurable deduction month (current or next). Draft → Reviewed → Finalized workflow. Export payslips. |
 | Service Delay Report | P2 | All late start incidents per barber per branch. Timestamp, scheduled time, actual start, delay duration. |
 | Online Booking Link | P3 | Shareable URL or WhatsApp flow mirroring kiosk experience. Deferred to Phase 2. |
 
@@ -217,6 +222,7 @@ Priority levels: **P1 Must Have** | **P2 Should Have** | **P3 Nice to Have**
 | Expenses | Logging form, P&L summary per branch |
 | Inventory | Three-category stock table, movement log, low stock alerts |
 | Settings | Per-branch notification thresholds, tip presets, toggles |
+| Kiosk Configuration | Per-branch kiosk UI settings — welcome copy, upsell on/off, popup labels, service display order. Changes pushed live via SSE or applied on next kiosk load. |
 
 ---
 
@@ -298,6 +304,8 @@ One row per physical location.
 | geofence_lat | DECIMAL(9,6) | | Branch GPS latitude |
 | geofence_lng | DECIMAL(9,6) | | Branch GPS longitude |
 | geofence_radius_m | INTEGER | | Default 100m |
+| tip_distribution_method | ENUM | | `individual` \| `equal_split` \| `proportional` — default `individual` |
+| pay_period_type | VARCHAR(10) | | Default `monthly`. Future: `weekly`, `biweekly`. |
 | is_active | BOOLEAN | | Soft-disable without deleting |
 | created_at | TIMESTAMPTZ | | |
 
@@ -325,7 +333,10 @@ Admin/owner/accountant accounts — NOT barbers.
 | specialty_id | VARCHAR(100) | | Indonesian descriptor |
 | phone | VARCHAR(20) | | WhatsApp number |
 | pin_hash | TEXT | | Hashed 4–6 digit PIN |
-| commission_rate | DECIMAL(5,2) | | e.g. 35.00 |
+| commission_rate | DECIMAL(5,2) | | e.g. 35.00 — percentage of their completed service revenue |
+| base_salary | INTEGER | | Monthly base salary in IDR. 0 for commission_only barbers. |
+| pay_type | ENUM | | `salary_plus_commission` \| `commission_only` \| `daily_rate` |
+| daily_rate | INTEGER | | Flat IDR per working day. Only used when pay_type = daily_rate. |
 | avatar_url | TEXT | | Photo URL for kiosk |
 | is_active | BOOLEAN | | Deactivate without deleting history |
 | created_at | TIMESTAMPTZ | | |
@@ -338,7 +349,7 @@ Global catalogue — price can be overridden per branch.
 | id | UUID | PK | |
 | name | VARCHAR(100) | | e.g. "Fade & Style" |
 | name_id | VARCHAR(100) | | Indonesian name |
-| category | ENUM | | haircut \| beard \| color \| package |
+| category | ENUM | | haircut \| beard \| treatment \| hair_color \| package |
 | base_price | INTEGER | | Default price in IDR |
 | duration_minutes | SMALLINT | | For slot blocking |
 | badge | VARCHAR(50) | | Optional badge text |
@@ -374,7 +385,8 @@ Optional — only created when customer provides contact info at kiosk.
 |---|---|---|---|
 | id | UUID | PK | |
 | name | VARCHAR(100) | | |
-| phone | VARCHAR(20) | UNIQUE | WhatsApp number — unique identifier |
+| phone | VARCHAR(25) | UNIQUE | WhatsApp number in E.164 format (e.g. "+62812345678") — unique identifier |
+| phone_country_code | VARCHAR(5) | | Dial code selected at kiosk (e.g. "+62"). Stored separately for display. |
 | total_visits | INTEGER | | Denormalised counter |
 | total_spend | INTEGER | | Running total in IDR |
 | points_balance | INTEGER | | DEFAULT 0. Current redeemable points. |
@@ -417,6 +429,8 @@ Junction table — one row per service in a booking.
 | price_charged | INTEGER | | Actual price at time of booking |
 | added_mid_cut | BOOLEAN | | True if added after booking was started |
 | paid_with_points | BOOLEAN | | DEFAULT FALSE. True if customer redeemed points for this service at Confirm. |
+| bleach_step | SMALLINT | | Nullable. 1, 2, or 3 — only set for Hair Bleach service rows. |
+| bleach_with_color | BOOLEAN | | Nullable. True if customer added color on top of bleach step. |
 
 ### barber_schedules *(see above)*
 
@@ -550,6 +564,93 @@ Immutable log of every points earn and redeem event per customer.
 - Points are deducted at `confirmed` status; credited at `completed` status
 - Mid-cut barber additions are always cash — never redeemable with points
 
+### booking_groups
+Groups multiple individual bookings into one payment session. Formed at payment time (not during booking), when a staff member links bookings together in the StaffPanel or AdminPanel.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| id | UUID | PK | |
+| branch_id | UUID | FK → branches | |
+| created_at | TIMESTAMPTZ | | When the group payment was initiated |
+
+> **Group payment rule:** Each booking retains its own `total`, `barber_id`, etc. The `booking_groups` row just links them. PaymentTakeover shows a per-person breakdown and one combined total. Points redemption is not available for group payments — all services are cash. Tips are pooled for the whole group.
+
+### adjustment_reasons
+Admin-defined reasons for payroll adjustments. Can be global (branch_id = NULL) or per-branch. Used for uang rajin, bonuses, deductions, and kasbon labels.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| id | UUID | PK | |
+| branch_id | UUID | FK → branches (nullable) | NULL = applies to all branches |
+| type | VARCHAR(20) | | `uang_rajin` \| `bonus` \| `deduction` \| `kasbon` |
+| label | VARCHAR(100) | | e.g. "Full Month Attendance", "Top Barber", "Equipment Damage", "Salary Advance" |
+| is_active | BOOLEAN | | Soft-delete |
+| created_at | TIMESTAMPTZ | | |
+
+### payroll_periods
+One row per monthly payroll run per branch. Lifecycle: `draft → reviewed → finalized`.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| id | UUID | PK | |
+| branch_id | UUID | FK → branches | |
+| period_month | DATE | | First day of the month, e.g. `2026-03-01`. UNIQUE per branch. |
+| status | ENUM | | `draft` \| `reviewed` \| `finalized` |
+| notes | TEXT | | Optional admin notes for this run |
+| finalized_by | UUID | FK → users (nullable) | Who finalized |
+| finalized_at | TIMESTAMPTZ | | |
+| created_at | TIMESTAMPTZ | | |
+
+> **Payroll flow:** Admin clicks "Generate Payroll" for a branch + month → system creates this row (status `draft`) and auto-creates one `payroll_entries` row per active barber. Admin reviews, adds adjustments, then finalizes. Finalized rows are immutable.
+
+### payroll_entries
+One row per barber per payroll period. All monetary components stored separately so the admin can see exactly how net pay was calculated.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| id | UUID | PK | |
+| period_id | UUID | FK → payroll_periods | |
+| barber_id | UUID | FK → barbers | |
+| pay_type_snapshot | ENUM | | Copied from `barbers.pay_type` at generation time (immutable record) |
+| base_salary_snapshot | INTEGER | | Copied from `barbers.base_salary` at generation time |
+| commission_rate_snapshot | DECIMAL(5,2) | | Copied from `barbers.commission_rate` at generation time |
+| gross_service_revenue | INTEGER | | Sum of `booking_services.price_charged` for this barber's completed bookings in the period |
+| commission_earned | INTEGER | | `gross_service_revenue × commission_rate_snapshot / 100` |
+| tips_earned | INTEGER | | Sum of `tips.amount` for this barber's individual bookings in the period |
+| attendance_days | SMALLINT | | Count of distinct days with a clock-in record in the period |
+| uang_rajin_total | INTEGER | | Sum of all `uang_rajin` adjustments linked to this entry. DEFAULT 0. |
+| bonus_total | INTEGER | | Sum of all `bonus` adjustments linked to this entry. DEFAULT 0. |
+| kasbon_deducted | INTEGER | | Sum of kasbon adjustments scheduled for this period. DEFAULT 0. |
+| other_deductions | INTEGER | | Sum of `deduction` adjustments linked to this entry. DEFAULT 0. |
+| net_pay | INTEGER | | `base_salary + commission_earned + tips_earned + uang_rajin_total + bonus_total − kasbon_deducted − other_deductions` |
+| bookings_completed | SMALLINT | | Count of completed bookings in the period |
+| created_at | TIMESTAMPTZ | | |
+| updated_at | TIMESTAMPTZ | | |
+
+### payroll_adjustments
+Individual line items (uang rajin, bonuses, deductions, kasbon). Linked to an entry. Kasbon can be pre-logged against a future period before payroll is generated.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| id | UUID | PK | |
+| entry_id | UUID | FK → payroll_entries (nullable) | NULL while kasbon is pending assignment to a period |
+| barber_id | UUID | FK → barbers | Always set — used for pre-period kasbon lookup |
+| branch_id | UUID | FK → branches | |
+| type | ENUM | | `uang_rajin` \| `bonus` \| `deduction` \| `kasbon` |
+| amount | INTEGER | | Always positive (IDR) |
+| reason_id | UUID | FK → adjustment_reasons (nullable) | Selected reason template |
+| reason_text | VARCHAR(200) | | Free-text label — copied from reason template or typed manually |
+| deduct_in | ENUM | | `current` \| `next` — **kasbon only.** Which period's payroll this deducts from. |
+| target_period_month | DATE | | Computed from `deduct_in` at logging time. Null for non-kasbon types. |
+| logged_by | UUID | FK → users | |
+| applied | BOOLEAN | | DEFAULT FALSE. Set TRUE when included in a finalized payroll entry. |
+| created_at | TIMESTAMPTZ | | |
+
+**Kasbon deduction logic:**
+- When `type = kasbon` and `deduct_in = current`: `target_period_month` = current month.
+- When `type = kasbon` and `deduct_in = next`: `target_period_month` = first day of next month.
+- When payroll generation runs for a given month, it queries all `payroll_adjustments` where `type = kasbon AND target_period_month = period_month AND barber_id = this barber` and sums them into `kasbon_deducted`.
+
 ### Column additions to existing tables
 
 **barbers** — add:
@@ -565,11 +666,33 @@ Immutable log of every points earn and redeem event per customer.
 | cancellation_reason | TEXT | Admin-entered reason (stored after cancellation) |
 | points_redeemed | INTEGER | DEFAULT 0. Points used at Confirm to cover services. |
 | points_earned | INTEGER | DEFAULT 0. Points credited to customer after payment completes. |
+| review_tags | TEXT[] | Nullable array of feedback tag strings selected after payment (e.g. ["Amazing cut!", "Will come back"]). Populated together with `rating`. |
+| group_id | UUID | Nullable FK → booking_groups. Set when this booking is part of a group payment session. |
 
 **customers** — add:
 | Column | Type | Description |
 |---|---|---|
 | whatsapp_consent | BOOLEAN | DEFAULT FALSE — customer opted in to WA promos/confirmation |
+
+### kiosk_settings
+Per-branch kiosk UI configuration. One row per branch (upserted). Global fallback row uses branch_id = NULL.
+
+| Column | Type | Key | Description |
+|---|---|---|---|
+| branch_id | UUID | FK → branches (nullable, PK) | NULL = global default |
+| welcome_heading | VARCHAR(200) | | Welcome screen headline (English) |
+| welcome_heading_id | VARCHAR(200) | | Welcome screen headline (Bahasa) |
+| welcome_cta | VARCHAR(100) | | Start booking button label (English) |
+| welcome_cta_id | VARCHAR(100) | | Start booking button label (Bahasa) |
+| upsell_enabled | BOOLEAN | | Whether upsell popup fires at all |
+| upsell_popup_heading | VARCHAR(200) | | Popup headline copy (English) |
+| upsell_popup_heading_id | VARCHAR(200) | | Popup headline copy (Bahasa) |
+| upsell_switch_cta | VARCHAR(100) | | "Switch to package" button label |
+| upsell_keep_cta | VARCHAR(100) | | "Keep my selection" button label |
+| service_sort_override | JSONB | | Array of service IDs — overrides sort_order on kiosk display |
+| tip_presets | JSONB | | Array of tip amounts in IDR. Default: [5000, 10000, 20000, 50000, 100000]. Configurable per branch from Admin. |
+| updated_at | TIMESTAMPTZ | | |
+| updated_by | UUID | FK → users | Last admin to save settings |
 
 ### Indexes
 
@@ -601,6 +724,39 @@ CREATE INDEX idx_inventory_movements_item ON inventory_movements(item_id, branch
 | Kiosk Hardware | Windows touchscreen per branch | Runs kiosk PWA in fullscreen locked browser via Windows Assigned Access (single-app kiosk mode). No Android/iPad. |
 
 > **Offline Resilience:** The kiosk must continue to function if internet drops briefly. PWA should cache service list and barber list locally, and queue bookings for sync when connectivity returns.
+
+### SSE Event Types
+
+All events delivered on `GET /api/events?branch_id=`:
+
+| Event type | Payload | Consumer |
+|---|---|---|
+| `new_booking` | `{ booking_id, barber_id, number, name }` | Barber kiosk panel — show alert badge |
+| `booking_started` | `{ booking_id, barber_id }` | QueueNumber screen — cancel escalation timer |
+| `payment_trigger` | `{ booking_id }` | Kiosk main screen — open PaymentTakeover |
+| `booking_cancelled` | `{ booking_id, reason }` | Queue display / TV system |
+| `kiosk_settings_update` | `{ branch_id, settings }` | Kiosk — hot-reload UI config |
+
+### Key API Endpoints (Kiosk-Specific)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/bookings/:id/notify-barber` | Triggers SSE `new_booking` re-broadcast + logs escalation start. Called from QueueNumber after speech announcement. |
+| POST | `/api/bookings/:id/payment-trigger` | Admin manual payment trigger — emits SSE `payment_trigger` for a specific booking_id. Used from AdminPanel. |
+| GET | `/api/admin/branch-overview` | `?branch_id=&date=` — full today queue + barber status board for AdminPanel. |
+| PATCH | `/api/branches/:id/settings` | Updates `kiosk_settings` row for the branch. Emits `kiosk_settings_update` SSE event. |
+| GET | `/api/customers` | `?phone=` — lookup by E.164 phone to retrieve name + points_balance. Called from Confirm screen on phone input. |
+| POST | `/api/booking-groups` | Creates a `booking_groups` row and links provided `booking_ids`. Called from StaffPanel when staff initiates group payment. |
+| POST | `/api/payroll/generate` | `{ branch_id, period_month }` — creates `payroll_periods` row (draft) + one `payroll_entries` row per active barber. Idempotent: calling again returns existing draft. |
+| GET | `/api/payroll/periods` | `?branch_id=&status=` — list payroll periods for a branch. |
+| GET | `/api/payroll/periods/:id` | Full period detail: entries + adjustments per barber. |
+| PATCH | `/api/payroll/periods/:id/status` | `{ status: 'reviewed' \| 'finalized' }` — advance lifecycle. Finalized periods are immutable. |
+| POST | `/api/payroll/adjustments` | Log a new adjustment (uang_rajin, bonus, deduction, kasbon). `entry_id` optional for pre-period kasbon. |
+| DELETE | `/api/payroll/adjustments/:id` | Remove an adjustment — only allowed if linked period is not finalized. |
+| GET | `/api/payroll/adjustment-reasons` | `?branch_id=&type=` — list configurable reason templates. |
+| POST | `/api/payroll/adjustment-reasons` | Create a new reason template. |
+| PATCH | `/api/payroll/adjustment-reasons/:id` | Edit or soft-delete a reason template. |
+| GET | `/api/payroll/periods/:id/export` | Returns CSV payslip data for all barbers in the period. |
 
 ---
 
@@ -645,13 +801,13 @@ CREATE INDEX idx_inventory_movements_item ON inventory_movements(item_id, branch
 ## 10 — Build Roadmap
 
 ### Phase 1 — Foundation
-Database setup, API, kiosk booking flow, barber PWA (queue view, start/complete, add services mid-cut), postpaid payment screen (QRIS + card via BCA EDC direct integration), thermal receipt printer (ESC/POS), admin branch overview and daily revenue report.
+Database setup, API, kiosk booking flow (service → barber → time → confirm including hair bleach configurator, loyalty points redemption, international phone picker), barber kiosk panel (queue, start/complete, add services mid-cut, break, clock in/out), postpaid payment screen (tip, QRIS + card via BCA EDC direct integration, post-payment star rating + feedback tags), thermal receipt printer (ESC/POS), admin kiosk panel (branch queue, barber status board, manual payment trigger, cancel/no-show), admin dashboard branch overview and daily revenue report.
 
 ### Phase 2 — Operations (3–4 weeks)
-Full service catalogue management, barber scheduling and attendance, customer database, commission tracking, no-show flagging, WhatsApp booking confirmations, Web Push notifications for barbers.
+Full service catalogue management, barber scheduling and attendance (GPS geofenced clock-in), customer database and history, commission tracking, no-show flagging, group booking payment, WhatsApp booking confirmations, Web Push notifications for barbers, kiosk UI remote configuration from admin.
 
 ### Phase 3 — Growth (4–5 weeks)
-Online booking page or WhatsApp flow, promo codes and discounts, customer loyalty programme, post-service rating system, advanced reporting (by service, by barber, multi-branch comparison), receipt printer integration.
+Online booking page or WhatsApp flow, promo codes and discounts, advanced reporting (by service, by barber, multi-branch comparison), receipt printer integration, optional face ID at clock-in.
 
 ### Phase 4 — Scale (ongoing)
 Performance optimisation for high-traffic branches, multi-language kiosk (Indonesian + English), analytics dashboard, potential integration with accounting software (Jurnal/Accurate), franchise management features.

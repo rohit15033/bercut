@@ -90,14 +90,18 @@ function getUpsell(cart) {
   const cats = cart.map(catOf);
   if (cats.includes("Package")) return null;
   const hasHaircut = cats.includes("Haircut");
-  if (!hasHaircut) return null;
   const hasBeard = cats.includes("Beard");
+  if (!hasHaircut && !hasBeard) return null;
+
   const hasTreatment = cats.some(c => c === "Treatment");
   const hasBlackMask = cart.includes(13);
   if (hasBeard && hasTreatment) return { pkg: SERVICES.find(x => x.id === 19), type: "package" };
   if (hasTreatment && !hasBeard) return { pkg: SERVICES.find(x => x.id === 18), type: "package" };
-  if (hasBeard) return { pkg: SERVICES.find(x => x.id === 17), type: "package" };
-  if (hasBlackMask) return { pkg: SERVICES.find(x => x.id === 16), type: "package" };
+  // If they have Beard Trimming (id:6) but no treatments yet, show the 'suggest' interactive picker
+  // so they can add treatments (matching the flow for "haircut only" selections).
+  if (cart.includes(6) && !hasTreatment) return { type: "suggest" };
+  if (hasHaircut && hasBeard) return { pkg: SERVICES.find(x => x.id === 17), type: "package" };
+  if (hasHaircut && hasBlackMask) return { pkg: SERVICES.find(x => x.id === 16), type: "package" };
   return { type: "suggest" }; // haircut only → suggest beard / treatments
 }
 
@@ -158,6 +162,12 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
         return (
           <div key={s.id} onClick={() => toggleExtra(s.id)}
             style={{ position: "relative", borderRadius: 14, overflow: "hidden", cursor: "pointer", minHeight: "clamp(100px,12vw,130px)", display: "flex", flexDirection: "column", justifyContent: "flex-end", transition: "transform 0.12s" }}>
+            {/* Checkmark top right */}
+            {sel && (
+              <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: C.accentText, zIndex: 4, boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}>
+                ✓
+              </div>
+            )}
             {/* Photo background */}
             <img src={s.img} alt={s.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
             {/* Gradient + optional yellow tint when selected */}
@@ -173,7 +183,7 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0, marginLeft: 6 }}>
                   <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 800, color: sel ? C.accent : "#fff" }}>{fmt(s.price)}</span>
-                  {sel && <div style={{ width: 18, height: 18, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: C.accentText }}>✓</div>}
+
                 </div>
               </div>
             </div>
@@ -183,7 +193,12 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
       // Beard cards (no photo): plain card, yellow when selected
       return (
         <div key={s.id} onClick={() => toggleExtra(s.id)}
-          style={{ background: sel ? C.accent : C.white, border: `1.5px solid ${sel ? C.accent : C.border}`, borderRadius: 14, padding: "clamp(12px,1.6vw,16px)", cursor: "pointer", minHeight: "clamp(80px,10vh,100px)", transition: "all 0.15s", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          style={{ position: "relative", background: sel ? C.accent : C.white, border: `1.5px solid ${sel ? C.accent : C.border}`, borderRadius: 14, padding: "clamp(12px,1.6vw,16px)", cursor: "pointer", minHeight: "clamp(80px,10vh,100px)", transition: "all 0.15s", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          {sel && (
+            <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accentText, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: C.accent, boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+              ✓
+            </div>
+          )}
           <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{s.name}</div>
           <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "rgba(17,17,16,0.55)" : C.muted, marginTop: 2 }}>{s.nameId}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
@@ -199,7 +214,9 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
           {/* Header */}
           <div style={{ background: C.topBg, padding: "clamp(14px,1.8vw,20px) clamp(20px,2.6vw,28px)", flexShrink: 0 }}>
             <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(17px,2.2vw,24px)", color: C.topText }}>💡 Complete the look</div>
-            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#aaa", marginTop: 4 }}>You've added a haircut. Want to add beard or treatment services? · Lengkapi penampilan Anda</div>
+            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#aaa", marginTop: 4 }}>
+              Want to add {cart.some(id => SERVICES.find(x => x.id === id)?.cat === "Haircut") ? "beard or treatment" : "treatment"} services? · Lengkapi penampilan Anda
+            </div>
           </div>
           {/* Scrollable body */}
           <div className="scroll-y" style={{ flex: 1, padding: "clamp(14px,2vw,22px) clamp(16px,2.4vw,26px)" }}>
@@ -220,7 +237,7 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
           <div style={{ padding: "clamp(12px,1.6vw,18px) clamp(16px,2.4vw,26px)", borderTop: `1px solid ${C.border}`, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {extras.length > 0
               ? <button className="btnP" onClick={handleSuggestProceed}>Add {extras.length} service{extras.length > 1 ? "s" : ""} & continue →</button>
-              : <button className="btnP" onClick={() => onConfirm(cart, null)}>Continue with Haircut only →</button>
+              : <button className="btnP" onClick={() => onConfirm(cart, null)}>Continue with selection →</button>
             }
             <button className="btnG" onClick={() => onConfirm(cart, null)} style={{ width: "100%", fontSize: "clamp(12px,1.4vw,14px)" }}>Skip · Lewati</button>
           </div>
@@ -246,100 +263,71 @@ function UpsellModal({ cart, extras, setExtras, onConfirm, onClose }) {
     ? (pkgSave > 0 ? "This package is cheaper! · Paket ini lebih murah!" : "Same price, more services · Harga sama, dapat lebih")
     : "More value with a package · Lebih hemat dengan paket";
 
+  // Determine which "retail" price to cross out
+  // overPkg = true: customer's cart >= package price → crossing out their cart total (it's cheaper to switch)
+  // overPkg = false: cross out what they'd pay individually for everything in the package (vs retail savings)
+  const strikePrice = overPkg ? cartTotal : pkgRetail;
+  const strikeLabel = overPkg ? "Your current total" : "Buying individually";
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px,3vw,32px)" }} onClick={onClose}>
-      <div className="si" style={{ background: C.white, borderRadius: 20, width: "100%", maxWidth: "clamp(360px,58vw,580px)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
-        {/* Treatment photo strip — shown when package has treatment images */}
-        {pkg.treatmentImgs && pkg.treatmentImgs.length > 0 && (
-          <div style={{ position: "relative", height: "clamp(110px,14vw,160px)", overflow: "hidden" }}>
-            <div style={{ display: "flex", height: "100%" }}>
+      <div className="si" style={{ background: C.white, borderRadius: 20, width: "100%", maxWidth: "clamp(360px,52vw,520px)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+
+        {/* Hero photo strip — package images tiled, savings number floated over */}
+        <div style={{ position: "relative", height: "clamp(180px,22vw,240px)", overflow: "hidden", background: C.topBg }}>
+          {pkg.treatmentImgs && pkg.treatmentImgs.length > 0 && (
+            <div style={{ display: "flex", height: "100%", position: "absolute", inset: 0 }}>
               {pkg.treatmentImgs.map((src, i) => (
-                <div key={i} style={{ flex: 1, overflow: "hidden", borderRight: i < pkg.treatmentImgs.length - 1 ? "2px solid rgba(255,255,255,0.15)" : "none" }}>
+                <div key={i} style={{ flex: 1, overflow: "hidden", borderRight: i < pkg.treatmentImgs.length - 1 ? "1px solid rgba(255,255,255,0.12)" : "none" }}>
                   <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 </div>
               ))}
             </div>
-            {/* Dark gradient overlay so header text reads cleanly */}
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 60%, rgba(0,0,0,0) 100%)" }} />
-            {/* Package name + badge float over photo */}
-            <div style={{ position: "absolute", top: "clamp(12px,1.6vw,18px)", left: "clamp(18px,2.4vw,26px)", right: "clamp(18px,2.4vw,26px)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(17px,2.2vw,24px)", color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>✨ {headlineLine}</div>
-                <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "rgba(255,255,255,0.8)", marginTop: 3 }}>{pkg.name} · {pkg.nameId}</div>
-              </div>
-              {pkg.badge && <div style={{ background: C.accent, color: C.accentText, fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 800, padding: "4px 10px", borderRadius: 6, flexShrink: 0, marginLeft: 12 }}>{pkg.badge}</div>}
-            </div>
+          )}
+          {/* Bottom-up gradient for text legibility */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.08) 100%)" }} />
+          {/* Badge — top right */}
+          {pkg.badge && (
+            <div style={{ position: "absolute", top: "clamp(10px,1.4vw,14px)", right: "clamp(14px,1.8vw,18px)", background: C.accent, color: C.accentText, fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 800, padding: "3px 9px", borderRadius: 5, zIndex: 2 }}>{pkg.badge}</div>
+          )}
+          {/* Savings hero + package name anchored to bottom of photo */}
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "clamp(14px,1.8vw,20px) clamp(18px,2.4vw,24px)", zIndex: 2 }}>
+            <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>{pkg.name} · {pkg.nameId}</div>
+            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(26px,3.4vw,38px)", color: C.accent, lineHeight: 1.1 }}>Save {fmt(savings)}</div>
+            <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "rgba(255,255,255,0.45)", marginTop: 5 }}>vs buying individually · vs beli satuan</div>
           </div>
-        )}
-        {/* Fallback header for packages without treatment photos (e.g. Prestige) */}
-        {(!pkg.treatmentImgs || pkg.treatmentImgs.length === 0) && (
-          <div style={{ background: C.topBg, padding: "clamp(14px,1.8vw,20px) clamp(20px,2.6vw,28px)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: "clamp(17px,2.2vw,24px)", color: C.topText }}>✨ {headlineLine}</div>
-              <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#aaa", marginTop: 4 }}>{pkg.name} · {pkg.nameId}</div>
-            </div>
-            {pkg.badge && <div style={{ background: C.accent, color: C.accentText, fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 800, padding: "4px 10px", borderRadius: 6, flexShrink: 0, marginLeft: 12, marginTop: 2 }}>{pkg.badge}</div>}
+        </div>
+
+        {/* Included services chip row — ✓ already in cart (muted), + new services (yellow) */}
+        <div style={{ padding: "clamp(10px,1.4vw,14px) clamp(18px,2.4vw,24px)", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: "clamp(9px,1.1vw,10px)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: "clamp(6px,0.9vw,8px)" }}>
+            What’s included · Yang termasuk
           </div>
-        )}
-        <div style={{ padding: "clamp(16px,2.2vw,24px) clamp(20px,2.6vw,28px)" }}>
-          {/* Visual price breakdown — 3 columns */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: "clamp(6px,1vw,10px)", marginBottom: "clamp(14px,1.8vw,20px)", background: C.surface, borderRadius: 12, padding: "clamp(12px,1.6vw,18px) clamp(14px,1.8vw,20px)", alignItems: "center" }}>
-            {/* Col 1 */}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: 4 }}>
-                {overPkg ? "Your selection" : "You're paying now"}
-              </div>
-              <div style={{ fontSize: "clamp(9px,1.1vw,11px)", color: C.muted, marginBottom: 6 }}>
-                {overPkg ? "Pilihan kamu" : "Kamu bayar sekarang"}
-              </div>
-              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,26px)", fontWeight: 900, color: C.text }}>{fmt(cartTotal)}</div>
-            </div>
-            {/* Divider arrow */}
-            <div style={{ fontSize: "clamp(16px,2vw,22px)", color: C.border, userSelect: "none" }}>→</div>
-            {/* Col 2 */}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "clamp(9px,1.1vw,11px)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: 4 }}>
-                {overPkg ? "Package price" : "Pay for package"}
-              </div>
-              <div style={{ fontSize: "clamp(9px,1.1vw,11px)", color: C.muted, marginBottom: 6 }}>
-                {overPkg ? "Harga paket" : "Bayar untuk paket"}
-              </div>
-              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,26px)", fontWeight: 900, color: C.text }}>{fmt(pkg.price)}</div>
-            </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(5px,0.7vw,7px)" }}>
+            {chips.map(chip => {
+              const have = chipInCart(chip, workCart);
+              return (
+                <span key={chip.l} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px clamp(8px,1.1vw,10px)", borderRadius: 999, fontSize: "clamp(11px,1.3vw,12px)", fontWeight: 600, background: have ? C.surface : C.accent, color: have ? C.muted : C.accentText, border: `1px solid ${have ? C.border : C.accent}` }}>
+                  {have ? "✓" : "+"} {chip.icon} {chip.l}
+                </span>
+              );
+            })}
           </div>
-          {/* Savings callout — full width banner */}
-          <div style={{ background: C.topBg, borderRadius: 10, padding: "clamp(10px,1.4vw,14px) clamp(14px,1.8vw,18px)", marginBottom: "clamp(14px,1.8vw,20px)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 700, color: "#aaa", letterSpacing: "0.1em", textTransform: "uppercase" }}>You save · Kamu hemat</div>
-              {!overPkg && <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: "#888", marginTop: 2 }}>vs buying individually · vs beli satuan</div>}
-            </div>
-            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(22px,3vw,32px)", fontWeight: 900, color: C.accent }}>{fmt(savings)}</div>
-          </div>
-          {/* Package chips — ✓ = already in cart, + = you'll gain */}
-          <div style={{ marginBottom: "clamp(14px,1.8vw,20px)" }}>
-            <div style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: 10 }}>What's included · Yang termasuk</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(6px,0.8vw,8px)" }}>
-              {chips.map(chip => {
-                const have = chipInCart(chip, workCart);
-                const bonus = chip.bonus;
-                return (
-                  <span key={chip.l} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px clamp(8px,1.2vw,12px)", borderRadius: 999, fontSize: "clamp(11px,1.3vw,13px)", fontWeight: 600, background: have ? C.topBg : (bonus ? "#fff8cc" : "#e8f5e9"), color: have ? C.topText : (bonus ? "#6B5E00" : "#1a5c1a"), border: have ? "none" : `1px solid ${bonus ? "#D4C800" : "#a5d6a7"}` }}>
-                    {chip.icon} {chip.l} {have ? "✓" : "+"}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-          {/* CTAs */}
-          <button className="btnP" onClick={() => onConfirm(workCart, pkg.id)} style={{ marginBottom: 8 }}>
-            {cartTotal >= pkg.price
-              ? `✓ Switch to ${pkg.name} · –${fmt(pkgSave)}`
-              : `✓ Upgrade to ${pkg.name} · +${fmt(extraCost)}`}
+        </div>
+
+        {/* CTAs */}
+        <div style={{ padding: "clamp(14px,1.8vw,20px) clamp(18px,2.4vw,24px)", display: "flex", flexDirection: "column", gap: 8 }}>
+          <button className="btnP" onClick={() => onConfirm(workCart, pkg.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <span>Switch to {pkg.name} · {fmt(pkg.price)}</span>
+            <span style={{ fontSize: "clamp(10px,1.2vw,12px)", fontWeight: 500, opacity: 0.75 }}>
+              {overPkg ? `−${fmt(pkgSave)} less than your current total` : extraCost === 0 ? "Same as your current total" : `+${fmt(extraCost)} added to your total`}
+            </span>
           </button>
           <button className="btnG" onClick={() => onConfirm(workCart, null)} style={{ width: "100%", fontSize: "clamp(12px,1.4vw,14px)" }}>
-            Keep my current selection · Pertahankan pilihan saya
+            Keep my selection · Pertahankan pilihan
           </button>
         </div>
+
       </div>
     </div>
   );
@@ -354,7 +342,7 @@ export default function App() {
   const [barber, setBarber] = useState(null);
   const [slot, setSlot] = useState(null);
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState("08123456789"); // demo: shows loyalty points example (Budi Santoso, 15 pts)
   const [selectedBeverages, setSelectedBeverages] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [showUpsell, setShowUpsell] = useState(false);
@@ -411,7 +399,17 @@ export default function App() {
 
   // After service selection → check for upsell before proceeding to barber step
   const handleServicesNext = () => {
-    if (getUpsell(cart)) setShowUpsell(true);
+    const upsell = getUpsell(cart);
+    if (upsell) {
+      if (upsell.type === "suggest") {
+        const inCartExtras = cart.filter(id => {
+          const s = SERVICES.find(x => x.id === id);
+          return s && (s.cat === "Beard" || s.cat === "Treatment");
+        });
+        setUpsellExtras(inCartExtras);
+      }
+      setShowUpsell(true);
+    }
     else setStep(2);
   };
 
@@ -434,7 +432,7 @@ export default function App() {
     <>
       <GS />
       <div onClick={handleCornerTap} style={{ position: "fixed", top: 0, right: 0, width: 60, height: 60, zIndex: 500, WebkitTapHighlightColor: "transparent" }} />
-      {showUpsell && <UpsellModal cart={cart} extras={upsellExtras} setExtras={setUpsellExtras} onConfirm={handleUpsellConfirm} onClose={() => handleUpsellConfirm(cart, null)} />}
+      {showUpsell && <UpsellModal cart={cart} extras={upsellExtras} setExtras={setUpsellExtras} onConfirm={handleUpsellConfirm} onClose={() => setShowUpsell(false)} />}
       {staffPanelOpen && <StaffPanel onSelect={openPayment} onClose={() => setStaffPanelOpen(false)} />}
       {barberPanelOpen && <BarberPanel onClose={() => setBarberPanelOpen(false)} onHome={() => { setBarberPanelOpen(false); reset(); }} onPaymentTrigger={openPayment} />}
       {adminPanelOpen && <AdminPanel onClose={() => setAdminPanelOpen(false)} onHome={() => { setAdminPanelOpen(false); reset(); }} onPaymentTrigger={openPayment} />}

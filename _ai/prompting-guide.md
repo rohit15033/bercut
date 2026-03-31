@@ -834,6 +834,119 @@ Alert card per item at top of page when stock critical
 
 ---
 
+## 07B — Admin Dashboard: Payroll
+*GET /api/payroll/periods + POST /api/payroll/generate*
+
+```
+Build the Bercut Admin Payroll screen.
+
+## Overview
+Monthly payroll management per branch. Barbers are on salary_plus_commission.
+Tips: individual (each barber keeps tips from their own bookings — no pooling).
+Pay cycle: monthly. Workflow: draft → reviewed → finalized (immutable).
+
+## Layout
+Same left sidebar as other admin screens.
+Main content: two-panel layout.
+Left (narrower): period selector + branch selector + status.
+Right (wider): barber entry table + adjustment panel.
+
+## Period selector (top of page)
+Month/year picker (defaults to current month).
+Branch dropdown.
+"Generate Payroll" button — calls POST /api/payroll/generate { branch_id, period_month }.
+  If draft already exists, loads it. Button label changes to "Regenerate" if draft exists.
+Status badge: DRAFT (grey) | REVIEWED (yellow) | FINALIZED (green, lock icon).
+"Mark as Reviewed" button (visible in draft state, requires owner role).
+"Finalize & Lock" button (visible in reviewed state, requires owner role, shows confirmation dialog).
+"Export CSV" button (always visible once entries exist).
+
+## Barber entries table
+Columns:
+  Barber name + avatar
+  Days worked (attendance_days)
+  Service revenue (gross_service_revenue — formatted IDR)
+  Commission % (commission_rate_snapshot — shown as "35%")
+  Commission earned (commission_earned)
+  Tips earned (tips_earned)
+  Uang Rajin (uang_rajin_total — green text if > 0)
+  Bonus (bonus_total)
+  Kasbon (kasbon_deducted — red text if > 0)
+  Deductions (other_deductions)
+  NET PAY (net_pay — Inter 700, larger, yellow highlight if finalized)
+
+Each row is expandable (click to open adjustment panel below the row).
+Non-finalized rows show an "+ Add Adjustment" button at the end.
+
+## Adjustment panel (expanded row)
+Shows all payroll_adjustments for this entry as a list:
+  Type badge (UANG RAJIN green | BONUS blue | KASBON red | DEDUCTION orange)
+  Reason label
+  Amount (IDR)
+  Logged by + date
+  Delete button (× — only if period not finalized)
+
+"+ Add Adjustment" button opens an inline form:
+  Type selector: Uang Rajin | Bonus | Kasbon | Deduction
+  Reason dropdown: shows adjustment_reasons filtered by type + branch, + "Other (type manually)" option
+  Amount input (IDR)
+  If type = Kasbon: radio — "Deduct this month" | "Deduct next month"
+  Save button → POST /api/payroll/adjustments
+  On save: entry row recalculates net_pay live.
+
+## Kasbon (Salary Advance) standalone log
+Separate tab: "Kasbon Log"
+Table: Barber | Amount | Reason | Deduct Month | Logged by | Date | Status (Pending/Applied)
+"+ Log Kasbon" button — opens same inline form but entry_id is null (pre-period kasbon).
+Useful for logging kasbon mid-month before payroll is generated.
+
+## Reason Management (Settings sub-section)
+Tab or link: "Manage Reasons"
+List of adjustment_reasons grouped by type.
+Each row: Label | Type | Scope (global / branch-specific) | Active toggle | Edit | Delete
+"+ New Reason" form: label input, type selector, branch scope (all / specific branch).
+Default global reasons pre-seeded:
+  uang_rajin: "Full Month Attendance", "Zero Late Arrivals", "Top Barber of the Month", "Customer Compliment"
+  bonus: "Holiday Bonus", "Performance Bonus"
+  deduction: "Late Arrivals", "Equipment Damage", "Uniform Deduction"
+  kasbon: "Salary Advance"
+
+## Calculation rules (backend must implement)
+net_pay = base_salary_snapshot
+        + commission_earned (gross_service_revenue × commission_rate_snapshot / 100)
+        + tips_earned (SUM tips.amount WHERE booking.barber_id = this barber AND paid_at IN period)
+        + uang_rajin_total (SUM adjustments WHERE type = uang_rajin)
+        + bonus_total (SUM adjustments WHERE type = bonus)
+        − kasbon_deducted (SUM adjustments WHERE type = kasbon AND target_period_month = period_month)
+        − other_deductions (SUM adjustments WHERE type = deduction)
+
+gross_service_revenue = SUM booking_services.price_charged
+  WHERE booking.barber_id = this barber
+  AND booking.status = 'completed'
+  AND booking.paid_at >= period start
+  AND booking.paid_at < period end
+  AND booking_services.paid_with_points = false  ← points-redeemed services excluded
+
+attendance_days = COUNT DISTINCT DATE(clock_in_at)
+  FROM attendance WHERE barber_id = this barber AND clock_in_at IN period
+
+## Period immutability
+Once status = finalized:
+  - All entry and adjustment rows become read-only
+  - DELETE /api/payroll/adjustments/:id returns 403
+  - PATCH /api/payroll/periods/:id/status only allows finalized → no rollback
+  - UI: all edit controls hidden, lock icon shown on header
+
+## Export
+GET /api/payroll/periods/:id/export
+Returns CSV with columns:
+  Barber, Days Worked, Base Salary, Service Revenue, Commission %, Commission Earned,
+  Tips, Uang Rajin, Bonus, Kasbon Deducted, Other Deductions, Net Pay
+One row per barber. Period month and branch name in filename.
+```
+
+---
+
 ## 08 — Database Schema
 *PostgreSQL. Run tables in this order due to FK dependencies.*
 
@@ -1117,4 +1230,69 @@ tip_presets: INTEGER[] DEFAULT [10000, 20000, 50000]
 | branch_id missing from query | AI forgets multi-tenant requirement | "Every database query that fetches bookings, barbers, or inventory MUST include branch_id as a filter. All data is branch-scoped." |
 | Admin dashboard shows all data unfiltered | AI builds single-tenant dashboard | "Admin dashboard is multi-branch. Default view shows ALL branches. Branch filter is a dropdown. When a specific branch is selected, all data filters to that branch." |
 | Triple-tap doesn't work | Timer logic or ref not persisting correctly | "Use useRef (not useState) for tapCount and tapTimer — setState causes re-renders that break the tap timing. tapCount.current increments on each click of the hidden div." |
+
+---
+
+## 07B — Admin: Kiosk Configuration
+*GET/PUT /api/admin/kiosk-settings?branch_id=*
+
+```
+Build the Bercut Admin Kiosk Configuration screen.
+
+## Purpose
+Allows the owner/manager to customise the kiosk experience per branch without
+touching code or physically accessing the kiosk device. Changes take effect on
+the kiosk on next load, or immediately if the kiosk is listening on SSE for a
+kiosk_settings_updated event.
+
+## Location in admin nav
+Settings → Kiosk Configuration (sub-tab alongside Notifications & Operations)
+Or as a standalone "Kiosk" nav item between Services and Settings.
+
+## Branch selector
+Dropdown at the top: "Global (all branches)" or specific branch.
+When a branch is selected, its overrides are shown on top of the global defaults.
+Saving with "Global" selected writes to the NULL branch_id row (fallback for all branches).
+
+## Sections
+
+### Welcome Screen
+- Heading (English): text input, default "Welcome to Bercut"
+- Heading (Bahasa): text input, default "Selamat Datang di Bercut"
+- Start CTA (English): text input, default "Start Booking"
+- Start CTA (Bahasa): text input, default "Mulai Booking"
+- Live preview: small mockup card shows how it will look
+
+### Upsell Popup
+- Enable upsell suggestions: toggle (default on)
+- Popup heading (English): text input
+- Popup heading (Bahasa): text input
+- "Switch to package" button label: text input
+- "Keep my selection" button label: text input
+- Note: package savings amounts and service lists are derived from the services
+  catalogue — not editable here
+
+### Service Display Order
+- Drag-and-drop list of all active services (grouped by category: Haircut, Beard, Color, Package)
+- Reorder to change how services appear on the kiosk grid
+- "Reset to default" link reverts to sort_order from the services catalogue
+- Saved as JSONB array of service UUIDs in kiosk_settings.service_sort_override
+
+## Save behaviour
+"Save Changes" button → PUT /api/admin/kiosk-settings { branch_id, ...fields }
+→ upserts kiosk_settings row
+→ emits SSE event on branch channel: { type: 'kiosk_settings_updated' }
+→ kiosk receives event, re-fetches settings, applies without full page reload
+
+## API
+GET  /api/admin/kiosk-settings?branch_id=   — fetch current settings (merges global + branch overrides)
+PUT  /api/admin/kiosk-settings               — upsert { branch_id, welcome_heading, ... }
+SSE  GET /api/events?branch_id=              — listen for kiosk_settings_updated event on kiosk side
+
+## DB table
+kiosk_settings — see system-plan.md Section 06 for full schema.
+Key columns: branch_id (nullable FK, NULL = global), welcome_heading, welcome_heading_id,
+welcome_cta, welcome_cta_id, upsell_enabled, upsell_popup_heading, upsell_popup_heading_id,
+upsell_switch_cta, upsell_keep_cta, service_sort_override JSONB, updated_at, updated_by
+```
 

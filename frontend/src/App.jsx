@@ -12,19 +12,21 @@ import KioskApp  from './apps/kiosk/KioskApp.jsx'
 import BarberApp from './apps/barber/BarberApp.jsx'
 import AdminApp  from './apps/admin/AdminApp.jsx'
 
-// Import mockup from external directory via Vite alias
-import BercutKioskMockup from '@mockups/kiosk/BercutKiosk.jsx'
+// Import mockups from external directory via Vite alias
+import BercutKioskMockup  from '@mockups/kiosk/BercutKiosk.jsx'
+import BercutAdminMockup  from '@mockups/admin/BercutAdmin.jsx'
 
 export default function App() {
   return (
     <BrowserRouter>
       <div style={{ background: tokens.bg, minHeight: '100dvh' }}>
         <Routes>
-          <Route path="/kiosk/*"  element={<KioskApp />} />
-          <Route path="/barber/*" element={<BarberApp />} />
-          <Route path="/admin/*"  element={<AdminApp />} />
-          <Route path="/mockup/kiosk" element={<BercutKioskMockup />} />
-          <Route path="*"         element={<Navigate to="/mockup/kiosk" replace />} />
+          <Route path="/kiosk/*"       element={<KioskApp />} />
+          <Route path="/barber/*"      element={<BarberApp />} />
+          <Route path="/admin/*"       element={<AdminApp />} />
+          <Route path="/mockup/kiosk"  element={<BercutKioskMockup />} />
+          <Route path="/mockup/admin"  element={<BercutAdminMockup />} />
+          <Route path="*"              element={<Navigate to="/mockup/kiosk" replace />} />
         </Routes>
       </div>
     </BrowserRouter>

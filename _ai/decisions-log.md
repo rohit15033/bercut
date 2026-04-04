@@ -91,3 +91,5 @@
 2026-03-31 | Kasbon pre-logging: admin can log kasbon mid-month before payroll is generated (entry_id = null); system assigns to correct period_month at payroll generation time using target_period_month | Allows kasbon to be recorded immediately when advance is given, not only at payroll time
 2026-03-31 | branches.tip_distribution_method added, default individual; branches.pay_period_type added, default monthly | Schema implications of payroll decisions
 2026-03-31 | barbers: added pay_type ENUM, base_salary INTEGER, daily_rate INTEGER alongside existing commission_rate | Supports future barber arrangements beyond salary+commission
+2026-04-01 | Admin Dashboard mockup created — Overview, BranchDetail, Reports, Expenses, Inventory, Payroll, Settings screens at mockups/admin/; route /mockup/admin added to App.jsx | Completes mockup phase for admin app; light-theme desktop layout, dark sidebar, all decisions-log data applied
+2026-04-01 | Admin dashboard uses light theme (bg #FAFAF8, white cards) for main content + dark sidebar (#111110) — consistent with system-plan "White surface, same colour tokens" | Desktop app convention, matches design system

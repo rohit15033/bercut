@@ -26,66 +26,53 @@ localhost, and wires it to a real backend.
 
 ---
 
-## Build Gate — Mockup Approval Required
+## Build Gate — PASSED ✅
 
-**No backend will be built until Bercut has reviewed and approved all mockups.**
+**Pre-build audit completed 2026-04-20. All 28 checklist items PASS.**
+See `_ai/pre-build-audit.md` for the full audit.
 
-The current phase is: **MOCKUP ITERATION**.
-- All work happens in `mockups/` only
-- `backend/` and `frontend/src/apps/` are not touched until approval is given
-- Bercut must explicitly sign off on every app (Kiosk, Barber App, Admin) before
-  Antigravity moves to production build
+The current phase is: **PRODUCTION BUILD**.
+- Mockups in `mockups/` are frozen — they are the approved visual contract
+- `backend/` and `frontend/src/apps/` are now actively being built by Antigravity
+- Any mockup changes require re-audit of affected sections
 
-When Bercut requests changes to a mockup:
-1. Make the visual change in `mockups/`
-2. **Before finalising**: check whether the change affects the DB schema or API contract
-   in `_ai/system-plan.md` Sections 06–09. If it does, update those sections first.
-3. Log the decision in `_ai/decisions-log.md`
-4. Only then update the mockup JSX
-
-**Schema/backend compatibility is non-negotiable.** If a UI change implies a new field,
-a new table, a changed status lifecycle, or a different API shape — that must be resolved
-in the plan before the mockup is considered final.
+If Bercut requests changes during production build:
+1. Check whether the change affects DB schema or API contract in `_ai/system-plan.md`
+2. If it does, update `system-plan.md` and `decisions-log.md` first
+3. Then update the mockup for visual reference
+4. Then update the production code
 
 ---
 
-## Workflow Per Feature
+## Workflow — Production Build Phase
 
 ```
-Step 1 — PLAN (Claude Code)
-  Read _ai/system-plan.md and _ai/decisions-log.md before touching anything
-  Think through: data shape, edge cases, component breakdown, API contract
-  For complex features: write a short spec as a comment block before any code
+Step 1 — PLAN
+  Read _ai/system-plan.md, _ai/decisions-log.md, and _ai/pre-build-audit.md
+  Identify which module/phase to build next (see prompting-guide.md Section 03)
+  Check for known gaps in pre-build-audit.md Section F2
 
-Step 2 — MOCKUP (Claude Code)
-  Build the screen in mockups/ as a self-contained JSX prototype
-  Hardcoded mock data, inline styles, zero backend calls
-  Must look exactly right — this is Antigravity's visual contract
+Step 2 — BUILD (Antigravity)
+  Follow prompting-guide.md build phases in order:
+    Phase 0: Foundation (schema, backend skeleton, frontend foundation, SSE)
+    Phase 1: Kiosk booking flow (services → confirm → queue → payment → barber panel)
+    Phase 2: Admin dashboard (all 16 screens)
+    Phase 3: Services layer (background jobs, escalation, payroll calculator)
+    Phase 4: Deployment config (nginx, PM2, setup script)
+  For each screen:
+    a. Read the mockup file as visual reference
+    b. Build the production screen in frontend/src/apps/
+    c. Build the backend route(s) it needs
+    d. Replace mock data with real API calls
+    e. Test on localhost, verify visually against mockup
 
-Step 2b — MOCKUP CHANGE REQUEST (when Bercut asks for changes)
-  Before touching the mockup JSX, ask:
-    - Does this change add/remove a field that needs a DB column?
-    - Does this change alter a status, lifecycle, or flow that backend enforces?
-    - Does this change require a new or modified API endpoint?
-  If yes to any → update _ai/system-plan.md Sections 06–09 first, log in decisions-log.md
-  If no → update mockup directly
-
-Step 3 — HANDOFF (Claude Code → Antigravity) ← only after Bercut approves all mockups
-  Tell Antigravity:
-    - Which mockup to reference: e.g. "mockups/kiosk/ServiceSelection.jsx"
-    - Which prompting guide section to read: e.g. "_ai/prompting-guide.md Section 03"
-    - Which API to connect: e.g. "GET /api/services?branch_id="
-    - Which backend route to build: e.g. "backend/routes/services.js"
-    - Where production file goes: e.g. "frontend/src/apps/kiosk/screens/ServiceSelection.jsx"
-
-Step 4 — EXECUTE (Antigravity)
-  Antigravity builds production screen + backend route
-  Runs on localhost, checks it visually against the mockup
-  Fixes until it matches
-
-Step 5 — REVIEW (Claude Code, when needed)
+Step 3 — REVIEW (Claude Code, when needed)
   If Antigravity's output has structural or logic problems, review and correct
   Update _ai/decisions-log.md with anything that changed
+
+Step 4 — DEPLOY
+  Build frontend: cd frontend && npm run build → outputs to backend/public/
+  Transfer to VPS, run schema + seed, start with PM2
 ```
 
 ---
@@ -94,13 +81,14 @@ Step 5 — REVIEW (Claude Code, when needed)
 
 Bercut Barber Shop — self-service kiosk POS system.
 Barbershop chain, 6+ branches across Bali, Indonesia.
-Three PWA apps in one Vite build: **Kiosk**, **Barber App**, **Admin Dashboard**.
+Two PWA apps in one Vite build: **Kiosk** (includes BarberPanel) and **Admin Dashboard**.
 One Node.js + Express backend. Self-hosted on Rumahweb VPS.
 
 **Always read before starting any session:**
 - `_ai/system-plan.md` — full system design, DB schema, user flows, business rules
-- `_ai/prompting-guide.md` — screen-by-screen design specs and API prompts
+- `_ai/prompting-guide.md` — build phases, per-screen handoff, API contracts
 - `_ai/decisions-log.md` — running log of all decisions (most recent = ground truth)
+- `_ai/pre-build-audit.md` — gap analysis, known issues, checklist
 
 ---
 
@@ -130,23 +118,23 @@ bercut-kiosk/
 │   │   └── AdminPanel.jsx            ← kiosk admin mode (password-protected)
 │   │   NOTE: No barber-app/ folder — barber functions live inside kiosk panels (Meeting 2)
 │   └── admin/
-│       ├── BercutAdmin.jsx           ← main admin router
+│       ├── BercutAdmin.jsx           ← main admin router + sidebar (14 nav items)
 │       ├── Overview.jsx
+│       ├── LiveMonitor.jsx
 │       ├── BranchDetail.jsx
 │       ├── Reports.jsx
 │       ├── Barbers.jsx
+│       ├── Branches.jsx
 │       ├── Services.jsx
 │       ├── Customers.jsx
 │       ├── Expenses.jsx
 │       ├── Inventory.jsx
+│       ├── Attendance.jsx
 │       ├── Payroll.jsx
 │       ├── OnlineBooking.jsx
 │       ├── KioskConfig.jsx
-│       ├── Branches.jsx
-│       ├── Barbers.jsx
-│       ├── Services.jsx
-│       ├── Customers.jsx
-│       └── Settings.jsx
+│       ├── Settings.jsx
+│       └── data.js                  ← mock data (frozen, reference only)
 │
 ├── frontend/                         ← Antigravity builds here (production)
 │   ├── index.html
@@ -171,16 +159,12 @@ bercut-kiosk/
 │       │       └── Card.jsx
 │       └── apps/                     ← Antigravity builds here
 │           ├── kiosk/
-│           │   ├── KioskApp.jsx
-│           │   ├── screens/
-│           │   └── components/
-│           ├── barber/
-│           │   ├── BarberApp.jsx
-│           │   ├── screens/
+│           │   ├── KioskApp.jsx     ← shell: device setup, idle, offline, panels
+│           │   ├── screens/         ← all kiosk screens (11 files)
 │           │   └── components/
 │           └── admin/
-│               ├── AdminApp.jsx
-│               ├── screens/
+│               ├── AdminApp.jsx     ← shell: sidebar, auth, permissions
+│               ├── screens/         ← all admin screens (16 files)
 │               └── components/
 │
 ├── backend/                          ← Antigravity builds here
@@ -378,7 +362,7 @@ export const tokens = {
 ## Business Rules
 
 - **POSTPAID.** Customers never pay during or after the booking flow. Payment is a separate mode triggered when barber taps Complete.
-- **Cashless only.** QRIS and card via BCA EDC. No cash.
+- **Cashless only.** QRIS and card via Xendit Terminal H2H. No cash.
 - **Tip** is shown on PaymentTakeover — never on booking confirmation.
 - **Barber taps Complete** → backend emits SSE `payment_trigger` → kiosk opens PaymentTakeover.
 - **Staff panel** → triple-tap top-right corner of kiosk topbar. No PIN, no visual indicator.

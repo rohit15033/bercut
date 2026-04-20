@@ -256,6 +256,18 @@ export const INV_BRANCH_COLS = [
   { key:'ho', label:'Head Office', isHO:true },
 ];
 
+// Per-branch kiosk menu config for beverage + product items only.
+// Maps branchKey → itemId → { price (IDR), kioskVisible }
+// Stored in inventory_stock.price + inventory_stock.kiosk_visible in production.
+export const MENU_CONFIG = {
+  s:  { 1:{price:15000,kv:true}, 2:{price:30000,kv:true}, 3:{price:15000,kv:true}, 4:{price:90000,kv:true}, 5:{price:85000,kv:true}, 6:{price:75000,kv:false} },
+  ca: { 1:{price:12000,kv:true}, 2:{price:25000,kv:true}, 3:{price:12000,kv:false},4:{price:85000,kv:true}, 5:{price:80000,kv:true}, 6:{price:70000,kv:true}  },
+  u:  { 1:{price:12000,kv:true}, 2:{price:25000,kv:false},3:{price:10000,kv:true}, 4:{price:85000,kv:false},5:{price:80000,kv:true}, 6:{price:70000,kv:false} },
+  ul: { 1:{price:15000,kv:true}, 2:{price:28000,kv:true}, 3:{price:15000,kv:true}, 4:{price:90000,kv:true}, 5:{price:85000,kv:true}, 6:{price:75000,kv:true}  },
+  sa: { 1:{price:12000,kv:true}, 2:{price:25000,kv:true}, 3:{price:12000,kv:true}, 4:{price:80000,kv:true}, 5:{price:75000,kv:false},6:{price:65000,kv:false} },
+  d:  { 1:{price:10000,kv:true}, 2:{price:22000,kv:true}, 3:{price:10000,kv:true}, 4:{price:80000,kv:true}, 5:{price:75000,kv:true}, 6:{price:65000,kv:true}  },
+};
+
 // ── Payroll ───────────────────────────────────────────────────────────────────
 
 export const PAYROLL = {

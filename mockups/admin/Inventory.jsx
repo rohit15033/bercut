@@ -10,6 +10,8 @@
  *   movementLog
  * Production API:
  *   GET /api/inventory?branch_id=
+ *   GET /api/inventory/menu?branch_id= — returns beverage+product items with price + kiosk_visible
+ *   PUT /api/inventory/menu?branch_id= — update prices and visibility for a branch
  *   GET /api/inventory/movements?item_id=&branch_id=&from=&to=
  *   POST /api/inventory/distribute { item_id, from: 'head_office', to_branch_id, qty }
  * Feeds into: —
@@ -20,8 +22,8 @@
  * Reference prompt: _ai/prompting-guide.md Section 07
  */
 
-import { useState } from 'react';
-import { C, INVENTORY, INV_BRANCH_COLS, fmt } from './data.js';
+import { useState, Fragment } from 'react';
+import { C, INVENTORY, INV_BRANCH_COLS, MENU_CONFIG, fmt } from './data.js';
 
 const CATS = [
   { key: 'all',                label: 'All'         },
@@ -225,12 +227,199 @@ function DistributeModal({ items, onConfirm, onClose }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const MENU_BRANCHES  = INV_BRANCH_COLS.filter(c => !c.isHO);
+const INV_TYPES = [
+  { key: 'beverage',           label: 'Beverage',    color: '#2563EB', bg: '#EFF6FF' },
+  { key: 'product',            label: 'Product',     color: '#9333EA', bg: '#F3E8FF' },
+  { key: 'service_consumable', label: 'Consumable',  color: '#D97706', bg: '#FFFBEB' },
+];
+
+// ── Add / Edit item modal ─────────────────────────────────────────────────────
+function ItemModal({ item, onSave, onClose }) {
+  const isNew = !item;
+  const [form, setForm] = useState(
+    item
+      ? { name: item.name, cat: item.cat, unit: item.unit, threshold: item.threshold }
+      : { name: '', cat: 'beverage', unit: 'pcs', threshold: 10 }
+  );
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const valid = form.name.trim() && form.unit.trim() && form.threshold > 0;
+
+  const LS = { display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: C.muted, marginBottom: 5 };
+  const INP = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + C.border, fontSize: 13, color: C.text, boxSizing: 'border-box' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="admin-card" style={{ width: 440, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: C.text }}>
+            {isNew ? 'New Inventory Item' : 'Edit Item'}
+          </div>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: C.surface, color: C.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={LS}>Item Name</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)} autoFocus
+              placeholder="e.g. Mineral Water (600ml)"
+              style={{ ...INP, border: '1.5px solid ' + (form.name.trim() ? C.border : '#FECACA') }} />
+          </div>
+
+          <div>
+            <label style={LS}>Type</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {INV_TYPES.map(t => (
+                <button key={t.key} onClick={() => set('cat', t.key)}
+                  style={{ flex: 1, padding: '9px 8px', borderRadius: 8, border: '1.5px solid ' + (form.cat === t.key ? t.color : C.border), background: form.cat === t.key ? t.bg : C.white, color: form.cat === t.key ? t.color : C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer', transition: 'all 0.12s' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {form.cat === 'service_consumable' && (
+              <div style={{ marginTop: 6, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
+                Consumables are used internally per service. They won't appear on the kiosk menu.
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={LS}>Unit</label>
+              <input value={form.unit} onChange={e => set('unit', e.target.value)}
+                placeholder="pcs / box / roll / ml"
+                style={{ ...INP, border: '1.5px solid ' + (form.unit.trim() ? C.border : '#FECACA') }} />
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>How stock is counted</div>
+            </div>
+            <div>
+              <label style={LS}>Low-Stock Alert</label>
+              <input type="number" value={form.threshold} min={1}
+                onChange={e => set('threshold', parseInt(e.target.value) || 1)}
+                style={{ ...INP }} />
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Warn when stock ≤ this</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: '11px', borderRadius: 9, background: C.surface, color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={() => valid && onSave(form)} disabled={!valid}
+            style={{ flex: 2, padding: '11px', borderRadius: 9, background: valid ? C.topBg : C.surface2, color: valid ? C.white : C.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 14, border: 'none', cursor: valid ? 'pointer' : 'not-allowed', transition: 'background 0.15s' }}>
+            {isNew ? 'Add Item' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+const SELLABLE_ITEMS = INVENTORY.filter(i => i.cat === 'beverage' || i.cat === 'product');
+
+// ── Menu branch config panel (expands inline under each item row) ──────────────
+function MenuBranchConfigRow({ item, menuPrices, setMenuField, onClose }) {
+  const [saved, setSaved] = useState(false);
+  function handleSave() { setSaved(true); setTimeout(() => { setSaved(false); onClose(); }, 1000); }
+
+  return (
+    <div style={{ gridColumn: '1 / -1', padding: '16px 18px 18px', background: C.bg, borderTop: '1px solid ' + C.surface, borderBottom: '1px solid ' + C.surface }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: C.muted, letterSpacing: '0.1em', marginBottom: 14 }}>
+        Per-Branch Price & Kiosk Visibility — {item.name}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', marginBottom: 16 }}>
+        {MENU_BRANCHES.map(b => {
+          const cfg = menuPrices[b.key]?.[item.id] ?? { price: 0, kv: false };
+          const isOn = cfg.kv;
+          return (
+            <div key={b.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 9, background: isOn ? C.white : C.surface2, border: '1px solid ' + (isOn ? C.border : C.surface2), transition: 'all 0.15s' }}>
+
+              {/* Kiosk visible toggle */}
+              <div onClick={() => setMenuField(b.key, item.id, 'kv', !isOn)}
+                style={{ width: 34, height: 19, borderRadius: 10, background: isOn ? C.topBg : C.muted, position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s' }}>
+                <div style={{ position: 'absolute', top: 2, left: isOn ? 17 : 2, width: 15, height: 15, borderRadius: '50%', background: C.white, transition: 'left 0.15s' }} />
+              </div>
+
+              {/* Branch name */}
+              <span style={{ fontSize: 13, fontWeight: 600, color: isOn ? C.text : C.muted, minWidth: 72, flexShrink: 0 }}>{b.label}</span>
+
+              {/* Price input — only when visible */}
+              {isOn ? (
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, borderRadius: 7, border: '1.5px solid ' + (cfg.price ? C.topBg : C.border), overflow: 'hidden', background: C.white }}>
+                  <span style={{ padding: '0 6px', fontSize: 10, color: C.muted, background: C.surface, borderRight: '1px solid ' + C.border, whiteSpace: 'nowrap', lineHeight: '30px' }}>Rp</span>
+                  <input type="number" value={cfg.price || ''} min={0} step={1000}
+                    onChange={e => setMenuField(b.key, item.id, 'price', parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    style={{ flex: 1, padding: '6px 6px', border: 'none', fontSize: 12, color: cfg.price ? C.text : C.muted, background: 'transparent', minWidth: 0, fontFamily: "'Inter', sans-serif", fontWeight: 700 }} />
+                </div>
+              ) : (
+                <span style={{ fontSize: 11, color: C.muted, flex: 1, fontStyle: 'italic' }}>Not on kiosk at this branch</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <button onClick={handleSave}
+          style={{ padding: '7px 16px', borderRadius: 7, background: saved ? '#16A34A' : C.topBg, color: C.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}>
+          {saved ? '✓ Saved' : 'Save Config'}
+        </button>
+        <button onClick={onClose}
+          style={{ padding: '7px 14px', borderRadius: 7, background: 'transparent', color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + C.border, cursor: 'pointer' }}>
+          Cancel
+        </button>
+        <span style={{ fontSize: 11, color: C.muted, marginLeft: 4 }}>
+          Saves to <code style={{ fontFamily: 'monospace', background: C.surface, padding: '1px 4px', borderRadius: 3 }}>inventory_stock</code> via PUT /api/inventory/menu?branch_id=
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function Inventory() {
-  const [catFilter,    setCatFilter]    = useState('all');
-  const [activeTab,    setActiveTab]    = useState('stock');
-  const [items,        setItems]        = useState(INVENTORY.map(i => ({ ...i })));
-  const [movementLog,  setMovementLog]  = useState(INIT_MOVEMENT_LOG);
+  const [catFilter,     setCatFilter]     = useState('all');
+  const [activeTab,     setActiveTab]     = useState('stock');
+  const [items,         setItems]         = useState(INVENTORY.map(i => ({ ...i })));
+  const [movementLog,   setMovementLog]   = useState(INIT_MOVEMENT_LOG);
   const [showDistModal, setShowDistModal] = useState(false);
+
+  // Items tab state
+  const [itemModal,    setItemModal]    = useState(null); // null | 'new' | item object
+  const [itemsCatFilter, setItemsCatFilter] = useState('all');
+
+  function handleSaveItem(form) {
+    if (itemModal === 'new') {
+      setItems(prev => [...prev, { ...form, id: Date.now(), isActive: true,
+        s:0, ca:0, u:0, ul:0, sa:0, d:0, ho:0 }]);
+    } else {
+      setItems(prev => prev.map(x => x.id === itemModal.id ? { ...x, ...form } : x));
+    }
+    setItemModal(null);
+  }
+  function toggleItemActive(id) {
+    setItems(prev => prev.map(x => x.id === id ? { ...x, isActive: !x.isActive } : x));
+  }
+
+  // Menu tab state
+  const [menuPrices, setMenuPrices] = useState(
+    Object.fromEntries(
+      Object.entries(MENU_CONFIG).map(([bk, cfg]) => [
+        bk,
+        Object.fromEntries(Object.entries(cfg).map(([id, v]) => [id, { ...v }]))
+      ])
+    )
+  );
+  const [expandedMenuItem, setExpandedMenuItem] = useState(null);
+
+  function setMenuField(branchKey, itemId, field, val) {
+    setMenuPrices(prev => ({
+      ...prev,
+      [branchKey]: { ...prev[branchKey], [itemId]: { ...prev[branchKey][itemId], [field]: val } }
+    }));
+  }
+  function toggleMenuItem(id) { setExpandedMenuItem(v => v === id ? null : id); }
 
   const filtered      = catFilter === 'all' ? items : items.filter(i => i.cat === catFilter);
   const lowStockItems = items.filter(item => BRANCH_COLS.some(col => item[col.key] <= item.threshold));
@@ -293,6 +482,13 @@ export default function Inventory() {
       {showDistModal && (
         <DistributeModal items={items} onConfirm={handleDistribute} onClose={() => setShowDistModal(false)} />
       )}
+      {itemModal && (
+        <ItemModal
+          item={itemModal === 'new' ? null : itemModal}
+          onSave={handleSaveItem}
+          onClose={() => setItemModal(null)}
+        />
+      )}
 
       {/* Page header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -324,13 +520,101 @@ export default function Inventory() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid ' + C.border, marginBottom: 20 }}>
-        {[{ key: 'stock', label: 'Stock Levels' }, { key: 'log', label: 'Movement Log' }].map(t => (
+        {[{ key: 'items', label: 'Items' }, { key: 'stock', label: 'Stock Levels' }, { key: 'log', label: 'Movement Log' }].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{ padding: '10px 20px', background: 'none', border: 'none', borderBottom: activeTab === t.key ? '2px solid ' + C.topBg : '2px solid transparent', fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 14, color: activeTab === t.key ? C.text : C.muted, cursor: 'pointer', transition: 'all 0.15s', marginBottom: -1 }}>
             {t.label}
           </button>
         ))}
       </div>
+
+      {/* ── Items tab ── */}
+      {activeTab === 'items' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[{ key: 'all', label: 'All' }, ...INV_TYPES].map(t => (
+                <button key={t.key} onClick={() => setItemsCatFilter(t.key)}
+                  style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid ' + (itemsCatFilter === t.key ? C.topBg : C.border), background: itemsCatFilter === t.key ? C.topBg : 'transparent', color: itemsCatFilter === t.key ? C.white : C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setItemModal('new')}
+              style={{ padding: '9px 16px', borderRadius: 8, background: C.topBg, color: C.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+              + New Item
+            </button>
+          </div>
+
+          <div className="admin-card" style={{ overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.6fr 0.9fr 0.7fr 0.9fr', padding: '10px 18px', borderBottom: '1px solid ' + C.surface }}>
+              {['Item Name', 'Type', 'Unit', 'Low-Stock Alert', 'Status', ''].map((h, i) => (
+                <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.muted }}>{h}</div>
+              ))}
+            </div>
+            {(itemsCatFilter === 'all' ? items : items.filter(i => i.cat === itemsCatFilter)).map((item, i, arr) => {
+              const tm = INV_TYPES.find(t => t.key === item.cat) || INV_TYPES[0];
+              return (
+                <Fragment key={item.id}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.6fr 0.9fr 0.7fr 0.9fr', padding: '12px 18px', borderBottom: i < arr.length - 1 ? '1px solid ' + C.surface : 'none', alignItems: 'center', opacity: item.isActive ? 1 : 0.45, transition: 'opacity 0.15s, background 0.1s', animation: `fadeUp 0.2s ease ${i * 0.025}s both` }}
+                    onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+
+                    <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: C.text }}>{item.name}</div>
+
+                    <div><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: tm.bg, color: tm.color }}>{tm.label}</span></div>
+
+                    <div style={{ fontSize: 13, color: C.text2 }}>{item.unit}</div>
+
+                    <div style={{ fontSize: 13, color: C.text2 }}>{item.threshold} {item.unit}</div>
+
+                    <div>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: item.isActive ? '#F0FDF4' : C.surface2, color: item.isActive ? '#16A34A' : C.muted }}>
+                        {item.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      {(item.cat === 'beverage' || item.cat === 'product') && (() => {
+                        const visibleCount = MENU_BRANCHES.filter(b => menuPrices[b.key]?.[item.id]?.kv).length;
+                        const pricedCount  = MENU_BRANCHES.filter(b => menuPrices[b.key]?.[item.id]?.kv && menuPrices[b.key]?.[item.id]?.price > 0).length;
+                        const hasConfig    = visibleCount > 0;
+                        return (
+                          <button onClick={() => toggleMenuItem(item.id)}
+                            style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid ' + (hasConfig ? '#2563EB' : C.border), background: hasConfig ? '#EFF6FF' : 'transparent', color: hasConfig ? '#2563EB' : C.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {hasConfig ? `Kiosk: ${visibleCount}b · ${pricedCount} priced` : 'Kiosk Config'}
+                          </button>
+                        );
+                      })()}
+                      <button onClick={() => setItemModal(item)}
+                        style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid ' + C.border, background: 'transparent', color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                        Edit
+                      </button>
+                      <button onClick={() => toggleItemActive(item.id)}
+                        style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid ' + (item.isActive ? '#FECACA' : C.border), background: 'transparent', color: item.isActive ? C.danger : C.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                        {item.isActive ? 'Deactivate' : 'Restore'}
+                      </button>
+                    </div>
+                  </div>
+                  {(item.cat === 'beverage' || item.cat === 'product') && expandedMenuItem === item.id && (
+                    <MenuBranchConfigRow
+                      item={item}
+                      menuPrices={menuPrices}
+                      setMenuField={setMenuField}
+                      onClose={() => setExpandedMenuItem(null)}
+                    />
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
+            Deactivated items are hidden from the kiosk and stock views but kept for historical records.
+            Beverages and products have a <strong>Kiosk Config</strong> button to set per-branch pricing and visibility.
+          </div>
+        </>
+      )}
 
       {/* ── Stock Levels tab ── */}
       {activeTab === 'stock' && (

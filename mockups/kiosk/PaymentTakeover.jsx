@@ -3,7 +3,8 @@
  *
  * What it does: Full-screen payment overlay (triggered after barber taps "Complete" in StaffPanel) that shows order summary, per-person tip selection, QRIS/card payment method, and leads into a review screen.
  * State managed: booking (full booking object with cartItems, groupItems, name, barber, slot, total), onDone
- * Production API: POST /api/payments (replaces the setPaid mock); GET /api/bookings/:id for order details
+ * Production API: POST /api/payments (replaces the setPaid mock); GET /api/bookings/:id for order details;
+ *   GET /api/feedback-tags (fetched at kiosk boot; FEEDBACK_TAGS in mockup is stand-in)
  * Feeds into: Welcome (onDone resets to idle) via ReviewScreen intermediate
  *
  * VISUAL PROTOTYPE — no backend calls.
@@ -182,10 +183,70 @@ function ReceiptScreen({ booking, grand, onNext }) {
   );
 }
 
+// ── Payment Failed Screen ─────────────────────────────────────────────────────
+function PaymentFailedScreen({ method, onRetry, onSwitchMethod, onContactStaff }) {
+  const [staffNotified, setStaffNotified] = useState(false);
+
+  function handleContactStaff() {
+    setStaffNotified(true);
+    // Production: emit SSE client_payment_failed event to LiveMonitor + AdminPanel
+    onContactStaff();
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: C.topBg, zIndex: 999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'clamp(24px,4vw,56px)', textAlign: 'center' }}>
+      {/* Icon */}
+      <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#2a0a0a', border: '2px solid #7f1d1d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, marginBottom: 28 }}>
+        ✕
+      </div>
+
+      {/* Heading */}
+      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 'clamp(22px,3.2vw,32px)', fontWeight: 800, color: '#FFFFFF', marginBottom: 8 }}>
+        Payment Unsuccessful
+      </div>
+      <div style={{ fontSize: 'clamp(13px,1.6vw,16px)', color: '#888', marginBottom: 6 }}>
+        Pembayaran tidak berhasil
+      </div>
+      <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: '#555', marginBottom: 48, maxWidth: 400 }}>
+        {method === 'qris' ? 'QRIS transaction could not be completed.' : 'Card terminal did not confirm payment.'}{' '}
+        Your booking is still held — no charge has been made.
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxWidth: 400 }}>
+        {/* Retry */}
+        <button onClick={onRetry}
+          style={{ width: '100%', padding: 'clamp(16px,2.2vh,20px)', borderRadius: 14, background: C.accent, color: C.accentText, fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(15px,1.8vw,18px)', fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'opacity 0.15s' }}>
+          Try Again · Coba Lagi
+        </button>
+
+        {/* Switch method */}
+        <button onClick={onSwitchMethod}
+          style={{ width: '100%', padding: 'clamp(14px,2vh,18px)', borderRadius: 14, background: 'transparent', color: '#FFFFFF', fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(14px,1.6vw,16px)', fontWeight: 600, border: '1.5px solid #333', cursor: 'pointer', transition: 'border-color 0.15s' }}>
+          {method === 'qris' ? 'Try Card Instead · Coba Kartu' : 'Try QRIS Instead · Coba QRIS'}
+        </button>
+
+        {/* Contact staff */}
+        <button onClick={handleContactStaff} disabled={staffNotified}
+          style={{ width: '100%', padding: 'clamp(14px,2vh,18px)', borderRadius: 14, background: staffNotified ? '#1a2a1a' : '#1a1a18', color: staffNotified ? '#6fcf6f' : '#DC2626', fontFamily: "'DM Sans', sans-serif", fontSize: 'clamp(14px,1.6vw,16px)', fontWeight: 700, border: '1.5px solid ' + (staffNotified ? '#166534' : '#7f1d1d'), cursor: staffNotified ? 'default' : 'pointer', transition: 'all 0.2s' }}>
+          {staffNotified ? '✓ Staff Notified — Please Wait' : '⚠ Contact Staff · Hubungi Staff'}
+        </button>
+      </div>
+
+      {!staffNotified && (
+        <div style={{ marginTop: 24, fontSize: 'clamp(10px,1.2vw,12px)', color: '#444', maxWidth: 380 }}>
+          Staff can complete payment manually from the admin panel. Your queue position is held.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Payment Takeover ──────────────────────────────────────────────────────────
 export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUsed = 0, cashTotal = null, onDone, tipPresets = TIPS, branchName = 'Bercut' }) {
   const [method, setMethod] = useState(null);
-  const [phase, setPhase] = useState("payment"); // 'payment' | 'receipt' | 'review'
+  const [phase, setPhase] = useState("payment"); // 'payment' | 'failed' | 'receipt' | 'review'
+  const [failSimulate, setFailSimulate] = useState(false);
 
   // Per-booking tips
   const isGroup = booking.groupItems && booking.groupItems.length > 0;
@@ -223,6 +284,14 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
 
   if (phase === "review")  return <ReviewScreen booking={booking} grand={grand} onDone={onDone} />;
   if (phase === "receipt") return <ReceiptScreen booking={booking} grand={grand} onNext={() => setPhase("review")} />;
+  if (phase === "failed")  return (
+    <PaymentFailedScreen
+      method={method}
+      onRetry={() => setPhase("payment")}
+      onSwitchMethod={() => { setMethod(method === "qris" ? "card" : "qris"); setPhase("payment"); }}
+      onContactStaff={() => {}}
+    />
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.topBg, zIndex: 999, display: "flex", flexDirection: "column" }}>
@@ -455,9 +524,19 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
                 </div>
               </div>
 
-              <button onClick={() => setPhase("receipt")} disabled={!method} style={{ width: "100%", background: method ? C.accent : C.surface2, color: method ? C.accentText : C.muted, padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: method ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.2s" }}>
+              <button onClick={() => setPhase(failSimulate ? "failed" : "receipt")} disabled={!method}
+                style={{ width: "100%", background: method ? (failSimulate ? "#7f1d1d" : C.accent) : C.surface2, color: method ? (failSimulate ? "#fca5a5" : C.accentText) : C.muted, padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: method ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.2s" }}>
                 {method === "qris" ? "Confirm QRIS Payment ✓" : method === "card" ? "Confirm Card Payment ✓" : "Select Payment Method"}
               </button>
+
+              {/* Dev toggle — simulate Xendit failure */}
+              <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <div onClick={() => setFailSimulate(v => !v)}
+                  style={{ width: 32, height: 18, borderRadius: 9, background: failSimulate ? "#7f1d1d" : "#2a2a28", position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+                  <div style={{ position: "absolute", top: 2, left: failSimulate ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: failSimulate ? "#fca5a5" : "#555", transition: "left 0.2s" }} />
+                </div>
+                <span style={{ fontSize: 10, color: "#444", fontFamily: "'DM Sans',sans-serif" }}>Simulate failure</span>
+              </div>
             </>
           )}
         </div>

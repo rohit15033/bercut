@@ -26,7 +26,7 @@
  */
 
 import { useState } from 'react';
-import { C, BRANCHES, EXPENSE_CATEGORIES, INVENTORY, INV_ITEM_TYPES, SERVICE_CATALOGUE, SVC_CAT_META, OVERTIME_COMM_CONFIG } from './data.js';
+import { C, BRANCHES, EXPENSE_CATEGORIES, SERVICE_CATALOGUE, SVC_CAT_META, OVERTIME_COMM_CONFIG } from './data.js';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -76,108 +76,50 @@ function Stepper({ value, onChange, min, max, unit }) {
 // ── Catalog tab ───────────────────────────────────────────────────────────────
 
 function CatalogTab() {
-  const [cats,        setCats]        = useState(EXPENSE_CATEGORIES.map(c => ({ ...c })));
-  const [editCatId,   setEditCatId]   = useState(null);
-  const [editCatLbl,  setEditCatLbl]  = useState('');
-  const [items,       setItems]       = useState(INVENTORY.map(i => ({ ...i })));
-  const [invFilter,   setInvFilter]   = useState('all');
-  const [editItemId,  setEditItemId]  = useState(null);
-  const [editItemForm,setEditItemForm]= useState({});
-
-  const filteredItems = invFilter === 'all' ? items : items.filter(i => i.cat === invFilter);
+  const [cats,       setCats]       = useState(EXPENSE_CATEGORIES.map(c => ({ ...c })));
+  const [editCatId,  setEditCatId]  = useState(null);
+  const [editCatLbl, setEditCatLbl] = useState('');
 
   function saveCatEdit(id) {
     setCats(c => c.map(x => x.id === id ? { ...x, label: editCatLbl } : x));
     setEditCatId(null);
   }
   function toggleCat(id) { setCats(c => c.map(x => x.id === id ? { ...x, isActive: !x.isActive } : x)); }
-  function startEditItem(item) { setEditItemId(item.id); setEditItemForm({ name: item.name, cat: item.cat, unit: item.unit, threshold: item.threshold }); }
-  function saveItemEdit(id) { setItems(it => it.map(x => x.id === id ? { ...x, ...editItemForm } : x)); setEditItemId(null); }
-  function toggleItem(id) { setItems(it => it.map(x => x.id === id ? { ...x, isActive: !x.isActive } : x)); }
 
   const tdStyle = { fontSize: 13, padding: '11px 14px', color: C.text, borderBottom: '1px solid ' + C.surface, verticalAlign: 'middle' };
   const thStyle = { fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.muted, padding: '8px 14px', borderBottom: '1px solid ' + C.surface };
 
   return (
     <div>
-      {/* Expense Categories */}
-      <div style={{ marginBottom: 32 }}>
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: C.text }}>Expense Categories</div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Rename or deactivate categories here. New categories are created from the Expenses form.</div>
-        </div>
-        <div className="admin-card" style={{ overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['Label','Key','Badge','Active',''].map((h,i) => <th key={i} style={{ ...thStyle, textAlign: i >= 3 ? 'center' : 'left' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {cats.map(cat => (
-                <tr key={cat.id} style={{ opacity: cat.isActive ? 1 : 0.5, transition: 'opacity 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <td style={tdStyle}>
-                    {editCatId === cat.id
-                      ? <input value={editCatLbl} onChange={e => setEditCatLbl(e.target.value)} autoFocus style={{ padding: '5px 9px', borderRadius: 6, border: '1.5px solid ' + C.topBg, fontSize: 13, color: C.text, width: 160 }} />
-                      : <span style={{ fontWeight: 600 }}>{cat.label}</span>}
-                  </td>
-                  <td style={{ ...tdStyle, fontFamily: "'Inter', sans-serif", fontSize: 11, color: C.muted }}>{cat.key}</td>
-                  <td style={tdStyle}><span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, background: cat.bg, color: cat.color }}>{cat.label}</span></td>
-                  <td style={{ ...tdStyle, textAlign: 'center' }}><Toggle checked={cat.isActive} onChange={() => toggleCat(cat.id)} /></td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}>
-                    {editCatId === cat.id
-                      ? <button onClick={() => saveCatEdit(cat.id)} style={{ padding: '4px 12px', borderRadius: 6, background: C.topBg, color: C.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Save</button>
-                      : <button onClick={() => { setEditCatId(cat.id); setEditCatLbl(cat.label); }} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid ' + C.border, background: 'transparent', color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Edit</button>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: C.text }}>Expense Categories</div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Rename or deactivate categories. New categories are created inline from the Expenses form.</div>
       </div>
-
-      {/* Inventory Item Master */}
-      <div>
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: C.text }}>Inventory Item Master List</div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Rename, reclassify, or deactivate items. New items are created from Inventory → Receive Stock.</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          {[{ key:'all', label:'All' }, ...INV_ITEM_TYPES].map(t => (
-            <button key={t.key} onClick={() => setInvFilter(t.key)}
-              style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid ' + (invFilter === t.key ? C.topBg : C.border), background: invFilter === t.key ? C.topBg : 'transparent', color: invFilter === t.key ? C.white : C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="admin-card" style={{ overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['Item Name','Type','Unit','Low-Stock Alert','Active',''].map((h,i) => <th key={i} style={{ ...thStyle, textAlign: i >= 4 ? 'center' : 'left' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {filteredItems.map(item => {
-                const tm = INV_ITEM_TYPES.find(t => t.key === item.cat) || INV_ITEM_TYPES[0];
-                const isEditing = editItemId === item.id;
-                return (
-                  <tr key={item.id} style={{ opacity: item.isActive ? 1 : 0.5, transition: 'opacity 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = C.bg}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td style={tdStyle}>{isEditing ? <input value={editItemForm.name} onChange={e => setEditItemForm(f => ({ ...f, name: e.target.value }))} autoFocus style={{ padding: '5px 9px', borderRadius: 6, border: '1.5px solid ' + C.topBg, fontSize: 13, color: C.text, width: 200 }} /> : <span style={{ fontWeight: 600 }}>{item.name}</span>}</td>
-                    <td style={tdStyle}>{isEditing ? <select value={editItemForm.cat} onChange={e => setEditItemForm(f => ({ ...f, cat: e.target.value }))} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid ' + C.border, fontSize: 12, color: C.text }}>{INV_ITEM_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}</select> : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: tm.bg, color: tm.color }}>{tm.label}</span>}</td>
-                    <td style={tdStyle}>{isEditing ? <input value={editItemForm.unit} onChange={e => setEditItemForm(f => ({ ...f, unit: e.target.value }))} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid ' + C.border, fontSize: 12, color: C.text, width: 60 }} /> : <span style={{ fontSize: 12, color: C.text2 }}>{item.unit}</span>}</td>
-                    <td style={tdStyle}>{isEditing ? <input type="number" value={editItemForm.threshold} onChange={e => setEditItemForm(f => ({ ...f, threshold: parseInt(e.target.value) || 1 }))} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid ' + C.border, fontSize: 12, color: C.text, width: 60 }} /> : <span style={{ fontSize: 12, color: C.text2 }}>{item.threshold} {item.unit}</span>}</td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}><Toggle checked={item.isActive} onChange={() => toggleItem(item.id)} /></td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      {isEditing
-                        ? <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                            <button onClick={() => setEditItemId(null)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + C.border, background: 'transparent', color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
-                            <button onClick={() => saveItemEdit(item.id)} style={{ padding: '4px 12px', borderRadius: 6, background: C.topBg, color: C.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Save</button>
-                          </div>
-                        : <button onClick={() => startEditItem(item)} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid ' + C.border, background: 'transparent', color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Edit</button>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <div className="admin-card" style={{ overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>{['Label','Key','Badge','Active',''].map((h,i) => <th key={i} style={{ ...thStyle, textAlign: i >= 3 ? 'center' : 'left' }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {cats.map(cat => (
+              <tr key={cat.id} style={{ opacity: cat.isActive ? 1 : 0.5, transition: 'opacity 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <td style={tdStyle}>
+                  {editCatId === cat.id
+                    ? <input value={editCatLbl} onChange={e => setEditCatLbl(e.target.value)} autoFocus style={{ padding: '5px 9px', borderRadius: 6, border: '1.5px solid ' + C.topBg, fontSize: 13, color: C.text, width: 160 }} />
+                    : <span style={{ fontWeight: 600 }}>{cat.label}</span>}
+                </td>
+                <td style={{ ...tdStyle, fontFamily: "'Inter', sans-serif", fontSize: 11, color: C.muted }}>{cat.key}</td>
+                <td style={tdStyle}><span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, background: cat.bg, color: cat.color }}>{cat.label}</span></td>
+                <td style={{ ...tdStyle, textAlign: 'center' }}><Toggle checked={cat.isActive} onChange={() => toggleCat(cat.id)} /></td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                  {editCatId === cat.id
+                    ? <button onClick={() => saveCatEdit(cat.id)} style={{ padding: '4px 12px', borderRadius: 6, background: C.topBg, color: C.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Save</button>
+                    : <button onClick={() => { setEditCatId(cat.id); setEditCatLbl(cat.label); }} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid ' + C.border, background: 'transparent', color: C.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Edit</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -431,6 +373,9 @@ const WA_TEMPLATE_DEFAULTS = {
     'Hei {barber_name}! Ada pelanggan baru untukmu 💈\n\n👤 *{customer_name}*\n🕐 Pukul *{time}*\n💇 {services}\n📋 #{booking_number}\n📍 Bercut {branch}\n\nSiapkan dirimu!',
   barber_escalation:
     'Hei {barber_name} ⚠️ Pelanggan *{customer_name}* sudah menunggu *{wait_minutes} menit*.\n\nSegera mulai layanan!\n\n📋 #{booking_number} · Bercut {branch}',
+  // Ops templates
+  client_not_arrived:
+    'Hei admin! ⚠️ Barber *{barber_name}* melaporkan pelanggan *{customer_name}* belum tiba.\n\n📋 #{booking_number} · Antrian #{queue_position}\n📍 Bercut {branch}\n\nSilakan periksa atau hubungi pelanggan. 🙏',
 };
 
 const WA_CUSTOMER_TEMPLATES = [
@@ -442,6 +387,10 @@ const WA_CUSTOMER_TEMPLATES = [
 const WA_STAFF_TEMPLATES = [
   { key: 'barber_new_booking', label: 'New Booking Notification', icon: '📬', trigger: 'Auto — sent to barber\'s WhatsApp on every new booking confirmed for them',                                          vars: ['{barber_name}','{customer_name}','{time}','{services}','{booking_number}','{branch}'] },
   { key: 'barber_escalation',  label: 'Escalation Reminder',      icon: '🚨', trigger: 'Auto — recurring every N min while barber hasn\'t started. Stops when barber taps Start or admin stops escalation', vars: ['{barber_name}','{customer_name}','{wait_minutes}','{booking_number}','{branch}'] },
+];
+
+const WA_OPS_TEMPLATES = [
+  { key: 'client_not_arrived', label: 'Client Not Arrived Alert', icon: '⚠️', trigger: 'Triggered by barber tap — sent to branch Backoffice Alert Phone when barber reports customer hasn\'t arrived', vars: ['{barber_name}','{customer_name}','{booking_number}','{branch}','{queue_position}'] },
 ];
 
 function TemplateEditor({ group, templates, activeTpl, setActiveTpl, setTemplates }) {
@@ -505,6 +454,7 @@ function WhatsAppTab() {
   const [templates,  setTemplates]  = useState({ ...WA_TEMPLATE_DEFAULTS });
   const [activeCust, setActiveCust] = useState('booking_confirmation');
   const [activeStaff,setActiveStaff]= useState('barber_new_booking');
+  const [activeOps,  setActiveOps]  = useState('client_not_arrived');
   const [testPhone,  setTestPhone]  = useState('');
   const [testState,  setTestState]  = useState('idle');
   const [saved,      setSaved]      = useState(false);
@@ -539,6 +489,7 @@ function WhatsAppTab() {
         {[
           { dot:'#2563EB', event:'Customer books',              msg:'→ Customer gets Booking Confirmation (if phone provided) · Barber gets New Booking Notification' },
           { dot:'#D97706', event:'Slot time passes + threshold',msg:'→ Customer gets Late Reminder (once) · Barber gets Escalation (repeating every N min)' },
+          { dot:'#EA580C', event:'Barber taps "Belum Datang"',  msg:'→ Client Not Arrived alert sent to branch Backoffice Alert Phone' },
           { dot:'#7C3AED', event:'Barber taps Start',           msg:'→ Escalation stops automatically' },
           { dot:'#DC2626', event:'Admin stops escalation',      msg:'→ Escalation cancelled · Barber gets no more messages' },
           { dot:'#16A34A', event:'Payment confirmed',           msg:'→ Customer gets Payment Receipt' },
@@ -628,6 +579,13 @@ function WhatsAppTab() {
         <SectionTitle title="Staff Message Templates"
           sub="Sent to barbers on their registered WhatsApp number. Bahasa Indonesia — barbers don't see English." />
         <TemplateEditor group={WA_STAFF_TEMPLATES} templates={templates} activeTpl={activeStaff} setActiveTpl={setActiveStaff} setTemplates={setTemplates} />
+      </div>
+
+      {/* ── Ops message templates ── */}
+      <div style={{ marginBottom:28 }}>
+        <SectionTitle title="Operations Templates"
+          sub="Sent to the branch Backoffice Alert Phone — configure that number per branch in Branches → Edit → Operations tab." />
+        <TemplateEditor group={WA_OPS_TEMPLATES} templates={templates} activeTpl={activeOps} setActiveTpl={setActiveOps} setTemplates={setTemplates} />
       </div>
 
       {/* ── Escalation settings note ── */}

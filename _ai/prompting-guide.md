@@ -1,55 +1,89 @@
 # Bercut Barber Shop — Antigravity Prompting Guide
-*v1.0 · March 2026 · Confidential*
+*v2.0 · April 2026 · Production Build Phase · Confidential*
 
 ---
 
 ## 01 — How to Use This Guide
 
-This guide contains ready-to-paste prompts for building each module of the Bercut system in Antigravity. Every prompt is self-contained but assumes the Master System Prompt (Section 02) has already been pasted at the start of the session.
+**Phase change:** Mockups are approved. This guide is now structured for **production build**.
+All mockup screens in `mockups/kiosk/` and `mockups/admin/` are the visual contract.
+Antigravity's job is to:
+
+1. Build the PostgreSQL schema (`backend/db/schema.sql`)
+2. Build the Node.js/Express backend (`backend/`)
+3. Build the production React frontend (`frontend/src/apps/`) by taking the mockup code and implementing the backend.
+4. Wire real API calls into the screens that were prototyped as mockups.
+5. **Optimize the kiosk frontend for a 1366 x 768 resolution** (the current kiosk mockups are not built for this, they must be adjusted to fit).
+6. **DO NOT change any UI, UX, or anything else** besides the 1366 x 768 resolution optimization and backend wiring.
+7. Prepare for staging/production deployment on Rumahweb VPS
 
 **Session structure:**
-1. Paste the Master System Prompt (Section 02) — every session, every module, no exceptions
-2. Reference the prototype: "The design follows bercut-kiosk.jsx — same tokens, same component patterns."
-3. Paste the specific feature prompt
-4. Validate colour usage immediately — is yellow used as text on white anywhere? Fix before moving on.
-5. Test on Android touchscreen landscape dimensions and verify layout before declaring a screen done. No code changes needed vs Windows — same PWA, same Chrome, same behaviour.
+1. Paste the Master System Prompt (Section 02) at the start of every session
+2. Follow the Build Phases in order (Section 03)
+3. For each screen/module, read the specific handoff section
+4. Always cross-reference the mockup file listed — it is the visual truth
+5. Always cross-reference `_ai/system-plan.md` Sections 06–07 for schema and API contracts
+6. Test on localhost before declaring a module done
+
+**Source of truth hierarchy:**
+1. `_ai/decisions-log.md` — most recent entry wins
+2. `_ai/system-plan.md` — full schema, API, business rules
+3. `_ai/pre-build-audit.md` — gap analysis and known issues
+4. Mockup JSX files — visual and interaction reference
+5. This file — build instructions and handoff details
 
 ---
 
 ## 02 — Master System Prompt
 
-> Paste this entire block at the start of every new Antigravity session. Without this context, the AI will make wrong assumptions about payment flow, colour usage, and language requirements.
+> Paste this entire block at the start of every new Antigravity session.
 
 ```
 # Bercut Barber Shop — System Context
 
 ## Project
-You are building the Bercut Barber Shop POS and self-service system.
+You are building the production version of the Bercut Barber Shop POS system.
 Bercut is a barbershop chain with 6+ branches in Bali, Indonesia.
-The system has three PWA apps sharing one codebase: Kiosk, Barber App, Admin Dashboard.
+The system has two PWA apps sharing one codebase: Kiosk and Admin Dashboard.
+Barber functions (queue, clock in/out, breaks, start/complete) are accessed
+via the kiosk's PIN-protected BarberPanel — there is no separate barber app.
+
+## What Already Exists
+- Approved mockups in mockups/kiosk/ and mockups/admin/ — these are the visual contract
+- Skeleton backend structure in backend/ (server.js, route files, db/)
+- Skeleton frontend in frontend/src/ (App.jsx, shared/, apps/)
+- Full schema design in _ai/system-plan.md Section 06
+- Full API contract in _ai/system-plan.md Section 07
+- Pre-build audit in _ai/pre-build-audit.md (all 28 items PASS)
+
+## Your Job
+1. Build backend/db/schema.sql from system-plan.md Section 06
+2. Build each backend route from system-plan.md Section 07 API table
+3. Build production frontend screens in frontend/src/apps/ by taking the mockup JSX and implementing the backend.
+4. **Optimize the kiosk frontend for a 1366 x 768 resolution.**
+5. **DO NOT change any UI, UX, or anything else** besides the resolution optimization and backend wiring.
+6. Replace hardcoded mock data with real API calls
+7. Wire SSE for real-time updates
+8. Prepare deployment config in deploy/
 
 ## Tech Stack
-- Frontend: React PWA (all three apps)
+- Frontend: React PWA (Vite build)
 - Backend: Node.js + Express REST API
 - Database: PostgreSQL (self-hosted on Rumahweb VPS — no cloud DB)
-- Real-time: Server-Sent Events (SSE) on the Node.js backend — native browser EventSource API,
-  zero extra cost or infrastructure. Kiosk listens on GET /api/events?branch_id= for booking
-  and payment events.
-- Payments: Xendit Terminal H2H — REST API from Node.js backend to Xendit cloud. Terminal
-  displays payment prompt, customer taps card/QRIS, Xendit sends webhook confirmation back to
-  backend. Internet required for payments (accepted trade-off). BRI is the live Indonesia
-  acquirer; no BRI merchant account needed — funds settle to Xendit Balance T+1. BCA EDC is
-  NOT used. Midtrans is NOT used.
-- Notifications Phase 1: Web Speech API kiosk speaker announcement — completely free, zero setup.
-- Notifications Phase 2: Web Push API via PWA — free, Android Chrome, no per-message cost.
-- IMPORTANT (Meeting 2): No separate Barber App. Barber functions (clock in/out, breaks,
-  start/finish service) are accessed via the kiosk Topbar logo tap → PIN-protected barber panel.
-  The kiosk has two access modes: Admin (full dashboard) and Barber (queue + clock management).
+- Real-time: Server-Sent Events (SSE) — GET /api/events?branch_id=
+- Payments: Xendit Terminal H2H — REST API from backend to Xendit cloud
+- Notifications Phase 1: Web Speech API kiosk speaker (free, zero setup)
+- Notifications Phase 2: Web Push API via PWA (free, Android Chrome)
+- WhatsApp: Fonnte API (Phase 2 — backend/services/notifications.js)
 - Receipts: ESC/POS thermal printer per kiosk
-- Hosting: Rumahweb VPS (Nginx + PM2 + PostgreSQL self-hosted). Vite build outputs to
-  backend/public — Nginx serves from there (single origin, no CORS).
+- Hosting: Rumahweb VPS (Nginx + PM2 + PostgreSQL self-hosted)
 
-## Design Tokens (use these exact values — never deviate)
+## Build output
+- Vite build outputs to backend/public
+- Nginx serves from backend/public (single origin, no CORS)
+- PM2 manages the Node.js process
+
+## Design Tokens (production: frontend/src/shared/tokens.js)
 bg:         #FAFAF8   // warm off-white page background
 surface:    #F2F0EB   // secondary surface, input backgrounds
 surface2:   #ECEAE4   // tertiary surface, disabled states
@@ -65,1117 +99,985 @@ white:      #FFFFFF   // card surfaces
 danger:     #C0272D   // destructive actions only
 
 ## Typography
-Display/Headings: Inter (800 weight) — Barlow Condensed was rejected (too blocky for Bercut brand)
+Display/Headings: Inter (800 weight)
 Body/UI copy:     DM Sans (400/500/600 weight)
 Both loaded via Google Fonts.
 
 ## Colour Rules — CRITICAL
-1. Yellow (#F5E200) is NEVER used as text colour on white/light backgrounds — contrast fails.
+1. Yellow (#F5E200) is NEVER used as text colour on white/light backgrounds.
 2. Yellow ONLY appears as: filled button background, selected card background, booking number hero.
 3. Text ON yellow must always be #111110 (accentText).
 4. Selected card state: background flips to yellow, ALL text inside flips to #111110.
 5. topBg (#111110) is the primary action colour for dark buttons — not yellow.
 
 ## Business Rules
-- Payment model: POSTPAID. Customers never pay during booking. Pay after service at kiosk counter.
-- Payment methods: QRIS and card — both via Xendit Terminal H2H (REST API). NO CASH. NO BCA EDC.
-- Tip: collected at payment time via kiosk. Presets configurable per branch (defaults: Rp 5k/10k/20k/50k/100k) + custom + skip. Individual per barber — NOT pooled.
+- Payment model: POSTPAID. Customers never pay during booking.
+- Payment methods: QRIS and card — both via Xendit Terminal H2H. NO CASH.
+- Tip: collected at payment time. Presets configurable per branch. Individual per barber.
 - Barber triggers payment: when barber taps Complete, kiosk switches to payment mode.
-- Staff panel: triple-tap top-right corner of topbar to open (while barber app doesn't exist yet).
-- No front desk: no cashier role. Kiosk handles booking. Barber app handles queue + payment trigger.
+- Staff panel: triple-tap top-right corner of topbar.
+- No front desk: kiosk handles booking. BarberPanel handles queue + payment trigger.
 - All data is branch-scoped. Every DB query must include branch_id.
-- Booking status lifecycle: confirmed → in_progress → pending_payment → completed | no_show | cancelled
+- Booking lifecycle: confirmed → in_progress → pending_payment → completed | no_show | cancelled
+- Kiosk auth: permanent device token (X-Kiosk-Token header). No login for customers.
+- Admin auth: email + password, JWT.
+- Barber auth: 4–6 digit PIN via kiosk BarberPanel.
 
 ## Languages
-- Kiosk: bilingual — English (primary label) + Bahasa Indonesia (subtitle below each label)
-- Barber App: Bahasa Indonesia only
+- Kiosk: bilingual — English (primary) + Bahasa Indonesia (subtitle)
+- BarberPanel: Bahasa Indonesia only
 - Admin Dashboard: English primary
 
 ## Touch / UX Rules (Kiosk)
+- **Target Resolution: 1366 x 768**. The current mockups need to be optimized for this exact display resolution.
 - Minimum 72px height for all tappable elements
-- Use clamp() for all font sizes and spacing (responsive to any screen size)
-- onClick for all interactions (not onTouchStart — breaks in browser environments)
-- overscroll-behavior: none on body (prevents rubber-band scroll)
-- -webkit-overflow-scrolling: touch on all scrollable containers
-- No hover-only states — must work on touch-only devices
+- clamp() for all font sizes and spacing
+- onClick for all interactions (not onTouchStart)
+- overscroll-behavior: none on body
+- -webkit-overflow-scrolling: touch on scrollable containers
+- No hover-only states
+- No changing any UI, UX, or anything else aside from the 1366 x 768 resolution optimization.
 ```
 
 ---
 
-## 03 — Kiosk: Booking Flow
+## 03 — Build Phases
 
-Customer self-service screens. Already prototyped in `bercut-kiosk.jsx` — use these prompts to rebuild cleanly with real backend connections.
-
-> **Reference file:** The full working prototype is in `bercut-kiosk.jsx`. Use it as the visual and structural reference.
-
----
-
-### Screen 1 — Welcome / Idle Screen
-*Step 0 — No backend needed*
+### Phase 0 — Foundation (do this first, before any screens)
 
 ```
-Build the Bercut kiosk Welcome screen as a React component.
+Build the project foundation for the Bercut system.
 
-## Visual requirements
-- Full viewport height minus topbar (calc(100vh - 56px))
-- Yellow accent bar (5px, #F5E200) at the very top
-- Centered layout with three sections stacked vertically:
-  1. BERCUT BARBERSHOP logo: large Barlow Condensed 900 weight, flanked by 2px vertical
-     dividers, with "SEMINYAK · BALI" tag in yellow below
-  2. Live clock: Barlow Condensed 900, ~88px, letterSpacing -0.04em, updates every second
-     via useEffect/setInterval
-  3. CTA button: full width max 520px, dark (#111110) background, white text,
-     "✂ Mulai Booking / Start Booking", Barlow Condensed 800, 24px
-- Bottom ticker: dark (#111110) bar with scrolling text animation listing branch locations
-  in yellow/dark alternating colours
-- onStart prop called when CTA is tapped
+## 0A. Database Schema
+File: backend/db/schema.sql
 
-## Copy (bilingual)
-Logo: BERCUT / BARBERSHOP
-Tagline: SEMINYAK · BALI
-CTA: Mulai Booking / Start Booking
-Subtitle: Sentuh layar untuk memulai · Touch screen to begin
-Ticker items: BERCUT BARBERSHOP, SEMINYAK, CANGGU, UBUD, ULUWATU, SANUR, DEWI SRI,
-  NO.1 BARBERSHOP IN BALI, BUKA 10:00–20:00
+Read _ai/system-plan.md Section 06 for the complete schema.
+Create ALL tables in FK dependency order:
+  1. branches (include is_head_office, backoffice_alert_phone, escalation columns)
+  2. users + user_permissions
+  3. audit_log
+  4. barbers (include status ENUM, pay_type, base_salary, daily_rate)
+  5. services (include mutex_group, image_url)
+  6. branch_services (composite PK: service_id + branch_id)
+  7. barber_services (composite PK: barber_id + service_id)
+  8. service_consumables (composite PK: service_id + item_id)
+  9. customers (include points_balance, phone_country_code, points_last_activity_at, points_last_expired_at)
+  10. bookings (include source ENUM, group_id, review_tags TEXT[], escalation columns, client_not_arrived_at, payment_trigger_source)
+  11. booking_services (include paid_with_points, bleach_step, bleach_with_color)
+  12. booking_extras
+  13. booking_groups
+  14. tips (include barber_id for individual tracking)
+  15. expense_categories
+  16. expenses (include type ENUM, source ENUM, barber_id, deduct_period, po_id, po_payment_type, po_attribution JSONB)
+  17. purchase_orders
+  18. expense_stock_items
+  19. attendance
+  20. inventory_items
+  21. inventory_stock (include price, kiosk_visible)
+  22. inventory_movements
+  23. chairs + chair_overrides (include resolved_by)
+  24. barber_breaks
+  25. off_records
+  26. point_transactions
+  27. feedback_tags
+  28. payroll_settings (singleton)
+  29. payroll_periods (include commission_from/to, attendance_from/to, tips_from/to)
+  30. payroll_entries (include commission_regular, commission_ot, flat/prorata split columns)
+  31. payroll_adjustments (include is_kasbon, expense_id, deduct_period)
+  32. pax_out_events
+  33. delay_incidents
+  34. kiosk_settings
+  35. kiosk_tokens
+  36. whatsapp_settings (singleton, 6 templates)
 
-## Animations
-- Logo, clock, CTA each fade up with 0.08s stagger (animation: fadeUp 0.3s ease both)
-- Ticker: infinite horizontal scroll animation (translateX 0 → -50%, 20s linear)
-```
+Then create all indexes from system-plan.md.
+Then create backend/db/seed.sql with realistic Bali data.
 
----
+## 0B. Backend Foundation
+Files: backend/server.js, backend/config/db.js, backend/middleware/
 
-### Screen 2 — Service Selection (Step 1)
-*Connects to GET /api/services?branch_id=*
+server.js:
+  - Express app, JSON body parser, CORS (dev only), static serve from public/
+  - Mount all route files under /api/
+  - Error handling middleware
 
-```
-Build the Bercut kiosk Service Selection screen.
+config/db.js:
+  - PostgreSQL pool using node-postgres (pg)
+  - Read DB connection from environment variables
+  - Pool config: max 20 connections
 
-## Layout
-Two-column layout: main content area (flex:1) + right sidebar (width clamp(240px, 28vw, 300px))
-On screens under 768px: stack vertically (sidebar below, max-height 280px)
-Main area scrollable, sidebar fixed height with internal scroll for cart items.
+middleware/auth.js:
+  - JWT verification for admin routes
+  - X-Kiosk-Token verification for kiosk routes
+  - Combined middleware: acceptsKioskOrAdmin()
 
-## Main area
-- Step header: eyebrow "Pilih layanan Anda", title "Choose Your Service" in Barlow Condensed 900 ~40px
-- Category filter pills: Semua, Haircut, Beard, Color, Package — pill style,
-  active = dark (#111110) bg white text, inactive = white bg with border
-- Service card grid: auto-fill minmax(clamp(200px,28vw,300px), 1fr), gap clamp(10px,1.4vw,16px)
+middleware/branchScope.js:
+  - Extracts branch_id from query, body, or kiosk token
+  - Attaches to req.branchId
+  - Rejects requests without branch_id where required
 
-## Service card (unselected state)
-- White background, 1.5px border (#DDDBD4), border-radius 14px, min-height 72px,
-  padding clamp(14px,1.8vw,20px)
-- Badge (if present): dark background, yellow text, top-left, font-size 10px
-- Service name: Barlow Condensed 800, ~22px, color #111110
-- Indonesian name: DM Sans 12px, color #88887e
-- Bottom row: duration left (⏱ Xmin), price right (Barlow Condensed 800, ~20px, color #111110)
+## 0C. Frontend Foundation
+Files: frontend/src/shared/
 
-## Service card (selected state — class "sel")
-- Background: #F5E200 (yellow), border: #F5E200
-- ALL text: #111110 (accentText) — name, nameId, duration, price ALL flip to dark
-- Checkmark circle top-right: #111110 background, #F5E200 check mark, 22px circle
-- Badge: #111110 background, #F5E200 text (inverted)
-- NEVER leave any text in muted/grey colour on yellow — contrast fails
+tokens.js — export all design tokens from Section 02
+api.js — base fetch wrapper:
+  - Reads VITE_API_URL from env (default: '' for same-origin)
+  - Adds X-Kiosk-Token header when in kiosk mode
+  - Adds Authorization: Bearer <jwt> when in admin mode
+  - Returns parsed JSON, throws on non-2xx
+  - Exports: get(url), post(url, body), patch(url, body), put(url, body), del(url)
 
-## Sidebar cart
-- Label: "Pilihan Anda" uppercase muted
-- Empty state: scissors icon + "Belum ada pilihan / No services selected"
-- Cart items: name + price left, × remove button right (min 44px touch target)
-- Footer (when cart has items): duration row, Total row with Barlow Condensed 900 price
-- Buttons: "Lanjutkan →" (primary dark, disabled if cart empty), "← Kembali" (ghost)
+useSSE.js — EventSource hook:
+  - Accepts branch_id param
+  - Connects to /api/events?branch_id=
+  - Auto-reconnects on error (exponential backoff)
+  - Returns { lastEvent, isConnected }
+  - Callback-based: onEvent(type, callback)
 
-## State
-cart: number[] (array of service IDs)
-toggle(id): add if not present, remove if present
-Filtered services by active category
-Props: cart, setCart, onNext, onBack
-```
+App.jsx — root router (React Router):
+  - /kiosk → KioskApp
+  - /admin → AdminApp
+  - /mockup/kiosk → existing mockup BercutKiosk (keep for reference)
+  - /mockup/admin → existing mockup BercutAdmin (keep for reference)
 
----
+## 0D. SSE Endpoint
+File: backend/routes/events.js
 
-### Screen 3 — Barber Selection (Step 2)
-*Connects to GET /api/barbers?branch_id=*
+GET /api/events?branch_id=
+  - Validates branch_id
+  - Sets headers: Content-Type text/event-stream, Cache-Control no-cache,
+    Connection keep-alive, X-Accel-Buffering no (for Nginx)
+  - Stores client connection in a Map keyed by branch_id
+  - On close: remove from Map
+  - Export: emitEvent(branchId, type, data) — broadcasts to all clients on that branch
 
-```
-Build the Bercut kiosk Barber Selection screen.
+Event types to support:
+  new_booking, booking_started, payment_trigger, booking_cancelled,
+  kiosk_settings_update, client_not_arrived, payment_complete
 
-## Layout
-Full scrollable page. Grid of barber cards: auto-fill minmax(clamp(180px,22vw,240px),1fr)
-Below grid: full-width "Any barber" option card.
-Footer: back button (width 160px) + primary continue button.
+## 0E. Kiosk Registration + Webhook Endpoints
+File: backend/routes/kiosk.js
 
-## Barber card (unselected)
-- White bg, border #DDDBD4, border-radius 14px, padding clamp(16px,2vw,24px), text-align center
-- Avatar: SVG circle, 80×80px, bg #ECEAE4 with subtle head/shoulder silhouette shapes
-  Shows first 2 letters of name in Barlow Condensed 900 inside the circle.
-  In production: replace SVG with <img> of barber's actual photo, object-fit cover, border-radius 50%
-- Name: Barlow Condensed 900, ~26px
-- Specialty: DM Sans 12px, muted
-- Stats row: ★ rating | vertical divider | cut count — Barlow Condensed 800 18px each
-- "Next: HH:MM" pill: #F2F0EB background, muted text
+POST /api/kiosk/register
+  - Validates X-Kiosk-Token header against kiosk_tokens table
+  - Returns { branch_id, branch_name, settings } including merged kiosk_settings
+  - Updates kiosk_tokens.last_seen_at
+  - 401 if token missing, invalid, or revoked (is_active=false)
 
-## Barber card (selected)
-- Background: #F5E200, border: #F5E200
-- ALL text flips to #111110 (accentText)
-- Avatar SVG: bg flips to #111110, initials flip to #F5E200
-- Stats text: #111110
-- Next pill: semi-transparent #111110 bg, #111110 text
-- White checkmark circle (22px) overlaid bottom-right of avatar
+File: backend/routes/payments.js (webhook)
 
-## "Any barber" card
-- Full-width card below the grid
-- 🎲 emoji in circle avatar (56px), left-aligned with text
-- Title: "Kapster Mana Saja / Any Available Barber" Barlow Condensed 800
-- Subtitle: "Antrian tercepat · Fastest available queue"
-- Same selected state as barber cards
-
-## Data shape
-barber: { id, name, spec, specId, slots: string[], rating: number, cuts: number }
-Props: barber (selected), setBarber, onNext, onBack
-```
-
----
-
-### Screen 4 — Time Slot (Step 3)
-*Connects to GET /api/slots?barber_id=&date=*
-
-```
-Build the Bercut kiosk Time Slot selection screen.
-
-## Layout
-Full scrollable page. Step header. Slot grid. Selected slot confirmation card. Navigation buttons.
-
-## Step header
-Eyebrow: "Pilih waktu"
-Title: "Pick Your Time" — Barlow Condensed 900 ~40px
-Subtitle: "{barber.name} · {today in Indonesian long format}"
-
-## Slot grid
-Section label: "Slot Tersedia / Available Slots" uppercase muted 11px
-Flex wrap, gap clamp(8px,1.2vw,14px)
-Each slot button:
-- padding clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)
-- Barlow Condensed 800, ~18px
-- Unselected: white bg, #DDDBD4 border, #111110 text
-- Selected: #111110 bg, #111110 border, white text
-- min-width clamp(80px,10vw,110px), min-height clamp(52px,7vh,64px)
-- Stagger fade-up animation (i * 0.04s delay)
-
-## Selection confirmation
-When slot is selected, show a yellow (#F5E200) confirmation card with scaleIn animation:
-- Large checkmark (✓) in Barlow Condensed 900 32px, colour #111110
-- "Slot dipilih: {slot}" in Barlow Condensed 800 22px, colour #111110
-- Barber name + date subtitle in muted dark text
-
-## Slot generation logic (backend)
-Slots are 30-minute blocks within barber's shift hours.
-Exclude: already-booked slots, slots too short for selected service duration, past times.
-Add 15-minute buffer between appointments.
-
-## Props
-barber, slot (selected), setSlot, onNext, onBack
+POST /api/payments/xendit-webhook
+  - Verifies Xendit webhook signature (X-CALLBACK-TOKEN header)
+  - Sets booking.payment_status = 'paid', booking.paid_at = now()
+  - Transitions booking.status to 'completed'
+  - Credits loyalty points if applicable (points_earned on booking)
+  - Inserts point_transactions row (type='earn')
+  - Updates customers.points_balance, total_spend, total_visits, last_visit
+  - Triggers inventory deduction (service_consumables → inventory_stock)
+  - Emits SSE: { type: 'payment_complete', booking_id }
 ```
 
 ---
 
-### Screen 5 — Confirm & Queue Number (Steps 4 & 5)
-*POST /api/bookings*
+### Phase 1 — Kiosk Booking Flow
+
+Build these screens in order. Each connects to real API endpoints.
+
+#### 1A. Services + Barbers + Slots + Confirm + Queue Number
 
 ```
-Build the Bercut kiosk Confirm screen and Done/Queue Number screen.
+Build the complete kiosk booking flow for production.
 
-## Confirm screen layout
-Two-column grid: left (flex:1) + right (clamp(260px,30vw,340px))
-Single column under 900px.
+## Mockup references
+- mockups/kiosk/BercutKiosk.jsx — main shell, DeviceSetup, OfflineBanner, IdleOverlay
+- mockups/kiosk/Welcome.jsx
+- mockups/kiosk/ServiceSelection.jsx — includes BleachModal, UpsellModal
+- mockups/kiosk/BarberSelection.jsx
+- mockups/kiosk/TimeSlot.jsx
+- mockups/kiosk/Confirm.jsx — E.164 phone, per-service points toggle
+- mockups/kiosk/QueueNumber.jsx — escalation timer, Web Speech
 
-## Left column — Order summary card
-White card, border, border-radius 14px, padding clamp(14px,2vw,22px)
-Header: "Ringkasan / Order Summary" uppercase muted 11px
-Each service row: name (bold 14px) + Indonesian name + duration (muted 12px) left,
-price (Barlow Condensed 700 18px) right, border-bottom
-Info rows: Kapster/Barber, Waktu/Time, Estimasi Durasi — label left (muted), value right (bold)
-Footer: "ESTIMASI TOTAL" label (Barlow Condensed 800) left, total price (Barlow Condensed 900 ~28px) right
-Sub-note under total: "Kapster bisa menambah layanan saat potong" (muted 11px)
+## Production files
+frontend/src/apps/kiosk/KioskApp.jsx — main shell (port from BercutKiosk.jsx)
+frontend/src/apps/kiosk/screens/Welcome.jsx
+frontend/src/apps/kiosk/screens/ServiceSelection.jsx
+frontend/src/apps/kiosk/screens/BarberSelection.jsx
+frontend/src/apps/kiosk/screens/TimeSlot.jsx
+frontend/src/apps/kiosk/screens/Confirm.jsx
+frontend/src/apps/kiosk/screens/QueueNumber.jsx
 
-## Postpaid info banner
-Dark (#111110) card below order summary:
-- 💳 icon left
-- Title: "Bayar Setelah Selesai / Pay After Service" white Barlow Condensed 800
-- Body: explanation that barber handles payment via QRIS or BCA card, grey text
+## API connections (replace mock data)
+GET  /api/services?branch_id=            — service list (filtered by branch_services)
+GET  /api/barbers?branch_id=             — available barbers (filtered by barber_services capability)
+GET  /api/slots?barber_id=&date=&service_ids=  — available time slots
+GET  /api/customers?phone=               — loyalty points lookup by E.164 phone
+POST /api/bookings                       — create booking
+POST /api/bookings/:id/announce          — trigger Web Speech announcement
 
-## Right column
-1. Optional details card: Nama/Name input, WhatsApp input (both optional, focus border #111110)
-2. Note: "Opsional — digunakan untuk konfirmasi WhatsApp / Optional — used for WhatsApp booking confirmation"
-3. Primary button: "Konfirmasi Booking ✓" (full width, dark, Barlow Condensed 800 18px)
-4. Ghost back button
+## Backend routes to build
+backend/routes/services.js
+backend/routes/barbers.js
+backend/routes/slots.js — slot generation logic (see system-plan Section 07)
+backend/routes/bookings.js — create, start, complete, add-services, cancel, no-show, announce, client-not-arrived, stop-escalation
 
-## On confirm — POST /api/bookings
-Request body: { branch_id, barber_id, slot (scheduled_at), service_ids[], guest_name?, guest_phone? }
-Response: { booking_number, booking_id, status: "confirmed" }
-Then show Done screen.
+## Key business logic
+- Slot generation: 30-min blocks within barber shift, minus booked slots, minus breaks,
+  minus 15-min buffer, minus service duration, minus past times
+  → See _ai/system-plan.md Section 07 "Slot generation logic"
+- Booking number: "B" + 3-digit sequential per branch per day (B001, B002...)
+- Customer upsert: if guest_phone provided, upsert customers table
+- Any Available assignment: fewest any-available bookings today, tiebreak by sort_order
+  → bookings.source = 'any_available'
+- Points: deducted at confirm (status=confirmed), credited at completed
+- Mutex groups: ear_treatment and beard_service — enforce mutual exclusivity
+- Hair Bleach: store bleach_step (1/2/3) and bleach_with_color on booking_services
+- Auto-cancel: for future slots, set auto_cancel_at = scheduled_at + branches.auto_cancel_minutes
+  (default 15 min, configurable per branch in Branches → Operations tab; 0 = disabled)
+  "Now" bookings → auto_cancel_at = NULL (never auto-cancelled)
 
-## Done / Queue Number screen
-Centred layout, max-width clamp(340px,60vw,600px)
-- Eyebrow: "Nomor Antrian Anda / Your Queue Number" uppercase muted
-- Queue number: Barlow Condensed 900, clamp(88px,18vw,136px), colour #111110,
-  pop animation (scale 1→1.08→1 on mount)
-- Yellow accent bar: 5px tall, 100px wide, below number
-- Booking details card: 2-column grid, Kapster, Waktu, Layanan, Durasi, Est. Total, Nama (if provided)
-- Wait instruction: "Silakan duduk dan tunggu kapster memanggil nomor Anda / Please sit and wait..."
-- Payment note: dark card — "Pembayaran setelah selesai. Kapster akan memproses pembayaran saat layanan selesai."
-- Buttons: "🖨 Cetak Struk" (ghost, toggles to "✓ Tercetak") and "Selesai ✓" (dark, calls onReset)
-
-## Props
-Confirm: cart, barber, slot, name, setName, phone, setPhone, onConfirm, onBack
-Done: cart, barber, slot, name, onReset
-```
-
----
-
-## 04 — Kiosk: Payment Takeover
-*Full-screen postpaid payment flow. Triggered when barber taps Complete (via SSE event) or staff select from Staff Panel.*
-
-```
-Build the PaymentTakeover component for the Bercut kiosk.
-
-## Overview
-Full-screen dark overlay (position fixed, inset 0, z-index 999, background #111110).
-Two-column layout: left (flex:1, scrollable) + right (width clamp(260px,32vw,380px), dark sidebar).
-This appears on top of the normal kiosk flow — the kiosk is still in booking mode underneath.
-
-## Dark topbar
-Background: #0a0a08, border-bottom 1px solid #1a1a18
-Left: BERCUT logo (yellow) + "Seminyak · Pembayaran / Payment" (muted)
-Right: booking number "#{booking.number}" in yellow Barlow Condensed 800
-
-## Left column — Order + Tip
-
-Order summary card (background #1a1a18, border-radius 14px):
-- Each service row: name (white bold) + duration (dark muted) left,
-  price (white Barlow Condensed 700) right, border-bottom #2a2a28
-- Kapster row: label (#666) left, barber name (white bold) right
-- Tip row (if tip > 0): "Tip" label left, amount in yellow right
-- Total row: "TOTAL" (white Barlow Condensed 800) left,
-  grand total in YELLOW (#F5E200) Barlow Condensed 900 ~36px right
-
-Tip section below:
-- Label: "Tambahkan Tip? / Add a Tip?" uppercase muted
-- Preset buttons: Rp 10k, Rp 20k, Rp 50k — each Barlow Condensed 800
-  Unselected: #1a1a18 bg, white text, #2a2a28 border
-  Selected: #F5E200 bg, #111110 text, #F5E200 border
-- "Custom" button (same toggle style)
-- "Tidak / No" button (grey, clears selection)
-- Custom input: appears when "custom" selected, yellow border, dark bg
-
-## Right column — Payment method (barber selects)
-Background: #0d0d0b, padding clamp(20px,3vw,32px)
-
-Label: "Metode Pembayaran / Payment Method" uppercase muted
-Sub-note: "Kapster pilih metode, pelanggan bayar. / Barber selects method, customer pays."
-
-QRIS option card:
-- Background: #1a1a18 when selected, #111110 unselected
-- Border: #F5E200 (selected), #222 (unselected)
-- Icon (⬛), "QRIS" Barlow Condensed 800 white, "GoPay · OVO · Dana · Bank Transfer" subtitle
-- When selected: expand to show QR code placeholder (120×120px white SVG QR) + amount in yellow
-
-Card option:
-- Same toggle pattern as QRIS
-- Icon (💳), "Kartu / Card" title, "BCA EDC · Tap or Insert" subtitle
-- When selected: expand to show "Tap atau masukkan kartu / Tap or insert card on BCA EDC terminal" + amount
-
-Confirm button (bottom of sidebar, margin-top auto):
-- Disabled (grey) until method selected
-- When QRIS: "Konfirmasi Pembayaran QRIS ✓"
-- When card: "Konfirmasi Pembayaran Kartu ✓"
-- Background: #F5E200 (yellow), text #111110 when active
-
-## On payment confirmed
-setPaid(true) → show success screen:
-- Full dark bg, yellow checkmark circle (80px)
-- "Pembayaran Berhasil! / Payment Successful" Barlow Condensed 900 white
-- Grand total in yellow
-- Booking summary pill (dark card)
-- "Selesai — Kembali ke Booking" yellow button → calls onDone
-
-## API call
-POST /api/payments { booking_id, method: 'qris'|'card', tip_amount, total_amount }
-Both QRIS and card processed through BCA EDC terminal via direct local integration
-(Serial/USB ISO 8583 or local TCP — exact protocol TBC with BCA technical team).
-Kiosk sends payment instruction to EDC, EDC processes transaction, returns approval code.
-On EDC approval: set booking.payment_status = 'paid', booking.status = 'completed'.
-
-## Props
-booking: { number, barber, slot, services, cartItems: Service[], total }
-onDone: () => void
+## Kiosk shell features (from BercutKiosk.jsx)
+- Device setup: read X-Kiosk-Token from localStorage, POST /api/kiosk/register
+- Offline banner: navigator.onLine listener
+- Idle timeout: 60s inactivity → 15s countdown → auto-reset + POST /api/pax-out (kiosk_timeout)
+- pax-out on back button: POST /api/pax-out (kiosk_back)
+- Triple-tap corner: opens StaffPanel
+- Topbar logo tap: opens access modal (Admin or Barber PIN)
 ```
 
 ---
 
-## 05B — Kiosk: Barber Panel
-*Opens after barber selects "Barber / Kapster" and enters PIN in the Topbar AccessModal.*
+#### 1B. Payment Takeover
 
 ```
-Build the BarberPanel component for the Bercut kiosk.
+Build the PaymentTakeover component for production.
 
-## Reference mockup
-mockups/kiosk/BarberPanel.jsx — match this exactly.
+## Mockup reference
+mockups/kiosk/PaymentTakeover.jsx
 
-## Overview
-Full-screen dark overlay (position fixed, inset 0, z-index 400, background #111110).
-Appears when barber logs in via Topbar logo click → Barber → PIN.
-Two-column layout: left column (clamp(340px,42vw,500px)) + right column (flex:1).
-Close button returns to customer booking flow — booking flow is paused, not destroyed.
+## Production file
+frontend/src/apps/kiosk/screens/PaymentTakeover.jsx
 
-## Top bar (background #0a0a08, height clamp(52px,6.5vh,64px))
-Left: BERCUT logo (yellow) + divider + barber name (white bold) + chair label (muted) + status badge
-Right: Break button (☕ Istirahat) when available | End break countdown when on_break | Clock Out button | ← Kembali ke Booking button
-
-Status badges:
-- available: green (#4caf50) text on #1a3a1a bg, "AVAILABLE"
-- busy: red (#ef5350) text on #3a1a1a bg, "MELAYANI"
-- on_break: yellow (#F5E200) text on #2a2a10 bg, "ISTIRAHAT"
-
-## Left column — Active job + Next up
-
-### SEKARANG section (active booking)
-When active booking exists:
-- Dark card (#1a1a18), border #2a2a28
-- Customer name (Inter 800 white large), services list (muted), booking number + total (yellow, right)
-- Elapsed timer: tabular-nums Inter 900, yellow, counts up from started_at
-  → useEffect/setInterval every 1000ms: setElapsed(Date.now() - startedAt)
-- Buttons: "Tambah Layanan +" (dark #2a2a28) | "Selesai ✓" (yellow #F5E200, text #111110, flex:2)
-  → Selesai: PATCH /api/bookings/:id/complete → status: pending_payment
-  → Backend emits SSE event { type: 'payment_trigger', booking_id } on branch channel
-  → Kiosk SSE listener opens PaymentTakeover — call onPaymentTrigger(booking)
-
-When no active booking:
-- Empty state card with scissors icon, "Tidak ada pelanggan aktif"
-
-### BERIKUTNYA section (next confirmed booking)
-Dark card with customer name, services, slot time, total
-Two buttons:
-- "📢 Panggil" → window.speechSynthesis: "Pelanggan atas nama {name}, silakan menuju kursi {chair}" (lang: id-ID)
-  → Button text flips to "✓ Dipanggil" after call
-- "Mulai Layanan →" → PATCH /api/bookings/:id/start → status: in_progress, started_at: now
-  → Disabled if active booking exists (text: "Selesaikan dulu ↑") or on_break (text: "Sedang istirahat")
-  → Button bg: white with dark text when enabled, #2a2a28 with #555 text when disabled
-
-## Right column — Today's queue list
-Header: "📋 Hari Ini — {count} antrian" + "Est. selesai: ~HH:MM"
-Scrollable list of all today's bookings (all statuses except cancelled):
-Each row card (#1a1a18, border #2a2a28):
-- Booking number pill (dark) + slot time + status badge
-- Customer name (Inter 700 white) + services (muted)
-- Total (yellow if active, #888 otherwise, right)
-Active booking row: green-tinted border (#3a4010 bg, #3a4010 border)
-Pending payment row: 50% opacity, green "PEMBAYARAN" badge
-Fade-up stagger animation (i * 0.06s delay)
-
-## Add Service modal (bottom sheet)
-Triggered by "Tambah Layanan +" on active booking.
-Slides up from bottom (alignItems: flex-end on backdrop).
-White card, borderRadius 20px 20px 0 0, maxHeight 75vh.
-Header: barber name + customer name.
-Category filter pills (same 5 categories as kiosk ServiceSelection).
-Service list: each row toggleable — selected = yellow bg (#F5E200), text #111110. Existing services hidden.
-Footer (when items selected): total added amount + "Konfirmasi Tambahan (N) →" dark button.
-On confirm: PATCH /api/bookings/:id/add-services { service_ids[] }
-            → DB: insert booking_services rows with added_mid_cut: true
-            → Running total updates immediately in UI.
-
-## Break selector modal
-3 options: 15 menit, 30 menit, 45 menit.
-On select: POST /api/barber-breaks { barber_id, branch_id, duration_minutes, started_at: now }
-           → barbers.status = 'on_break' → blocks time slots for that duration
-Countdown in top bar counts down from duration. When hits 0: auto end break.
-"Akhiri Istirahat" button: PATCH /api/barber-breaks/:id/end { ended_at: now }
-                           → barbers.status = 'available'
-
-## Clock out
-"Clock Out" button → confirm dialog → POST /api/attendance/clock-out { barber_id, clock_out_at: now }
-→ clears barber session from localStorage → closes BarberPanel
+## Flow
+1. Triggered by SSE event { type: 'payment_trigger', booking_id }
+   OR StaffPanel/AdminPanel selection
+2. Full-screen dark overlay, two-column layout
+3. Left: order summary + tip selection
+4. Right: payment method (QRIS / Card) → Xendit Terminal trigger
+5. On success: ReceiptScreen (print + WA receipt option)
+6. Then: ReviewScreen (1–5 stars + feedback tags, 5-min timeout)
+7. Auto-returns to booking flow
 
 ## API connections
-GET  /api/bookings?barber_id=&date=today&branch_id=        — load today's queue
-PATCH /api/bookings/:id/start                               — { started_at: now, status: 'in_progress' }
-PATCH /api/bookings/:id/complete                            — { completed_at: now, status: 'pending_payment' }
-PATCH /api/bookings/:id/add-services                        — { service_ids: [], added_mid_cut: true }
-POST  /api/barber-breaks                                    — start break
-PATCH /api/barber-breaks/:id/end                            — end break
-POST  /api/attendance/clock-out                             — clock out
-SSE   GET /api/events?branch_id=                            — listen for new_booking events (show alert badge)
+POST /api/payments — { booking_id, method, tip_amount, total_amount }
+  → Backend calls Xendit POST /v1/terminal/sessions
+  → On Xendit webhook: set booking.payment_status=paid, booking.status=completed
+  → Emit SSE: { type: 'payment_complete', booking_id }
+  → If tip > 0: INSERT INTO tips
 
-## Props
-onClose: () => void         — return to customer booking flow
-onPaymentTrigger: (booking) — open PaymentTakeover for this booking
+POST /api/whatsapp/receipt — send receipt WA if phone provided
+GET  /api/feedback-tags    — load admin-configured tags for ReviewScreen
+
+## Payment failure UX (from system-plan)
+If Xendit declines or times out:
+- Full-screen error with 3 options: Retry, Try Other Method, Contact Staff
+- Contact Staff emits SSE alert to admin
+- Booking stays in pending_payment — never auto-cancelled
+
+## Xendit simulation testing
+Terminal ID: SIM001 — special test amounts available before hardware
+See _ai/system-plan.md Section 07 for Xendit H2H details
+
+## Backend route
+backend/routes/payments.js
+  - POST /api/payments — trigger Xendit session
+  - POST /api/payments/manual — admin manual trigger (payment_trigger_source='admin_manual')
+  - Webhook handler: POST /api/payments/xendit-webhook — Xendit sends confirmation
+
+## Receipt printer
+backend/services/receiptPrinter.js
+  - Uses escpos or node-thermal-printer library
+  - printReceipt(bookingId) — queries booking + services + tip, formats ESC/POS commands
+  - Connects via USB or network (configurable per branch)
+  - Called automatically on payment_complete webhook + manually via admin "Reprint" button
+  - If printer offline: silently log error, do NOT block payment flow
 ```
 
 ---
 
-## 05 — Kiosk: Staff Panel
-*Triple-tap hidden access. Temporary — replaced by barber app SSE trigger later.*
+#### 1C. Barber Panel + Staff Panel
 
 ```
-Build the StaffPanel component and triple-tap detection for the Bercut kiosk.
+Build the BarberPanel and StaffPanel for production.
 
-## Triple-tap detection
-In the Root component, place an invisible div:
-- position: fixed, top: 0, right: 0, width: 60px, height: 60px
-- z-index: 500, -webkit-tap-highlight-color: transparent
-- onClick: increment tapCount ref, clear timer, reset after 600ms
-- On 3rd tap within 600ms: open staff panel
+## Mockup references
+mockups/kiosk/BarberPanel.jsx
+mockups/kiosk/StaffPanel.jsx
+mockups/kiosk/AdminPanel.jsx
 
-Implementation:
-  const tapCount = useRef(0);
-  const tapTimer = useRef(null);
-  const handleCornerTap = () => {
-    tapCount.current += 1;
-    clearTimeout(tapTimer.current);
-    tapTimer.current = setTimeout(() => { tapCount.current = 0; }, 600);
-    if (tapCount.current >= 3) {
-      tapCount.current = 0;
-      setStaffPanelOpen(true);
-    }
-  };
+## Production files
+frontend/src/apps/kiosk/screens/BarberPanel.jsx
+frontend/src/apps/kiosk/screens/StaffPanel.jsx
+frontend/src/apps/kiosk/screens/AdminPanel.jsx
 
-Location: top-right corner — staff know to tap here, customers never interact with corners.
-No PIN required. No visual indicator this zone exists.
+## BarberPanel API connections
+GET  /api/bookings?barber_id=&date=today&branch_id=    — today's queue
+POST /api/bookings/:id/start                            — start service
+POST /api/bookings/:id/complete                         — complete → pending_payment
+POST /api/bookings/:id/add-services                     — add services mid-cut
+POST /api/bookings/:id/client-not-arrived               — "Belum Datang" alert
+POST /api/attendance/clock-in                           — barber clock in
+POST /api/attendance/clock-out                          — barber clock out
+POST /api/barber-breaks                                 — start break
+PATCH /api/barber-breaks/:id/end                        — end break
+GET  /api/events?branch_id= (SSE)                       — listen for new_booking events
 
-## StaffPanel component
-Slide-in panel from right side:
-- Backdrop: position fixed, inset 0, background rgba(0,0,0,0.7), onClick closes panel
-- Panel: dark bg (#111110), width clamp(300px,38vw,440px), full height, box-shadow left
+## Key BarberPanel rules
+- Start button: active only for topmost confirmed booking (prevents wrong-client start)
+- Belum Datang: sends WA to branch backoffice_alert_phone, emits SSE client_not_arrived
+- Barber cannot cancel or no-show — admin-only actions
+- Monthly earnings toggle: pulls from bookings + tips for the month
+- Break: 15/30/45 min options, blocks time slots for duration
 
-Header:
-- "Staff Panel" eyebrow (muted uppercase)
-- "Pilih Booking" Barlow Condensed 900 white
-- "Select booking to process payment" subtitle
-- × close button (top right, 36×36px)
+## StaffPanel API connections
+GET  /api/bookings?branch_id=&status=in_progress,confirmed  — active queue list
+POST /api/booking-groups                                     — form group payment
 
-Active queue list (GET /api/bookings?branch_id=&status=in_progress,confirmed):
-Each booking card (dark #1a1a18, yellow border on hover):
-- Booking number in yellow Barlow Condensed 900 (left) + total amount white Barlow Condensed 800 (right)
-- Barber name + slot time (white bold) below
-- Services list (grey)
-- "Proses Pembayaran →" yellow pill button at bottom
-- onClick: call onSelect(booking) → opens PaymentTakeover
+## AdminPanel API connections
+GET  /api/admin/branch-overview?branch_id=&date=  — full queue + barber status
+POST /api/payments/manual                          — manual payment trigger
+POST /api/bookings/:id/cancel                      — cancel with reason
+POST /api/bookings/:id/no-show                     — mark no-show
+PATCH /api/bookings/:id/stop-escalation            — stop WA escalation
 
-Footer note: "Ketuk pojok kanan atas 3x untuk membuka panel ini."
-
-## When barber app launches
-The triple-tap panel stays as a fallback.
-The barber app sends SSE event via POST /api/bookings/:id/complete: { type: 'payment_trigger', booking_id }
-The kiosk subscribes on GET /api/events?branch_id= and auto-opens PaymentTakeover for that booking_id.
-No kiosk code changes needed — just add the subscription listener.
-
-## Props
-StaffPanel: onSelect(booking), onClose()
-Root state: staffPanelOpen, paymentPending, activeBooking
+## Backend routes needed
+backend/routes/bookings.js — add start, complete, add-services, cancel, no-show, 
+                             client-not-arrived, stop-escalation, announce
+backend/routes/attendance.js — clock-in, clock-out, log-off
+backend/routes/barber-breaks.js — start, end
+backend/routes/events.js — SSE (already built in Phase 0)
 ```
 
 ---
 
-## 06 — Barber PWA
-*Mobile-first PWA. Portrait orientation. Bahasa Indonesia only. Same design tokens as kiosk.*
+### Phase 2 — Admin Dashboard
 
-### Queue View (Main Screen)
-*GET /api/bookings?barber_id=&date=today + SSE subscription*
+Build these in order. Each screen has an approved mockup as reference.
+
+#### 2A. Admin Shell + Overview + Live Monitor
 
 ```
-Build the Bercut Barber PWA Queue View screen.
+Build the admin dashboard shell, overview, and live monitor.
 
-## Overall app setup
-Mobile-first PWA. Portrait orientation. Same design tokens as kiosk (white/yellow theme).
-Barber logs in with 6-digit PIN. Session stored in localStorage.
-All text in Bahasa Indonesia only.
+## Mockup references
+mockups/admin/BercutAdmin.jsx — shell with sidebar nav (14 items)
+mockups/admin/Overview.jsx
+mockups/admin/LiveMonitor.jsx
+mockups/admin/BranchDetail.jsx
 
-## Queue screen layout
-Dark topbar: "BERCUT" yellow logo + barber name + "Antrian Saya" (My Queue)
-Below: today's date, shift summary (X bookings, estimated finish time)
+## Production files
+frontend/src/apps/admin/AdminApp.jsx
+frontend/src/apps/admin/screens/Overview.jsx
+frontend/src/apps/admin/screens/LiveMonitor.jsx
+frontend/src/apps/admin/screens/BranchDetail.jsx
 
-Three sections:
-1. SEKARANG (Now) — current in-progress booking (if any)
-2. BERIKUTNYA (Up Next) — next confirmed booking
-3. HARI INI (Today) — full list of remaining bookings
+## Admin auth
+backend/routes/auth.js:
+  POST /api/auth/login — { email, password } → JWT
+  GET  /api/auth/me    — validate JWT, return user + permissions
 
-## NEW BOOKING alert
-When a new booking arrives (SSE event from backend), show a full-screen notification overlay:
-- Yellow background (#F5E200)
-- "PELANGGAN BARU!" Barlow Condensed 900 large, #111110
-- Customer name, service, time
-- Large "ACKNOWLEDGE ✓" button (dark bg, white text, full width, min-height 72px)
-- Tapping acknowledge: dismiss overlay, stop escalation timer,
-  send PATCH /api/bookings/{id}/acknowledge
-- If not acknowledged within X minutes (configurable): trigger voice call via backend
+## AdminApp shell
+- Left sidebar: 220px, dark (#111110)
+- 14 nav items: Overview, Live Monitor, Reports, Barbers, Branches, Services,
+  Customers, Expenses, Inventory, Attendance, Payroll, Online Booking,
+  Kiosk Config, Settings
+- Permission-gated: hide nav items where user_permissions.is_enabled = false
+- monitoring role: only Overview + Live Monitor visible
 
-## Booking card — in queue
-White card, border, border-radius 12px
-Left: booking number (yellow Barlow Condensed 800) + customer name (bold) + services list (muted)
-Right: time slot (Barlow Condensed 800) + status badge
+## Overview API
+GET /api/admin/overview?date= — today's KPIs + branch cards
+  Returns: { totalRevenue, activeBookings, waitingCount, completedCount,
+             branches: [{ id, name, city, revenue, inChair, waiting, done,
+                          barbers: [{ id, name, status, avatar_url }], alerts }] }
 
-## Active job card (current customer)
-Yellow (#F5E200) card:
-- "SEDANG DILAYANI" badge
-- Customer name Barlow Condensed 900 large, #111110
-- Service list, elapsed timer (HH:MM:SS counting up)
-- "Tambah Layanan +" button (dark, opens add-service modal)
-- "Selesai ✓" button (dark, full width, triggers payment on kiosk)
+## LiveMonitor API
+GET /api/live-monitor?branch_id= — current chair status across branches
+  Returns per-barber: current booking, next booking, elapsed time, status
+GET /api/live/barbers?branch_id= (SSE) — real-time barber state updates
 
-## Add service mid-cut modal
-Bottom sheet modal (slides up from bottom):
-- Full service catalogue list (same categories as kiosk)
-- Toggle to add services — selected = yellow bg
-- "Konfirmasi Tambahan" button
-- PATCH /api/bookings/{id}/add-services { service_ids[] }
-- Running total updates immediately
-
-## Start job flow
-Tap "Mulai" (Start) on next booking:
-- PATCH /api/bookings/{id}/start → status: in_progress, started_at: now
-- Card moves to "SEKARANG" section
-- Timer starts
-
-## Complete job flow
-Tap "Selesai" (Complete) on active booking:
-- PATCH /api/bookings/{id}/complete → status: pending_payment, completed_at: now
-- Backend emits SSE event on branch channel: { type: 'payment_trigger', booking_id }
-- Kiosk receives and switches to PaymentTakeover for this booking
-- Barber app shows "Menunggu pembayaran..." (Waiting for payment) state
-
-## No-show flagging
-Long-press or swipe on a booking card to reveal "Tidak Datang" (No-show) option
-PATCH /api/bookings/{id}/no-show → status: no_show, slot freed
+Admin actions from LiveMonitor:
+  POST /api/bookings/:id/start   — force-start (same as barber Mulai)
+  POST /api/bookings/:id/cancel  — cancel with required reason
+  POST /api/bookings/:id/no-show — mark no-show
+  POST /api/pax-out              — log cctv_manual pax-out event
 ```
 
 ---
 
-### GPS Clock-In
-*POST /api/attendance/clock-in*
+#### 2B. Core Admin Screens
 
 ```
-Build the Bercut Barber PWA Clock-In screen.
+Build the remaining admin screens. Each has a mockup in mockups/admin/.
 
-## When barber opens the app
-If not clocked in today: show Clock-In screen before queue view.
-If already clocked in: go straight to queue.
+## Screen → Mockup → Production path → Primary API
 
-## Clock-in screen
-Centred layout:
-- "Selamat pagi, {name}!" greeting
-- Current time (live)
-- Branch name
-- GPS status indicator (checking location...)
-- "Masuk / Clock In" primary button — disabled until GPS confirmed within radius
+Reports
+  mockups/admin/Reports.jsx
+  frontend/src/apps/admin/screens/Reports.jsx
+  GET /api/admin/reports/revenue?from=&to=&branch_id=
+  GET /api/admin/pax-out?from=&to=&branch_id=
+  GET /api/admin/delay-incidents?from=&to=&branch_id=&barber_id=
+  GET /api/admin/barbers/:id/transactions?from=&to=
+  3 tabs: Revenue, Demand (pax-out analytics), Delay
 
-## GPS check
-navigator.geolocation.getCurrentPosition()
-Compare against branch lat/lng (from GET /api/branches/{id})
-Geofence radius: configurable per branch (default 100m), use Haversine formula
-If within radius: enable button, show "📍 Lokasi terverifikasi"
-If outside radius: show "📍 Anda di luar area cabang" error, keep button disabled
+Barbers
+  mockups/admin/Barbers.jsx
+  frontend/src/apps/admin/screens/Barbers.jsx
+  GET/POST/PATCH /api/barbers
+  GET/PUT /api/barbers/:id/services — service capability toggles
 
-## On clock-in
-POST /api/attendance/clock-in {
-  barber_id, branch_id, clock_in_lat, clock_in_lng, within_geofence: true
+Branches
+  mockups/admin/Branches.jsx
+  frontend/src/apps/admin/screens/Branches.jsx
+  GET/POST/PATCH /api/branches
+  GET/POST/PATCH/DELETE /api/branches/:id/chairs
+  GET/POST/PATCH/DELETE /api/chair-overrides
+  GET/POST/DELETE /api/admin/kiosk-tokens
+  3-tab BranchModal: Details, Operations, Kiosk Devices
+  Operations tab includes: online booking toggle, backoffice alert phone,
+    speaker on/off, Web Push (P2), late start alert stepper, ack grace stepper,
+    auto-cancel minutes stepper (DEFAULT 15, 0=disabled), tip presets,
+    escalation interval stepper, escalation max count stepper
+  ChairPanel + OverrideModal
+
+Services
+  mockups/admin/Services.jsx
+  frontend/src/apps/admin/screens/Services.jsx
+  GET/POST/PATCH /api/services
+  PUT /api/services/:id/branch-config
+  GET/PUT /api/services/:id/consumables
+
+Customers
+  mockups/admin/Customers.jsx
+  frontend/src/apps/admin/screens/Customers.jsx
+  GET /api/customers — list with search/filter
+  GET /api/customers/:id — profile detail
+  GET /api/customers/:id/history — paginated visit history
+
+Expenses
+  mockups/admin/Expenses.jsx
+  frontend/src/apps/admin/screens/Expenses.jsx
+  GET/POST /api/expenses
+  GET /api/expenses/export?format=csv|xlsx
+  GET/POST/PATCH /api/expense-categories
+  3 expense types: regular, inventory, kasbon
+  PO system: purchase_orders + LRM distribution
+
+Inventory
+  mockups/admin/Inventory.jsx
+  frontend/src/apps/admin/screens/Inventory.jsx
+  GET /api/inventory?branch_id=
+  GET /api/inventory/movements?item_id=&branch_id=
+  POST /api/inventory/distribute
+  GET/POST/PATCH /api/inventory/items
+  GET /api/inventory/menu?branch_id=
+  PUT /api/inventory/menu?branch_id=
+  3 tabs: Items, Stock Levels, Movement Log
+  + Kiosk Menu config (per-branch price + kiosk_visible)
+
+Attendance
+  mockups/admin/Attendance.jsx
+  frontend/src/apps/admin/screens/Attendance.jsx
+  GET /api/attendance/monthly?barber_id=&month=&branch_id=
+  GET/POST/PATCH/DELETE /api/off-records
+  POST /api/attendance/log-off
+
+Payroll
+  mockups/admin/Payroll.jsx
+  frontend/src/apps/admin/screens/Payroll.jsx
+  POST /api/payroll/generate — create period + entries
+  GET /api/payroll/periods?branch_id=&status=
+  GET /api/payroll/periods/:id — full detail
+  PATCH /api/payroll/periods/:id/status — draft→reviewed→communicated
+  PATCH /api/payroll/entries/:id — override deductions
+  GET/POST/DELETE /api/payroll/adjustments
+  GET /api/payroll/periods/:id/export?format=csv|xlsx
+  GET/PUT /api/payroll/settings
+
+  IMPORTANT known gaps to fix during build:
+  - Add "All Branches" selector option (F2.1 from pre-build-audit)
+  - Add period status controls: Mark Reviewed / Mark Communicated (F2.2)
+  - Add xlsx export option alongside CSV (F2.3)
+  - Add freelancer mock/test row (F2.4)
+
+Online Booking
+  mockups/admin/OnlineBooking.jsx
+  frontend/src/apps/admin/screens/OnlineBooking.jsx
+  GET/PATCH /api/branches/:id/online-booking
+  GET /api/reports/online-bookings?branch_id=&from=&to=
+
+Kiosk Config
+  mockups/admin/KioskConfig.jsx
+  frontend/src/apps/admin/screens/KioskConfig.jsx
+  GET /api/kiosk-settings?branch_id=
+  PATCH /api/branches/:id/settings — saves + emits SSE kiosk_settings_update
+  GET/POST/PATCH /api/feedback-tags
+
+Settings
+  mockups/admin/Settings.jsx
+  frontend/src/apps/admin/screens/Settings.jsx
+  6 tabs: Catalog, Loyalty, Payroll, WhatsApp, Users, Audit Log
+
+  Catalog: GET/POST/PATCH /api/expense-categories
+  Loyalty: GET/PUT /api/settings/loyalty (points_expiry_months, warning_days)
+  Payroll: GET/PUT /api/payroll/settings (deduction rates, OT commission)
+  WhatsApp: GET/PUT /api/settings/whatsapp + POST /api/settings/whatsapp/test
+  Users: GET/POST/PATCH /api/users + GET/PUT /api/users/:id/permissions (owner-only)
+  Audit Log: GET /api/audit-log (owner-only, paginated)
+  Settings sub-routes:
+    GET/PUT /api/settings/loyalty — points expiry config
+    GET/PUT /api/payroll/settings — deduction rates, OT config
+    GET/PUT /api/settings/whatsapp — provider credentials + 6 templates
+    POST /api/settings/whatsapp/test — test send to a phone number
+
+## Backend routes for this phase
+backend/routes/reports.js — revenue, pax-out analytics, delay incidents, barber TX log
+backend/routes/barbers.js — CRUD + service capability (already started Phase 1)
+backend/routes/branches.js — CRUD + chairs + overrides + kiosk tokens
+backend/routes/services.js — CRUD + branch config + consumables
+backend/routes/customers.js — list, detail, history
+backend/routes/expenses.js — CRUD + PO lifecycle + CSV/xlsx export
+backend/routes/inventory.js — stock, movements, distribute, items, menu
+backend/routes/attendance.js — monthly view + off records (extend Phase 1)
+backend/routes/payroll.js — generate, periods, entries, adjustments, export, settings
+backend/routes/settings.js — loyalty, whatsapp, users, permissions, audit log
+backend/routes/online-booking.js — branch config + stats
+backend/routes/kiosk-config.js — read/write kiosk settings + feedback tags
+```
+
+---
+
+### Phase 3 — Services Layer (Background Logic)
+
+```
+Build the backend service modules that run independently of screen interactions.
+
+## backend/services/slotGenerator.js
+Pure function: given barber schedule, existing bookings, breaks, and service duration,
+return available slot times.
+- 30-minute block generation within shift hours
+- Subtract booked slots (+ 15-min buffer)
+- Subtract active breaks
+- Subtract past times (if today)
+- Subtract slots where remaining time < service duration
+- Export: getAvailableSlots(barberId, date, serviceDurationMinutes, branchId)
+
+## backend/services/notifications.js
+All notification logic in one place.
+- emitSSE(branchId, type, data) — wraps events.js emitEvent
+- speakAnnouncement(branchId, text) — emits SSE { type: 'announcement', text } for kiosk Web Speech
+- sendWhatsApp({ to, templateKey, params }) — routes to Fonnte or WA Business API based on provider
+  → Fonnte: POST https://api.fonnte.com/send, Header: Authorization: <token>, Body: form-data
+  → 6 templates: booking_confirmation, receipt, late_customer_reminder,
+                  barber_new_booking, barber_escalation, client_not_arrived
+
+## backend/services/escalation.js
+Background job checking every 30s for unacknowledged bookings.
+- If booking not acknowledged within acknowledge_grace_minutes: trigger WA escalation
+- Recurring: re-send barber_escalation every barber_escalation_interval_minutes
+- Cap at barber_escalation_max_count
+- Stop on: booking_started SSE, admin cancel, no-show, max reached
+- Track: bookings.escalation_count, escalation_stopped_at, escalation_stop_reason
+
+## backend/services/pointsExpiry.js
+Nightly cron job (node-cron or setInterval).
+- Find customers where now > points_last_activity_at + expiry interval
+- Insert 'expired' row in point_transactions
+- Zero out customers.points_balance
+- Set customers.points_last_expired_at = now
+
+## backend/services/inventoryDeduction.js
+Called when booking_service status transitions to completed.
+- Look up service_consumables for each service_id
+- Deduct qty_per_use from inventory_stock.current_stock at the booking's branch
+- Insert inventory_movements (type='out', note='Auto-deducted on service completion')
+
+## backend/services/autoCancel.js
+Background job running every 60s.
+- auto_cancel_at is set per booking at creation time using branches.auto_cancel_minutes
+  (default 15 min, configurable per branch; 0 = disabled → auto_cancel_at stays NULL)
+- Find bookings where status='confirmed' AND auto_cancel_at IS NOT NULL AND auto_cancel_at < now()
+- Transition to 'cancelled' with cancellation_reason='Auto-cancelled: customer did not arrive'
+- Emit SSE: { type: 'booking_cancelled', booking_id, reason: 'auto_cancel' }
+- If points_redeemed > 0: refund points back to customer.points_balance
+- Insert point_transactions row (type='earn', note='refund_auto_cancel')
+- Log in audit_log (user_id = NULL, action = 'booking.auto_cancelled')
+
+## backend/services/receiptPrinter.js
+Thermal receipt printing via ESC/POS.
+- printReceipt(bookingId) — formats booking summary, itemised services, tip, total
+- Connection: USB (/dev/usb/lp0 or COM port) or network (IP:9100)
+- Called on payment_complete + admin reprint action
+- If printer offline: fail silently (log warning, never block payment)
+
+## backend/services/payrollCalculator.js
+Called by POST /api/payroll/generate.
+For each active barber in the branch for the period:
+- attendance_days = COUNT DISTINCT DATE(clock_in_at) within attendance window
+- gross_service_revenue = SUM booking_services.price_charged (completed, not paid_with_points) within commission window
+- commission_regular = SUM(branch_services.commission_rate ?? barbers.commission_rate × price_charged)
+- commission_ot = SUM(ot_bonus_pct × price_charged) for late-hour qualifying services
+- tips_earned = SUM tips.amount within tips window
+- late_minutes = total late minutes (clock_in vs shift start, applying grace period)
+- off counts: excused (within/over quota), inexcused, doctor note exemptions
+- kasbon: auto-import from expenses where type=kasbon, barber_id match, deduct_period=current
+- Net pay: base + commission + tips - late_ded - inexcused_ded - excused_ded + additions - deductions
+
+## backend/services/excelExport.js
+Shared xlsx export utility using exceljs.
+- exportPayroll(periodId) → xlsx buffer with Summary + Transactions sheets
+- exportExpenses(filters) → xlsx buffer with Summary + Transactions sheets
+  (PO multi-branch expenses → one row per branch attribution)
+- exportReports(filters) → xlsx buffer with Revenue + P&L summary
+- All exports: bold headers, auto-column-width, number formatting, ISO dates
+```
+
+---
+
+### Phase 4 — Deployment & Staging
+
+```
+Build the deployment configuration for Rumahweb VPS.
+
+## deploy/nginx.conf
+server {
+  listen 80;
+  server_name bercut.id;
+  return 301 https://$host$request_uri;   # force HTTPS
 }
-Store session, go to queue view.
 
-## Clock-out
-Available from settings menu (hamburger top-right).
-POST /api/attendance/clock-out { barber_id, clock_out_at: now }
-Returns to login screen.
+server {
+  listen 443 ssl http2;
+  server_name bercut.id;
+
+  ssl_certificate     /etc/letsencrypt/live/bercut.id/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/bercut.id/privkey.pem;
+
+  # Security headers
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options nosniff;
+  add_header X-Frame-Options DENY;
+
+  location /api/ {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;        # CRITICAL for SSE
+    proxy_cache off;
+    proxy_read_timeout 86400s;  # Keep SSE connections alive (24h)
+    chunked_transfer_encoding on;
+  }
+
+  # Receipt / uploaded files
+  location /uploads/ {
+    alias /var/www/bercut/backend/uploads/;
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+  }
+
+  location / {
+    root /var/www/bercut/backend/public;
+    try_files $uri $uri/ /index.html;   # SPA fallback
+    expires 7d;
+  }
+}
+
+## deploy/ecosystem.config.js (PM2)
+module.exports = {
+  apps: [{
+    name: 'bercut-api',
+    script: './server.js',
+    cwd: '/var/www/bercut/backend',
+    instances: 1,           # MUST be 1 for SSE (in-memory client map)
+    max_memory_restart: '512M',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3000,
+      DATABASE_URL: 'postgresql://bercut:password@localhost:5432/bercut'
+    }
+  }]
+};
+
+## deploy/setup.sh
+One-time VPS setup script:
+  - Install Node.js 20 LTS
+  - Install PostgreSQL 16
+  - Create bercut database + user
+  - Run schema.sql + seed.sql
+  - Install PM2 globally
+  - Configure Nginx
+  - Enable firewall (ufw: 22, 80, 443)
+  - Setup Let's Encrypt SSL via certbot
+  - Create /var/www/bercut/backend/uploads/ directory (receipt file storage)
+  - Set up daily pg_dump backup cron (→ /var/backups/bercut/)
+
+## deploy/deploy.sh
+Repeatable deployment script:
+  cd /var/www/bercut
+  git pull origin main
+  cd frontend && npm ci && npm run build
+  cd ../backend && npm ci
+  pm2 restart bercut-api
+  echo "Deployed $(date)" >> /var/log/bercut-deploy.log
+
+## Frontend build
+cd frontend && npm run build
+  → outputs to backend/public/
+Nginx serves directly from there — no separate frontend server.
+
+## Environment files
+backend/.env:
+  DATABASE_URL=postgresql://bercut:password@localhost:5432/bercut
+  JWT_SECRET=<random-64-char>
+  XENDIT_API_KEY=<from-xendit-dashboard>
+  XENDIT_WEBHOOK_SECRET=<from-xendit-dashboard>
+  FONNTE_API_KEY=<from-fonnte-dashboard>
+  NODE_ENV=production
+  PORT=3000
+  UPLOAD_DIR=/var/www/bercut/backend/uploads
+
+frontend/.env:
+  VITE_API_URL=          # empty = same origin (production)
+  # VITE_API_URL=http://localhost:3000   # dev only
 ```
 
 ---
 
-## 07 — Admin Dashboard
-*Desktop-first web app. English primary. Full access across all branches.*
+## 04 — Porting Mockups to Production: Rules
 
-### Multi-Branch Overview
-*GET /api/admin/overview?date= + SSE*
+When converting a mockup file to a production screen:
+
+1. **Keep the visual output identical.** The mockup IS the approved design. **DO NOT change any UI, UX, or anything else** other than optimizing for the new 1366 x 768 resolution.
+2. **Replace mock data with API calls.** Every `const MOCK_*` or `const DUMMY_*` array becomes a `useEffect` fetch.
+3. **Replace inline `C.xxx` tokens** with imports from `shared/tokens.js`.
+4. **Replace `fmt()` / `fmtM()`** with shared formatting utilities.
+5. **Keep inline styles.** Do not convert to Tailwind or CSS modules. Mockups use inline styles — production should too for consistency.
+6. **Wire SSE listeners** where the mockup has comments like `// SSE: listen for...`
+7. **Add error states and loading states** that mockups don't have.
+8. **Add proper error handling** for all API calls (try/catch, toast/banner).
+9. **Keep all existing comments and docstrings** from mockups — they document business rules.
+10. **Port the file header comment** — update the path from `mockups/` to `frontend/src/apps/`.
+
+---
+
+## 05 — Per-Screen Handoff Reference
+
+Quick-reference table mapping every mockup to its production path and primary API.
+
+### Kiosk
+
+| Mockup | Production Path | Primary API |
+|---|---|---|
+| `mockups/kiosk/BercutKiosk.jsx` | `frontend/src/apps/kiosk/KioskApp.jsx` | `POST /api/kiosk/register`, SSE |
+| `mockups/kiosk/Welcome.jsx` | `frontend/src/apps/kiosk/screens/Welcome.jsx` | — (kiosk settings from register response) |
+| `mockups/kiosk/ServiceSelection.jsx` | `frontend/src/apps/kiosk/screens/ServiceSelection.jsx` | `GET /api/services?branch_id=` |
+| `mockups/kiosk/BarberSelection.jsx` | `frontend/src/apps/kiosk/screens/BarberSelection.jsx` | `GET /api/barbers?branch_id=` |
+| `mockups/kiosk/TimeSlot.jsx` | `frontend/src/apps/kiosk/screens/TimeSlot.jsx` | `GET /api/slots?barber_id=&date=&service_ids=` |
+| `mockups/kiosk/Confirm.jsx` | `frontend/src/apps/kiosk/screens/Confirm.jsx` | `GET /api/customers?phone=`, `POST /api/bookings` |
+| `mockups/kiosk/QueueNumber.jsx` | `frontend/src/apps/kiosk/screens/QueueNumber.jsx` | `POST /api/bookings/:id/announce`, SSE |
+| `mockups/kiosk/PaymentTakeover.jsx` | `frontend/src/apps/kiosk/screens/PaymentTakeover.jsx` | `POST /api/payments`, `GET /api/feedback-tags` |
+| `mockups/kiosk/BarberPanel.jsx` | `frontend/src/apps/kiosk/screens/BarberPanel.jsx` | Bookings CRUD, attendance, breaks |
+| `mockups/kiosk/StaffPanel.jsx` | `frontend/src/apps/kiosk/screens/StaffPanel.jsx` | `POST /api/booking-groups` |
+| `mockups/kiosk/AdminPanel.jsx` | `frontend/src/apps/kiosk/screens/AdminPanel.jsx` | Branch overview, manual payment |
+
+### Admin
+
+| Mockup | Production Path | Primary API |
+|---|---|---|
+| `mockups/admin/BercutAdmin.jsx` | `frontend/src/apps/admin/AdminApp.jsx` | `GET /api/auth/me` |
+| `mockups/admin/Overview.jsx` | `frontend/src/apps/admin/screens/Overview.jsx` | `GET /api/admin/overview` |
+| `mockups/admin/LiveMonitor.jsx` | `frontend/src/apps/admin/screens/LiveMonitor.jsx` | `GET /api/live-monitor`, SSE |
+| `mockups/admin/BranchDetail.jsx` | `frontend/src/apps/admin/screens/BranchDetail.jsx` | Bookings actions, escalation |
+| `mockups/admin/Reports.jsx` | `frontend/src/apps/admin/screens/Reports.jsx` | Revenue, pax-out, delay reports |
+| `mockups/admin/Barbers.jsx` | `frontend/src/apps/admin/screens/Barbers.jsx` | Barbers CRUD + services |
+| `mockups/admin/Branches.jsx` | `frontend/src/apps/admin/screens/Branches.jsx` | Branches + chairs + overrides + tokens |
+| `mockups/admin/Services.jsx` | `frontend/src/apps/admin/screens/Services.jsx` | Services + branch config + consumables |
+| `mockups/admin/Customers.jsx` | `frontend/src/apps/admin/screens/Customers.jsx` | Customer profiles + history |
+| `mockups/admin/Expenses.jsx` | `frontend/src/apps/admin/screens/Expenses.jsx` | Expenses + POs + export |
+| `mockups/admin/Inventory.jsx` | `frontend/src/apps/admin/screens/Inventory.jsx` | Inventory + distribute + menu |
+| `mockups/admin/Attendance.jsx` | `frontend/src/apps/admin/screens/Attendance.jsx` | Attendance + off records |
+| `mockups/admin/Payroll.jsx` | `frontend/src/apps/admin/screens/Payroll.jsx` | Payroll periods + entries + adjustments |
+| `mockups/admin/OnlineBooking.jsx` | `frontend/src/apps/admin/screens/OnlineBooking.jsx` | Branch online booking config |
+| `mockups/admin/KioskConfig.jsx` | `frontend/src/apps/admin/screens/KioskConfig.jsx` | Kiosk settings + feedback tags |
+| `mockups/admin/Settings.jsx` | `frontend/src/apps/admin/screens/Settings.jsx` | All settings tabs |
+
+---
+
+## 06 — Backend Route Building Guide
+
+For each route file in `backend/routes/`, follow this pattern:
+
+```js
+const express = require('express');
+const router = express.Router();
+const pool = require('../config/db');
+const { requireAuth, requireKiosk, requireAdmin } = require('../middleware/auth');
+const { emitEvent } = require('./events');
+
+// GET /api/[resource]
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const { branch_id } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM [table] WHERE branch_id = $1 ORDER BY created_at DESC',
+      [branch_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[resource] GET error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+module.exports = router;
+```
+
+**Rules for every route:**
+1. Always include `branch_id` filter where applicable
+2. Use parameterised queries ($1, $2...) — never string concatenation
+3. Use DB transactions (`BEGIN; ... COMMIT;`) for multi-table writes
+4. Log to `audit_log` on every create/update/delete for admin actions
+5. Emit SSE events where real-time updates are needed
+6. Return appropriate HTTP status codes (201 created, 400 validation, 404 not found, 403 forbidden)
+
+---
+
+## 07 — Known Gaps to Address During Build
+
+From `_ai/pre-build-audit.md` Section F2:
+
+| ID | Gap | Fix |
+|---|---|---|
+| F2.1 | Payroll: "All Branches" selector missing | Add as first option in branch dropdown; API returns all when branch_id omitted |
+| F2.2 | Payroll: period status controls absent | Add status pill + "Mark Reviewed" / "Mark Communicated" buttons in header |
+| F2.3 | Payroll + Expenses: xlsx export missing | Add split Export button (CSV / Excel); backend uses exceljs |
+| F2.4 | Payroll: no freelancer mock row | Add daily_rate row to test data; net_pay = days × rate, no commission |
+| F2.5 | Branches Operations: escalation interval/max controls absent | Add two steppers or document as backend-only defaults |
+
+---
+
+## 07B — Online Booking Public Page
+
+Not covered elsewhere. This is the customer-facing booking page accessible via `bercut.id/book/:slug`.
 
 ```
-Build the Bercut Admin Dashboard overview screen.
+Build the public online booking page.
 
-## Layout
-Left sidebar navigation (220px) + main content area (flex:1)
-Sidebar: BERCUT logo, nav links (Overview, Branches, Barbers, Services, Reports,
-  Expenses, Inventory, Settings)
-Active nav item: yellow (#F5E200) left border accent, dark bg
+## Production file
+frontend/src/apps/public/BookingPage.jsx
 
-## Overview screen — top stats bar
-4 metric cards in a row:
-- Today's Revenue (sum across all branches, green accent)
-- Active Bookings (in_progress count, yellow accent)
-- Waiting (confirmed count, muted)
-- Completed Today (done count, blue accent)
-Each card: muted label 12px top, value Barlow Condensed 900 28px below
+## Route
+App.jsx: /book/:slug → BookingPage
 
-## Branch cards grid (main content)
-One card per branch, grid auto-fill minmax(280px,1fr)
-Each card:
-- Branch name (Barlow Condensed 800) + city
-- Live status: X in chair, X waiting, X done
-- Today's revenue (Barlow Condensed 900, green)
-- Barber availability: avatar row showing who is clocked in (green dot) or absent (grey)
-- Any alerts: delay alerts (⚠ orange), low stock alerts (📦 yellow), absence (🔴 red)
-- "View Details →" link — drills into branch
+## Flow
+1. GET /api/public/branch-by-slug/:slug → returns branch info, services, barbers
+2. If branch.online_booking_enabled = false, show WA redirect (use branch.backoffice_alert_phone)
+3. Same flow as kiosk: ServiceSelection → BarberSelection → TimeSlot → Confirm
+4. Mobile-responsive (portrait, touch-friendly)
+5. booking.source = 'online'
+6. No payment — postpaid at kiosk counter after service
+7. Customer must provide name + phone (both required for online)
 
-## Branch detail view
-Live queue table: booking number, customer name, barber, service, status, time, amount
-Filter by: all / waiting / in-progress / completed / no-show
-Each row has quick actions: start, complete, flag no-show
-
-## Notification settings panel (per branch)
-- Acknowledge grace period before voice call (default 3 min)
-- Late start threshold for delay alert (default 10 min)
-- WhatsApp notifications: on/off toggle
-- Voice call escalation: on/off toggle
-- Speaker announcement: on/off toggle
-- Tip preset amounts: three inputs (default 10000, 20000, 50000)
+## Backend route
+backend/routes/public.js
+  GET /api/public/branch-by-slug/:slug — no auth required, public endpoint
+  POST /api/bookings — same endpoint, source='online'
 ```
 
 ---
 
-### Revenue Reports
-*GET /api/admin/reports?branch_id=&period=&from=&to=*
+## 07C — Pre-Staging QA Checklist
+
+Before declaring staging-ready, verify ALL of these:
 
 ```
-Build the Bercut Admin Revenue Reports screen.
+## Database
+- [ ] schema.sql runs clean on fresh PostgreSQL 16
+- [ ] seed.sql creates realistic test data (6+ branches, 15+ barbers, 3+ services per category)
+- [ ] All indexes created
+- [ ] All ENUMs match system-plan exactly
+- [ ] All FK constraints in place
+- [ ] Singleton rows created (payroll_settings, whatsapp_settings)
 
-## Filters
-Branch selector (All or specific branch)
-Period: Today, This Week, This Month, Custom range (date pickers)
-Group by: Day, Week, Month
-Export button: CSV download
+## Backend API
+- [ ] Every endpoint from system-plan Section 07 exists and returns correct shape
+- [ ] All routes include branch_id scoping
+- [ ] JWT auth works for admin routes
+- [ ] X-Kiosk-Token auth works for kiosk routes
+- [ ] SSE endpoint streams events correctly (test with curl)
+- [ ] Xendit webhook handler verifies signature
+- [ ] Error responses use consistent { error: string } format
+- [ ] Audit log writes on all admin mutations
+- [ ] CORS disabled in production (same-origin)
 
-## Summary cards row
-Total Revenue, Total Bookings, Average Order Value, Tips Collected —
-each with period-over-period change %
+## Frontend
+- [ ] All 11 kiosk screens render and navigate correctly
+- [ ] All 16 admin screens render and navigate correctly
+- [ ] No hardcoded mock data remaining (grep for MOCK_, DUMMY_, DEMO_)
+- [ ] Design tokens match CLAUDE.md exactly
+- [ ] Yellow never used as text colour on light backgrounds
+- [ ] All kiosk touch targets ≥ 72px
+- [ ] BarberPanel fully in Bahasa Indonesia
+- [ ] SSE reconnects on connection loss
+- [ ] Offline banner shows when navigator.onLine = false
+- [ ] PWA manifest + service worker registered
 
-## Revenue breakdown table
-Columns: Date | Branch | Barber | Service | Payment Method | Amount | Tip | Total
-Sortable columns, pagination 50 per page
+## Services Layer
+- [ ] Slot generator returns correct available slots
+- [ ] Escalation loop sends WA + respects max count
+- [ ] Points expiry cron runs nightly
+- [ ] Inventory deduction fires on service completion
+- [ ] Auto-cancel fires for expired confirmed bookings
+- [ ] Payroll calculator produces correct net pay
+- [ ] Receipt printer gracefully handles offline printer
+- [ ] Excel export produces valid .xlsx files
 
-## Barber performance section
-Table: Barber | Branch | Bookings | Services | Revenue | Commission (%) | Earnings
-Commission = revenue × commission_rate (stored per barber)
-Commission rate editable inline
-
-## Payment method breakdown
-Pie/bar chart: QRIS vs Card split by branch
-Use recharts or chart.js
-```
-
----
-
-### Expense Tracking
-*GET/POST /api/expenses*
-
-```
-Build the Bercut Admin Expense Tracking screen.
-
-## Expense log
-Table: Date | Branch | Category | Description | Amount | Submitted by | Receipt
-Categories: petty_cash, supplies, utilities, equipment, other
-Sortable, filterable by branch + category + date range
-
-## Add expense form
-Branch selector (required)
-Category dropdown
-Amount input (IDR, number)
-Description textarea
-Date picker (defaults to today)
-Receipt photo upload (optional) — stored in cloud storage (e.g. Cloudflare R2 or S3),
-URL saved to DB
-Submit → POST /api/expenses → appears immediately in log (no approval step)
-
-## P&L summary
-Per branch per period: Service Revenue - Expenses = Net
-Table showing each line item, subtotals, net figure
-Note: "Tips tracked separately — not included in service revenue"
-
-## DB schema reminder
-expenses table: id, branch_id, submitted_by (FK users), category, amount, description,
-receipt_url, expense_date, created_at
-No approval_status column — expenses are logged immediately.
+## Deployment
+- [ ] Vite build outputs to backend/public/
+- [ ] Nginx config includes SSE proxy_buffering off
+- [ ] Nginx config includes 24h proxy_read_timeout for SSE
+- [ ] SSL/HTTPS configured via Let's Encrypt
+- [ ] PM2 ecosystem config uses 1 instance
+- [ ] .env file has all required variables
+- [ ] uploads/ directory exists with write permissions
+- [ ] Daily database backup cron configured
+- [ ] Firewall allows only ports 22, 80, 443
 ```
 
 ---
 
-### Inventory Tracking
-*GET/POST /api/inventory*
+## 08 — Prompt Troubleshooting
 
-```
-Build the Bercut Admin Inventory Tracking screen.
-
-## Three categories
-beverage           — drinks offered to customers (water, coffee, etc.)
-product            — retail/resale items (pomade, wax, etc.) — received centrally, assigned to branches
-service_consumable — items used during services (foil, blades, wax strips, etc.)
-
-## Inventory overview table
-Columns: Item | Category | Unit | [Branch1] | [Branch2] | ... | Total
-Color code: red if below reorder threshold, yellow if within 20% of threshold, green if healthy
-Filter by category
-
-## Stock movement log
-Per branch: Item | Type (in/out) | Quantity | Note | Logged by | Date
-POST /api/inventory/movement { item_id, branch_id, movement_type, quantity, note }
-
-## Product arrival — branch assignment
-When products arrive: "Receive Stock" form
-Select item, enter total quantity received, then distribute across branches
-Each branch gets an input — quantities must sum to total received
-POST /api/inventory/receive { item_id, branch_allocations: [{branch_id, quantity}] }
-
-## Low stock alerts
-Badge count on Inventory nav item = number of items below threshold across all branches
-Alert card per item at top of page when stock critical
-```
+| Issue | Cause | Fix |
+|---|---|---|
+| Buttons not clickable | Used onTouchStart | Always onClick |
+| Yellow text on white cards | Accent as text colour | Yellow is background only; text on white = #111110 |
+| Selected card text invisible | Muted text on yellow bg | All text → #111110 on yellow |
+| Layout breaks on resize | Fixed pixel widths | Use clamp(min, fluid, max) |
+| Payment in booking flow | AI assumes prepaid | POSTPAID — payment is a separate mode triggered by barber Complete |
+| Tip on confirm screen | Common POS pattern | Tip is on PaymentTakeover only |
+| Wrong language in barber panel | AI defaults English | BarberPanel is Bahasa Indonesia ONLY |
+| branch_id missing | AI forgets multi-tenant | Every query MUST include branch_id |
+| proxy_buffering on | Default Nginx config | Always proxy_buffering off for SSE |
+| Multiple PM2 instances | Default cluster mode | Must be 1 instance for SSE in-memory map |
+| Mock data left in production | Forgot to replace | Every MOCK_* constant must become an API call |
+| Kiosk shows all branches data | No auth boundary | Kiosk reads branch_id from device token, scopes all queries |
 
 ---
 
-## 07B — Admin Dashboard: Payroll
-*GET /api/payroll/periods + POST /api/payroll/generate*
-
-```
-Build the Bercut Admin Payroll screen.
-
-## Overview
-Monthly payroll management per branch. Barbers are on salary_plus_commission.
-Tips: individual (each barber keeps tips from their own bookings — no pooling).
-Pay cycle: monthly. Workflow: draft → reviewed → finalized (immutable).
-
-## Layout
-Same left sidebar as other admin screens.
-Main content: two-panel layout.
-Left (narrower): period selector + branch selector + status.
-Right (wider): barber entry table + adjustment panel.
-
-## Period selector (top of page)
-Month/year picker (defaults to current month).
-Branch dropdown.
-"Generate Payroll" button — calls POST /api/payroll/generate { branch_id, period_month }.
-  If draft already exists, loads it. Button label changes to "Regenerate" if draft exists.
-Status badge: DRAFT (grey) | REVIEWED (yellow) | FINALIZED (green, lock icon).
-"Mark as Reviewed" button (visible in draft state, requires owner role).
-"Finalize & Lock" button (visible in reviewed state, requires owner role, shows confirmation dialog).
-"Export CSV" button (always visible once entries exist).
-
-## Barber entries table
-Columns:
-  Barber name + avatar
-  Days worked (attendance_days)
-  Service revenue (gross_service_revenue — formatted IDR)
-  Commission % (commission_rate_snapshot — shown as "35%")
-  Commission earned (commission_earned)
-  Tips earned (tips_earned)
-  Uang Rajin (uang_rajin_total — green text if > 0)
-  Bonus (bonus_total)
-  Kasbon (kasbon_deducted — red text if > 0)
-  Deductions (other_deductions)
-  NET PAY (net_pay — Inter 700, larger, yellow highlight if finalized)
-
-Each row is expandable (click to open adjustment panel below the row).
-Non-finalized rows show an "+ Add Adjustment" button at the end.
-
-## Adjustment panel (expanded row)
-Shows all payroll_adjustments for this entry as a list:
-  Type badge (UANG RAJIN green | BONUS blue | KASBON red | DEDUCTION orange)
-  Reason label
-  Amount (IDR)
-  Logged by + date
-  Delete button (× — only if period not finalized)
-
-"+ Add Adjustment" button opens an inline form:
-  Type selector: Uang Rajin | Bonus | Kasbon | Deduction
-  Reason dropdown: shows adjustment_reasons filtered by type + branch, + "Other (type manually)" option
-  Amount input (IDR)
-  If type = Kasbon: radio — "Deduct this month" | "Deduct next month"
-  Save button → POST /api/payroll/adjustments
-  On save: entry row recalculates net_pay live.
-
-## Kasbon (Salary Advance) standalone log
-Separate tab: "Kasbon Log"
-Table: Barber | Amount | Reason | Deduct Month | Logged by | Date | Status (Pending/Applied)
-"+ Log Kasbon" button — opens same inline form but entry_id is null (pre-period kasbon).
-Useful for logging kasbon mid-month before payroll is generated.
-
-## Reason Management (Settings sub-section)
-Tab or link: "Manage Reasons"
-List of adjustment_reasons grouped by type.
-Each row: Label | Type | Scope (global / branch-specific) | Active toggle | Edit | Delete
-"+ New Reason" form: label input, type selector, branch scope (all / specific branch).
-Default global reasons pre-seeded:
-  uang_rajin: "Full Month Attendance", "Zero Late Arrivals", "Top Barber of the Month", "Customer Compliment"
-  bonus: "Holiday Bonus", "Performance Bonus"
-  deduction: "Late Arrivals", "Equipment Damage", "Uniform Deduction"
-  kasbon: "Salary Advance"
-
-## Calculation rules (backend must implement)
-net_pay = base_salary_snapshot
-        + commission_earned (gross_service_revenue × commission_rate_snapshot / 100)
-        + tips_earned (SUM tips.amount WHERE booking.barber_id = this barber AND paid_at IN period)
-        + uang_rajin_total (SUM adjustments WHERE type = uang_rajin)
-        + bonus_total (SUM adjustments WHERE type = bonus)
-        − kasbon_deducted (SUM adjustments WHERE type = kasbon AND target_period_month = period_month)
-        − other_deductions (SUM adjustments WHERE type = deduction)
-
-gross_service_revenue = SUM booking_services.price_charged
-  WHERE booking.barber_id = this barber
-  AND booking.status = 'completed'
-  AND booking.paid_at >= period start
-  AND booking.paid_at < period end
-  AND booking_services.paid_with_points = false  ← points-redeemed services excluded
-
-attendance_days = COUNT DISTINCT DATE(clock_in_at)
-  FROM attendance WHERE barber_id = this barber AND clock_in_at IN period
-
-## Period immutability
-Once status = finalized:
-  - All entry and adjustment rows become read-only
-  - DELETE /api/payroll/adjustments/:id returns 403
-  - PATCH /api/payroll/periods/:id/status only allows finalized → no rollback
-  - UI: all edit controls hidden, lock icon shown on header
-
-## Export
-GET /api/payroll/periods/:id/export
-Returns CSV with columns:
-  Barber, Days Worked, Base Salary, Service Revenue, Commission %, Commission Earned,
-  Tips, Uang Rajin, Bonus, Kasbon Deducted, Other Deductions, Net Pay
-One row per barber. Period month and branch name in filename.
-```
-
----
-
-## 08 — Database Schema
-*PostgreSQL. Run tables in this order due to FK dependencies.*
-
-```
-Create the full PostgreSQL schema for the Bercut Barber Shop system.
-
-## Tables to create (in this order):
-
-1. branches
-id UUID PK, name VARCHAR(100), address TEXT, city VARCHAR(80), timezone VARCHAR(50),
-geofence_lat DECIMAL(9,6), geofence_lng DECIMAL(9,6), geofence_radius_m INTEGER DEFAULT 100,
-is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now()
-
-2. users (admin/owner/accountant — NOT barbers)
-id UUID PK DEFAULT gen_random_uuid(), email VARCHAR(200) UNIQUE,
-password_hash TEXT, name VARCHAR(100), role VARCHAR(20) DEFAULT 'admin',
-is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now()
-
-3. barbers
-id UUID PK DEFAULT gen_random_uuid(), branch_id UUID FK branches(id),
-name VARCHAR(100), specialty VARCHAR(100), specialty_id VARCHAR(100),
-phone VARCHAR(20), pin_hash TEXT, commission_rate DECIMAL(5,2) DEFAULT 35.00,
-avatar_url TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now()
-
-4. services
-id UUID PK DEFAULT gen_random_uuid(), name VARCHAR(100), name_id VARCHAR(100),
-category VARCHAR(20) CHECK (category IN ('Haircut','Beard','Color','Package')),
-base_price INTEGER NOT NULL, duration_minutes SMALLINT NOT NULL,
-badge VARCHAR(50), description TEXT, is_active BOOLEAN DEFAULT true,
-sort_order SMALLINT DEFAULT 0
-
-5. service_branch_prices
-service_id UUID FK services(id), branch_id UUID FK branches(id),
-price INTEGER NOT NULL, PRIMARY KEY (service_id, branch_id)
-
-6. barber_schedules
-barber_id UUID FK barbers(id), day_of_week SMALLINT CHECK (day_of_week BETWEEN 0 AND 6),
-start_time TIME, end_time TIME, is_off BOOLEAN DEFAULT false,
-PRIMARY KEY (barber_id, day_of_week)
-
-7. customers
-id UUID PK DEFAULT gen_random_uuid(), name VARCHAR(100), phone VARCHAR(20) UNIQUE,
-total_visits INTEGER DEFAULT 0, total_spend INTEGER DEFAULT 0,
-preferred_barber_id UUID FK barbers(id), first_visit DATE, last_visit DATE
-
-8. bookings
-id UUID PK DEFAULT gen_random_uuid(),
-booking_number VARCHAR(10) NOT NULL,
-branch_id UUID FK branches(id), barber_id UUID FK barbers(id),
-customer_id UUID FK customers(id) NULLABLE,
-guest_name VARCHAR(100), guest_phone VARCHAR(20),
-scheduled_at TIMESTAMPTZ NOT NULL,
-started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, paid_at TIMESTAMPTZ,
-status VARCHAR(20) DEFAULT 'confirmed'
-  CHECK (status IN ('confirmed','in_progress','pending_payment','completed','no_show','cancelled')),
-payment_status VARCHAR(20) DEFAULT 'unpaid'
-  CHECK (payment_status IN ('unpaid','paid','refunded')),
-payment_method VARCHAR(10) CHECK (payment_method IN ('qris','card')),
-payment_ref VARCHAR(100), notes TEXT, rating SMALLINT,
-acknowledged_at TIMESTAMPTZ,
-created_at TIMESTAMPTZ DEFAULT now()
-
-9. booking_services
-booking_id UUID FK bookings(id), service_id UUID FK services(id),
-price_charged INTEGER NOT NULL, added_mid_cut BOOLEAN DEFAULT false,
-PRIMARY KEY (booking_id, service_id)
-
-10. tips
-id UUID PK DEFAULT gen_random_uuid(), booking_id UUID FK bookings(id) UNIQUE,
-branch_id UUID FK branches(id), amount INTEGER NOT NULL,
-payment_method VARCHAR(10), created_at TIMESTAMPTZ DEFAULT now()
-
-11. expenses
-id UUID PK DEFAULT gen_random_uuid(), branch_id UUID FK branches(id),
-submitted_by UUID FK users(id), category VARCHAR(40)
-  CHECK (category IN ('petty_cash','supplies','utilities','equipment','other')),
-amount INTEGER NOT NULL, description TEXT, receipt_url TEXT,
-expense_date DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT now()
-
-12. attendance
-id UUID PK DEFAULT gen_random_uuid(), barber_id UUID FK barbers(id),
-branch_id UUID FK branches(id), clock_in_at TIMESTAMPTZ NOT NULL,
-clock_out_at TIMESTAMPTZ, clock_in_lat DECIMAL(9,6), clock_in_lng DECIMAL(9,6),
-within_geofence BOOLEAN, face_verified BOOLEAN DEFAULT false, selfie_url TEXT
-
-13. inventory_items
-id UUID PK DEFAULT gen_random_uuid(), name VARCHAR(100), unit VARCHAR(20),
-category VARCHAR(30) CHECK (category IN ('beverage','product','service_consumable')),
-is_active BOOLEAN DEFAULT true
-
-14. inventory_stock
-item_id UUID FK inventory_items(id), branch_id UUID FK branches(id),
-current_stock INTEGER DEFAULT 0, reorder_threshold INTEGER DEFAULT 5,
-updated_at TIMESTAMPTZ DEFAULT now(), PRIMARY KEY (item_id, branch_id)
-
-15. inventory_movements
-id UUID PK DEFAULT gen_random_uuid(), item_id UUID FK inventory_items(id),
-branch_id UUID FK branches(id), logged_by UUID FK barbers(id) NULLABLE,
-movement_type VARCHAR(5) CHECK (movement_type IN ('in','out')),
-quantity INTEGER NOT NULL, note TEXT, created_at TIMESTAMPTZ DEFAULT now()
-
-## Indexes (run after table creation)
-CREATE INDEX idx_bookings_branch_date ON bookings(branch_id, scheduled_at);
-CREATE INDEX idx_bookings_barber_date ON bookings(barber_id, scheduled_at);
-CREATE INDEX idx_bookings_status ON bookings(status);
-CREATE INDEX idx_attendance_barber_date ON attendance(barber_id, clock_in_at);
-CREATE INDEX idx_inventory_movements_item ON inventory_movements(item_id, branch_id, created_at);
-```
-
----
-
-## 09 — API & Backend
-
-### Booking Creation + Slot Generation
-*POST /api/bookings + GET /api/slots*
-
-```
-Build the booking creation API and slot generation logic for Bercut.
-
-## GET /api/slots?barber_id=&date=&service_ids=
-1. Fetch barber's schedule for given day_of_week
-2. If is_off = true: return []
-3. Generate 30-minute blocks within start_time → end_time
-4. Fetch all bookings for that barber on that date (status NOT IN cancelled, no_show)
-5. For each existing booking: block start_time to start_time + total_duration + 15min buffer
-6. Calculate selected services total duration
-7. Filter blocks where: block_start + service_duration + 15min <= next_blocked_slot
-8. Remove past times (if date = today)
-9. Return available slot times as string[] e.g. ["09:00","09:30","10:30"]
-
-## POST /api/bookings
-Body: { branch_id, barber_id, scheduled_at, service_ids[], guest_name?, guest_phone? }
-
-Validation:
-- Check slot is still available (race condition: use DB transaction with SELECT FOR UPDATE)
-- Check barber belongs to branch
-- Check all service_ids are active
-
-Generate booking_number:
-- Format: "B" + 3-digit number, incrementing per branch per day
-- e.g. B001, B002, ... B099 — reset each day
-
-Create records:
-- INSERT INTO bookings (status: 'confirmed')
-- INSERT INTO booking_services for each service_id
-  (price_charged = branch override or base_price)
-- If guest_phone provided: upsert customers table
-
-Trigger notifications (async, don't await):
-- Web Speech API announcement via kiosk (emit SSE event to kiosk channel)
-- Phase 2: Web Push to barber's PWA
-- Start acknowledgement timer (if not acknowledged in X min → trigger escalation)
-
-Response: { booking_id, booking_number, status: 'confirmed', scheduled_at }
-
-## PATCH /api/bookings/:id/start
-Set status = 'in_progress', started_at = now()
-Check delay: if now() > scheduled_at + late_start_threshold → log delay, alert admin
-
-## PATCH /api/bookings/:id/add-services
-Body: { service_ids[] }
-Insert new booking_services rows (added_mid_cut: true)
-Return updated total
-
-## PATCH /api/bookings/:id/complete
-Set status = 'pending_payment', completed_at = now()
-Emit SSE event on the branch channel: { type: 'payment_trigger', booking_id }
-Kiosk receives this event and opens PaymentTakeover
-
-## POST /api/payments
-Body: { booking_id, method: 'qris'|'card', tip_amount, total_amount }
-
-Both QRIS and card handled by BCA EDC terminal via direct local integration:
-- Option A (Serial/USB): kiosk sends ISO 8583 payment request over serial/USB cable to EDC
-- Option B (Local TCP): kiosk sends payment instruction to EDC over LAN via TCP socket
-- EDC processes the transaction (card tap or QRIS scan on EDC screen), returns approval code
-- No internet required for the transaction itself — fully local communication
-- Exact protocol determined by BCA technical team based on EDC model issued to client
-
-On EDC approval response:
-  set booking.payment_status = 'paid', booking.status = 'completed'
-  If tip_amount > 0: INSERT INTO tips
-  Emit SSE: { type: 'payment_complete', booking_id } → barber app shows "Lunas ✓"
-```
-
----
-
-### Notification Escalation
-*Background job / queue worker*
-
-```
-Build the notification escalation system for Bercut.
-
-## On new booking created (triggered by POST /api/bookings)
-
-Step 1 — Speaker (immediate, via SSE to kiosk):
-Emit { channel: 'branch:{branch_id}', type: 'announcement',
-text: '{barber_name}, ada pelanggan baru untuk {service_name} jam {time}' }
-Kiosk receives and calls:
-window.speechSynthesis.speak(new SpeechSynthesisUtterance(text))
-Language: id-ID (Bahasa Indonesia)
-
-Step 2 — Acknowledgement timer:
-Store in DB: { booking_id, acknowledged: false, created_at: now() }
-Background job checks every 30s:
-if not acknowledged AND (now - created_at) > acknowledge_grace_minutes → trigger escalation
-
-Step 3 — Voice call (escalation only, Phase 2):
-Use configured voice escalation service
-"Kapster {name}, ada pelanggan menunggu untuk {service} jam {time}. Segera konfirmasi."
-
-## PATCH /api/bookings/:id/acknowledge
-Set acknowledged_at = now()
-Cancel escalation timer for this booking
-
-## Admin configurable thresholds (stored per branch)
-acknowledge_grace_minutes: INTEGER DEFAULT 3
-late_start_threshold_minutes: INTEGER DEFAULT 10
-speaker_enabled: BOOLEAN DEFAULT true
-voice_call_enabled: BOOLEAN DEFAULT true
-tip_presets: INTEGER[] DEFAULT [10000, 20000, 50000]
-```
-
----
-
-## 10 — Design Tokens Reference
+## 09 — Design Tokens Reference
 
 ### Colour Tokens
 
@@ -1188,7 +1090,7 @@ tip_presets: INTEGER[] DEFAULT [10000, 20000, 50000]
 | `accentText` | `#111110` | Text ON yellow backgrounds |
 | `text` / `topBg` | `#111110` | Primary text, topbar, dark buttons |
 | `text2` | `#3a3a38` | Secondary text |
-| `muted` | `#88887e` | Placeholders, helper text, subtitles |
+| `muted` | `#88887e` | Placeholders, helper text |
 | `border` | `#DDDBD4` | Card borders, dividers |
 | `white` | `#FFFFFF` | Card surfaces |
 | `topText` | `#F5E200` | Yellow text in dark topbar |
@@ -1196,106 +1098,87 @@ tip_presets: INTEGER[] DEFAULT [10000, 20000, 50000]
 
 ### Typography Scale
 
-| Use | Font | Size | Weight | Notes |
-|---|---|---|---|---|
-| Screen titles (kiosk) | Barlow Condensed | `clamp(32px,4.5vw,48px)` | 900 | letterSpacing -0.01em, lineHeight 1 |
-| Service / barber names | Barlow Condensed | `clamp(18px,2.4vw,24px)` | 800 | |
-| Prices | Barlow Condensed | `clamp(16px,2.2vw,22px)` | 800 | Color: text (not yellow on white) |
-| Queue number hero | Barlow Condensed | `clamp(88px,18vw,136px)` | 900 | letterSpacing -0.04em |
-| Primary CTA buttons | Barlow Condensed | `clamp(18px,2.2vw,22px)` | 800 | letterSpacing 0.04em |
-| Body / descriptions | DM Sans | `clamp(12px,1.4vw,14px)` | 400 | lineHeight 1.65 |
-| Labels / eyebrows | DM Sans | `clamp(10px,1.2vw,12px)` | 700 | letterSpacing 0.12–0.18em, uppercase |
+| Use | Font | Weight |
+|---|---|---|
+| Screen titles | Inter | 800 |
+| Service / barber names | Inter | 700 |
+| Prices | Inter | 700–800 |
+| Queue number hero | Inter | 800 |
+| Primary CTA buttons | DM Sans | 700 |
+| Body / descriptions | DM Sans | 400 |
+| Labels / eyebrows | DM Sans | 700, uppercase |
 
 ### Component Patterns
 
 | Component | Key Properties |
 |---|---|
-| Primary button | bg `#111110`, white text, Barlow Condensed 800, border-radius 14px, min-height 52px, width 100% |
-| Ghost button | transparent bg, border `#DDDBD4`, text2 colour, border-radius 12px, min-height 52px |
-| Card (default) | white bg, 1.5px border `#DDDBD4`, border-radius 14px, min-height 72px |
-| Card (selected) | bg `#F5E200`, border `#F5E200`, ALL text → `#111110` |
-| Category pill | border-radius 999px, min-height 44px, active = `#111110` bg white text |
-| Scrollable area | overflow-y auto, -webkit-overflow-scrolling touch, overscroll-behavior contain |
+| Primary button (kiosk) | bg #111110, white text, border-radius 14px, min-height 72px |
+| Ghost button | transparent bg, border #DDDBD4, text2 colour, border-radius 12px |
+| Card (default) | white bg, 1.5px border #DDDBD4, border-radius 14px |
+| Card (selected) | bg #F5E200, border #F5E200, ALL text → #111110 |
+| Category pill | border-radius 999px, min-height 44px, active = #111110 bg white text |
+| Admin card | white bg, 1px border, border-radius 12px, box-shadow subtle |
 
 ---
 
-## 11 — Prompt Troubleshooting
-
-| Issue | Cause | Fix prompt to add |
-|---|---|---|
-| Buttons not clickable | Used onTouchStart which blocks onClick in browser | "Use onClick for all interactions, not onTouchStart." |
-| Yellow text on white cards | AI used accent colour (#F5E200) as text colour | "Yellow (#F5E200) is NEVER used as text on white/light surfaces. Use #111110 for prices and text on white cards." |
-| Selected card text invisible | Muted text (#88887e) left on yellow background | "When a card has class .sel (yellow background), ALL text inside must be #111110 — including muted labels, durations, and descriptions." |
-| Layout breaks on screen resize | Fixed pixel widths used instead of clamp() | "Use clamp(min, fluid, max) for all font sizes, padding, and widths. No fixed pixel values for layout." |
-| AI adds payment to booking flow | AI assumes prepay is standard | "This system is POSTPAID. Customers NEVER pay during or after the booking flow. Payment is triggered separately by staff after service completion." |
-| AI adds tip to confirm screen | Common pattern in other POS apps | "Tip is collected at payment time on the PaymentTakeover screen, NOT on the booking confirmation screen." |
-| Wrong language in barber app | AI defaults to English | "The barber app is Bahasa Indonesia ONLY. No English anywhere in the barber PWA." |
-| branch_id missing from query | AI forgets multi-tenant requirement | "Every database query that fetches bookings, barbers, or inventory MUST include branch_id as a filter. All data is branch-scoped." |
-| Admin dashboard shows all data unfiltered | AI builds single-tenant dashboard | "Admin dashboard is multi-branch. Default view shows ALL branches. Branch filter is a dropdown. When a specific branch is selected, all data filters to that branch." |
-| Triple-tap doesn't work | Timer logic or ref not persisting correctly | "Use useRef (not useState) for tapCount and tapTimer — setState causes re-renders that break the tap timing. tapCount.current increments on each click of the hidden div." |
-
----
-
-## 07B — Admin: Kiosk Configuration
-*GET/PUT /api/admin/kiosk-settings?branch_id=*
+## 10 — File Dependency Map
 
 ```
-Build the Bercut Admin Kiosk Configuration screen.
+backend/
+  server.js                    ← Express app entry point
+  config/db.js                 ← PostgreSQL pool
+  middleware/auth.js            ← JWT + kiosk token verification
+  middleware/branchScope.js     ← branch_id extraction
+  routes/
+    auth.js                    ← login, me
+    branches.js                ← CRUD + chairs + overrides + kiosk tokens
+    services.js                ← CRUD + branch config + consumables
+    barbers.js                 ← CRUD + service capability
+    slots.js                   ← slot availability
+    bookings.js                ← full lifecycle (create → complete → payment)
+    payments.js                ← Xendit Terminal + webhook
+    attendance.js              ← clock in/out, log-off
+    expenses.js                ← 3-type + PO + export
+    inventory.js               ← stock, movements, distribute, menu
+    reports.js                 ← revenue, pax-out, delay
+    events.js                  ← SSE endpoint + emitEvent
+    payroll.js                 ← generate, periods, entries, adjustments, export
+    customers.js               ← list, detail, history
+    settings.js                ← loyalty, whatsapp, users, permissions, audit log
+    kiosk.js                   ← /api/kiosk/register
+    kiosk-config.js            ← kiosk settings + feedback tags
+    online-booking.js          ← branch online booking config + stats
+    public.js                  ← /api/public/branch-by-slug/:slug (no auth)
+  services/
+    slotGenerator.js           ← pure slot availability logic
+    notifications.js           ← SSE + WA (Fonnte) + Web Speech
+    escalation.js              ← booking acknowledgement timer + WA escalation loop
+    pointsExpiry.js            ← nightly cron: expire inactive loyalty points
+    inventoryDeduction.js      ← auto-deduct consumables on service completion
+    autoCancel.js              ← 60s loop: cancel expired confirmed bookings
+    receiptPrinter.js          ← ESC/POS thermal receipt formatting + printing
+    excelExport.js             ← xlsx export via exceljs (payroll, expenses, reports)
+    payrollCalculator.js       ← generate payroll entries from attendance/bookings data
+  db/
+    schema.sql                 ← full PostgreSQL schema (35+ tables)
+    seed.sql                   ← realistic dev data
 
-## Purpose
-Allows the owner/manager to customise the kiosk experience per branch without
-touching code or physically accessing the kiosk device. Changes take effect on
-the kiosk on next load, or immediately if the kiosk is listening on SSE for a
-kiosk_settings_updated event.
-
-## Location in admin nav
-Settings → Kiosk Configuration (sub-tab alongside Notifications & Operations)
-Or as a standalone "Kiosk" nav item between Services and Settings.
-
-## Branch selector
-Dropdown at the top: "Global (all branches)" or specific branch.
-When a branch is selected, its overrides are shown on top of the global defaults.
-Saving with "Global" selected writes to the NULL branch_id row (fallback for all branches).
-
-## Sections
-
-### Welcome Screen
-- Heading (English): text input, default "Welcome to Bercut"
-- Heading (Bahasa): text input, default "Selamat Datang di Bercut"
-- Start CTA (English): text input, default "Start Booking"
-- Start CTA (Bahasa): text input, default "Mulai Booking"
-- Live preview: small mockup card shows how it will look
-
-### Upsell Popup
-- Enable upsell suggestions: toggle (default on)
-- Popup heading (English): text input
-- Popup heading (Bahasa): text input
-- "Switch to package" button label: text input
-- "Keep my selection" button label: text input
-- Note: package savings amounts and service lists are derived from the services
-  catalogue — not editable here
-
-### Service Display Order
-- Drag-and-drop list of all active services (grouped by category: Haircut, Beard, Color, Package)
-- Reorder to change how services appear on the kiosk grid
-- "Reset to default" link reverts to sort_order from the services catalogue
-- Saved as JSONB array of service UUIDs in kiosk_settings.service_sort_override
-
-## Save behaviour
-"Save Changes" button → PUT /api/admin/kiosk-settings { branch_id, ...fields }
-→ upserts kiosk_settings row
-→ emits SSE event on branch channel: { type: 'kiosk_settings_updated' }
-→ kiosk receives event, re-fetches settings, applies without full page reload
-
-## API
-GET  /api/admin/kiosk-settings?branch_id=   — fetch current settings (merges global + branch overrides)
-PUT  /api/admin/kiosk-settings               — upsert { branch_id, welcome_heading, ... }
-SSE  GET /api/events?branch_id=              — listen for kiosk_settings_updated event on kiosk side
-
-## DB table
-kiosk_settings — see system-plan.md Section 06 for full schema.
-Key columns: branch_id (nullable FK, NULL = global), welcome_heading, welcome_heading_id,
-welcome_cta, welcome_cta_id, upsell_enabled, upsell_popup_heading, upsell_popup_heading_id,
-upsell_switch_cta, upsell_keep_cta, service_sort_override JSONB, updated_at, updated_by
+frontend/src/
+  main.jsx                     ← React entry
+  App.jsx                      ← Router: /kiosk, /admin, /mockup/*
+  shared/
+    tokens.js                  ← design tokens
+    api.js                     ← fetch wrapper (kiosk token + JWT)
+    useSSE.js                  ← EventSource hook
+    components/
+      Topbar.jsx
+      Button.jsx
+      Card.jsx
+  apps/
+    kiosk/
+      KioskApp.jsx             ← shell (device setup, idle, offline, panels)
+      screens/                 ← all kiosk screens (11 files)
+    admin/
+      AdminApp.jsx             ← shell (sidebar, auth, permissions)
+      screens/                 ← all admin screens (16 files)
 ```
-

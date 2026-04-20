@@ -60,7 +60,7 @@ const _onlineCount = BRANCHES ? BRANCHES.filter(b => b.onlineBookingEnabled).len
 
 const NAV = [
   { key: 'overview',          label: 'Overview',          icon: Icon.overview,     badge: _alertCount    },
-  { key: 'live-monitor',      label: 'Live Monitor',      icon: Icon.liveMonitor                         },
+  { key: 'live-monitor',      label: 'Live Queue Management', icon: Icon.liveMonitor                     },
   { key: 'reports',           label: 'Reports',           icon: Icon.reports                             },
   { key: 'barbers',           label: 'Barbers',           icon: Icon.barbers                             },
   { key: 'branches',          label: 'Branches',          icon: Icon.branches                            },

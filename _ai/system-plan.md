@@ -243,9 +243,9 @@ When a customer selects "Any Available" on the Barber Selection screen, no barbe
 | Service Management | Catalogue editor with per-branch price + availability config. Per-barber service capability managed on Barbers page. |
 | Barber Management | Profiles, commission rates, service capability (Services tab per barber). |
 | Expenses | Logging form with source (petty cash / owner), all-branch + Head Office selector, mandatory receipt upload, optional inline stock receipt. P&L summary per branch. |
-| Inventory | Two tabs: **Stock** (monitoring — levels, movement history, low stock alerts) and **Distribute** (Head Office → branch transfer: select item, source, destination, quantity). Receiving stock is still done via Expenses with "received stock" checkbox. |
+| Inventory | Three tabs: **Stock** (monitoring — levels, movement history, low stock alerts), **Distribute** (Head Office → branch transfer: select item, source, destination, quantity), and **Kiosk Menu** (per-branch price + `kiosk_visible` toggle for beverage and product items shown on the kiosk TimeSlot add-on step — not applicable to service consumables). Receiving stock is still done via Expenses with "received stock" checkbox. Kiosk Menu read/write via `GET/PUT /api/inventory/menu?branch_id=`. |
 | Attendance | Separate page. Monthly calendar view per barber — present days, off days (excused/inexcused/doctor note), late minutes, branch per day. Log Off button. Shortcut to Payroll page. |
-| Payroll | Separate page. Period picker (16th→15th, named by start month). Barber table with: base salary, commission (regular + OT breakdown), late deduction (auto-recalc from minutes), excused off (flat days + prorata days split), inexcused off (same split), kasbon column (auto-imported from Expenses), additions, other deductions, net pay. Working days chip (computed as period_days × 6/7, admin-editable for holidays). OT commission config in Settings > Payroll tab. CSV export. |
+| Payroll | Separate page. Period picker (16th→15th, named by start month). All-branch selector (no filter = all branches). Period status lifecycle: draft → reviewed → communicated. Barber table with: base salary, commission (regular + OT breakdown), late deduction (auto-recalc from minutes), excused off (flat days + prorata days split), inexcused off (same split), kasbon column (auto-imported from Expenses), additions, other deductions, net pay. Working days chip (computed as period_days × 6/7, admin-editable for holidays). OT commission config in Settings > Payroll tab. CSV + xlsx export. |
 | Settings | Global system config — 6 tabs: Catalog (expense categories + inventory master list governance), Loyalty (points earn rate, redemption rules, expiry config), Payroll (global deduction rates: late/min, inexcused off flat, over-quota excused off flat, off quota/month, OT commission config), WhatsApp (provider, API key, message templates), Users (owner-only: admin accounts + permission toggles per section + monitoring role), Audit Log (owner-only: full global activity history). Note: branch-specific operational settings (late threshold, speaker, tip presets, online booking toggle) live in the Branches page → Operations tab — not here. |
 | Kiosk Configuration | Per-branch kiosk UI settings — welcome copy, upsell on/off, popup labels, service display order, tip presets, **feedback tags** (create/edit/reorder/deactivate tag chips for post-payment review screen). Changes pushed live via SSE or applied on next kiosk load. |
 
@@ -630,6 +630,8 @@ Clock-in/out records per barber per shift. Recorded via the kiosk BarberPanel �
 | branch_id | UUID | FK → branches | PK (composite) |
 | current_stock | INTEGER | | |
 | reorder_threshold | INTEGER | | Default 5 |
+| price | INTEGER | | Selling price in IDR. NULL for service_consumable items (not sold). Set per-branch. |
+| kiosk_visible | BOOLEAN | | DEFAULT true. Whether this item appears on the kiosk add-on step at this branch. Only meaningful for beverage/product categories. |
 | updated_at | TIMESTAMPTZ | | |
 
 ### inventory_movements
@@ -858,7 +860,7 @@ One row per barber per payroll period. Deductions are auto-calculated from atten
 **bookings** — add:
 | Column | Type | Description |
 |---|---|---|
-| auto_cancel_at | TIMESTAMPTZ | Set to confirmed_at + 15 min; cleared when customer arrives |
+| auto_cancel_at | TIMESTAMPTZ | Set to scheduled_at + branches.auto_cancel_minutes; NULL for "Now" bookings and when auto_cancel_minutes = 0 |
 | cancellation_reason | TEXT | Admin-entered reason (stored after cancellation) |
 | points_redeemed | INTEGER | DEFAULT 0. Points used at Confirm to cover services. |
 | points_earned | INTEGER | DEFAULT 0. Points credited to customer after payment completes. |
@@ -927,6 +929,7 @@ Global singleton (one row). Stores provider config and message templates. Switch
 | barber_escalation_interval_minutes | SMALLINT | DEFAULT 3. How often to re-send escalation WA to barber if they haven't started. |
 | barber_escalation_max_count | SMALLINT | DEFAULT 5. Max escalation messages before system gives up and alerts admin. |
 | backoffice_alert_phone | VARCHAR(25) | E.164 WhatsApp number for the branch operations/backoffice contact. Receives "client not arrived" alerts sent by barbers. Configurable per branch in Branches → Operations tab. |
+| auto_cancel_minutes | SMALLINT | DEFAULT 15. Minutes after `scheduled_at` before a future-slot booking is auto-cancelled if barber hasn't started. Configurable per branch in Branches → Operations tab. Set to 0 to disable auto-cancel. |
 
 ### kiosk_tokens
 One row per registered Windows kiosk device. Token is permanent until revoked by admin.
@@ -1003,7 +1006,7 @@ All events delivered on `GET /api/events?branch_id=`:
 | PATCH | `/api/payroll/periods/:id/status` | `{ status: 'reviewed' \| 'communicated' }` — advance lifecycle. No immutability — always editable. |
 | PATCH | `/api/payroll/entries/:id` | Update deduction overrides for one barber entry. Body: `{ late_minutes_override, inexcused_off_count_override, inexcused_fixed_days, inexcused_prorata_days, excused_off_count_override, excused_fixed_days, excused_prorata_days }`. Backend recomputes net_pay. |
 | GET/PUT | `/api/payroll/settings` | Read or update global payroll_settings row (deduction rates, OT commission config). |
-| GET | `/api/payroll/periods/:id/export` | Returns CSV with all barber entries for the period. |
+| GET | `/api/payroll/periods/:id/export` | `?format=csv\|xlsx` — export all barber entries for the period. `xlsx` format produced via exceljs. Defaults to CSV if format omitted. |
 | GET | `/api/expenses/export` | `?branch_id=&from=&to=&type=&format=csv\|xlsx` — export filtered expenses. `xlsx` format flattens multi-branch/PO entries into one row per branch attribution. |
 | GET | `/api/reports/export` | `?branch_id=&from=&to=&format=csv\|xlsx` — export revenue + P&L summary. |
 | GET | `/api/payroll/settings` | Get global payroll deduction rates. |
@@ -1110,6 +1113,8 @@ All events delivered on `GET /api/events?branch_id=`:
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/inventory/distribute` | Head Office distributes stock to a branch. Body: `{ item_id, from_branch_id, to_branch_id, quantity, note }`. Creates two `inventory_movements` rows (out from HQ, in at branch). |
+| GET | `/api/inventory/menu?branch_id=` | Returns all beverage and product items for a branch with their `inventory_stock.price` and `inventory_stock.kiosk_visible` values. Used by Inventory > Kiosk Menu tab. |
+| PUT | `/api/inventory/menu?branch_id=` | Upserts `inventory_stock.price` and `inventory_stock.kiosk_visible` for all beverage/product items at a branch. Body: `{ items: [{ item_id, price, kiosk_visible }] }`. |
 
 **Services**
 

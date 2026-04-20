@@ -110,12 +110,13 @@ const sel = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5p
 // ── Branch modal (add + edit) — two tabs: Details + Operations ────────────────
 
 const BRANCH_OP_DEFAULTS = {
-  onlineBookingEnabled: false,
-  speakerOn:   true,
-  pushOn:      false,
-  lateThresh:  10,
-  ackGrace:    3,
-  tipPresets:  [5000, 10000, 20000, 50000, 100000],
+  onlineBookingEnabled:  false,
+  speakerOn:             true,
+  pushOn:                false,
+  lateThresh:            10,
+  ackGrace:              3,
+  tipPresets:            [5000, 10000, 20000, 50000, 100000],
+  backofficeAlertPhone:  '',
 };
 
 function BranchModal({ branch, onConfirm, onClose }) {
@@ -254,6 +255,21 @@ function BranchModal({ branch, onConfirm, onClose }) {
               {/* Announcements */}
               <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 14, color: C.text, marginTop: 22, marginBottom: 2 }}>Announcements & Escalation</div>
               <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Voice announcements and alert thresholds specific to this branch.</div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Backoffice Alert Phone</label>
+                <input
+                  type="tel"
+                  value={form.backofficeAlertPhone}
+                  onChange={e => set('backofficeAlertPhone', e.target.value)}
+                  placeholder="+6281234567890"
+                  style={inp}
+                />
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                  WhatsApp number that receives barber "Client Not Arrived" alerts. E.164 format (e.g. +6281234567890).
+                </div>
+              </div>
+
               <SettingRow label="Speaker Announcement" sub="Announce customer names via Web Speech API on the kiosk speaker.">
                 <Toggle checked={form.speakerOn} onChange={v => set('speakerOn', v)} />
               </SettingRow>

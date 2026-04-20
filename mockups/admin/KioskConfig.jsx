@@ -24,15 +24,156 @@ import { BRANCHES, C, fmt } from './data.js';
 import { SERVICES } from '../kiosk/catalogue.js';
 import BercutKiosk from '../kiosk/BercutKiosk.jsx';
 
-const TABS = ['Welcome Screen', 'Services & Display', 'Upsell Rules', 'Tip Presets'];
+const TABS = ['Welcome Screen', 'Upsell Rules', 'Feedback Tags'];
 
 // Maps each tab index to the kiosk preview screen that should be locked
 const TAB_PREVIEW = [
-  { initialStep: 0,                    label: 'Welcome'           },
-  { initialStep: 1,                    label: 'Service Selection' },
-  { initialStep: 1,                    label: 'Service Selection' },
-  { initialStep: 0, demoPayment: true, label: 'Payment / Tip'    },
+  { initialStep: 0,                    label: 'Welcome'        },
+  { initialStep: 1,                    label: 'Service Select' },
+  { initialStep: 0, demoPayment: true, label: 'Review Screen'  },
 ];
+
+// ── Feedback Tags tab data ────────────────────────────────────────────────────
+
+const CONTEXT_META = {
+  good:    { label: '4–5 ★',  color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0', dot: '#22C55E' },
+  neutral: { label: '3 ★',    color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', dot: '#F59E0B' },
+  bad:     { label: '1–2 ★',  color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', dot: '#EF4444' },
+};
+
+const DEFAULT_FEEDBACK_TAGS = [
+  { id: 'ft1',  key: 'great_service',   label: 'Great Service',    context: 'good',    isActive: true  },
+  { id: 'ft2',  key: 'clean_haircut',   label: 'Clean Haircut',    context: 'good',    isActive: true  },
+  { id: 'ft3',  key: 'fast',            label: 'Fast',             context: 'good',    isActive: true  },
+  { id: 'ft4',  key: 'friendly_barber', label: 'Friendly Barber',  context: 'good',    isActive: true  },
+  { id: 'ft5',  key: 'good_atmosphere', label: 'Good Atmosphere',  context: 'good',    isActive: true  },
+  { id: 'ft6',  key: 'worth_the_price', label: 'Worth the Price',  context: 'good',    isActive: false },
+  { id: 'ft7',  key: 'ok_service',      label: 'OK Service',       context: 'neutral', isActive: true  },
+  { id: 'ft8',  key: 'expected_better', label: 'Expected Better',  context: 'neutral', isActive: true  },
+  { id: 'ft9',  key: 'long_wait',       label: 'Long Wait',        context: 'bad',     isActive: true  },
+  { id: 'ft10', key: 'not_as_expected', label: 'Not as Expected',  context: 'bad',     isActive: true  },
+  { id: 'ft11', key: 'communication',   label: 'Communication',    context: 'bad',     isActive: true  },
+];
+
+function FeedbackTagsTab() {
+  const [tags,       setTags]       = useState(DEFAULT_FEEDBACK_TAGS.map(t => ({ ...t })));
+  const [newLabel,   setNewLabel]   = useState('');
+  const [newContext, setNewContext] = useState('good');
+  const [addError,   setAddError]   = useState('');
+
+  function toggleActive(id) {
+    setTags(ts => ts.map(t => t.id === id ? { ...t, isActive: !t.isActive } : t));
+  }
+
+  function removeTag(id) {
+    setTags(ts => ts.filter(t => t.id !== id));
+  }
+
+  function addTag() {
+    const label = newLabel.trim();
+    if (!label) { setAddError('Tag label is required.'); return; }
+    if (tags.some(t => t.label.toLowerCase() === label.toLowerCase())) {
+      setAddError('A tag with this label already exists.');
+      return;
+    }
+    const key = label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const id  = 'ft_' + Date.now();
+    setTags(ts => [...ts, { id, key, label, context: newContext, isActive: true }]);
+    setNewLabel('');
+    setAddError('');
+  }
+
+  const byContext = ['good', 'neutral', 'bad'].map(ctx => ({
+    ctx,
+    meta: CONTEXT_META[ctx],
+    tags: tags.filter(t => t.context === ctx),
+  }));
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: '#111110', marginBottom: 4 }}>Feedback Tags</div>
+        <div style={{ fontSize: 12, color: '#88887E', lineHeight: 1.6 }}>
+          Tags shown on the kiosk review screen after payment. Grouped by star rating context.
+          These are fetched at kiosk boot via <code style={{ fontFamily: 'monospace', fontSize: 11, background: '#ECEAE4', padding: '1px 5px', borderRadius: 3 }}>GET /api/feedback-tags</code>.
+        </div>
+      </div>
+
+      {byContext.map(({ ctx, meta, tags: ctxTags }) => (
+        <div key={ctx} style={{ marginBottom: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.dot, flexShrink: 0 }} />
+            <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: '#111110' }}>
+              {ctx.charAt(0).toUpperCase() + ctx.slice(1)}
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: meta.bg, color: meta.color, border: '1px solid ' + meta.border }}>
+              {meta.label}
+            </span>
+            <span style={{ fontSize: 11, color: '#88887E', marginLeft: 2 }}>{ctxTags.filter(t => t.isActive).length} active</span>
+          </div>
+
+          {ctxTags.length === 0 ? (
+            <div style={{ fontSize: 12, color: '#88887E', padding: '10px 0', fontStyle: 'italic' }}>No tags for this context yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {ctxTags.map(tag => (
+                <div key={tag.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 10px 6px 12px',
+                  borderRadius: 20,
+                  border: '1.5px solid ' + (tag.isActive ? meta.border : '#DDDBD4'),
+                  background: tag.isActive ? meta.bg : '#F2F0EB',
+                  opacity: tag.isActive ? 1 : 0.55,
+                  transition: 'all 0.15s',
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: tag.isActive ? meta.color : '#88887E', fontFamily: "'DM Sans', sans-serif" }}>{tag.label}</span>
+                  <button onClick={() => toggleActive(tag.id)}
+                    title={tag.isActive ? 'Deactivate' : 'Activate'}
+                    style={{ background: 'none', border: 'none', padding: '0 2px', cursor: 'pointer', fontSize: 12, color: tag.isActive ? meta.color : '#88887E', lineHeight: 1 }}>
+                    {tag.isActive ? '✓' : '○'}
+                  </button>
+                  <button onClick={() => removeTag(tag.id)}
+                    title="Remove tag"
+                    style={{ background: 'none', border: 'none', padding: '0 2px', cursor: 'pointer', fontSize: 11, color: '#88887E', lineHeight: 1 }}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Add new tag */}
+      <div style={{ marginTop: 8, padding: '18px 20px', borderRadius: 12, border: '1.5px dashed #DDDBD4', background: '#FAFAF8' }}>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: '#111110', marginBottom: 12 }}>Add New Tag</div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <input
+            value={newLabel}
+            onChange={e => { setNewLabel(e.target.value); setAddError(''); }}
+            onKeyDown={e => e.key === 'Enter' && addTag()}
+            placeholder="Tag label (e.g. Clean Cut)"
+            style={{ flex: 1, minWidth: 160, padding: '9px 12px', borderRadius: 8, border: '1.5px solid ' + (addError ? '#FECACA' : '#DDDBD4'), fontSize: 13, color: '#111110', background: '#FFFFFF', fontFamily: "'DM Sans', sans-serif" }}
+          />
+          <select value={newContext} onChange={e => setNewContext(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid #DDDBD4', fontSize: 13, color: '#111110', background: '#FFFFFF', fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
+            <option value="good">Good (4–5 ★)</option>
+            <option value="neutral">Neutral (3 ★)</option>
+            <option value="bad">Bad (1–2 ★)</option>
+          </select>
+          <button onClick={addTag}
+            style={{ padding: '9px 18px', borderRadius: 8, background: '#111110', color: '#FFFFFF', fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+            + Add
+          </button>
+        </div>
+        {addError && <div style={{ fontSize: 11, color: '#DC2626', marginTop: 6 }}>{addError}</div>}
+        <div style={{ fontSize: 11, color: '#88887E', marginTop: 8, lineHeight: 1.5 }}>
+          Tags are saved globally and pushed to all kiosks via <code style={{ fontFamily: 'monospace', background: '#ECEAE4', padding: '1px 4px', borderRadius: 3 }}>PATCH /api/branches/:id/settings</code>. Inactive tags are hidden from kiosk but preserved for reporting.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Derived from the real kiosk catalogue — always in sync
 const ADDON_SERVICES   = SERVICES.filter(s => s.cat !== 'Package');
@@ -339,356 +480,6 @@ function WelcomeTab({ s, set }) {
   );
 }
 
-// ── Tab 2: Services & Display ─────────────────────────────────────────────────
-
-function ServicesDisplayTab({ s, set }) {
-  const [dragCat, setDragCat] = useState(null);
-  const [dragSvc, setDragSvc] = useState(null); // { id, cat }
-
-  // Category reorder
-  const moveCat = (cat, dir) => {
-    const i    = s.categoryOrder.indexOf(cat);
-    const next = [...s.categoryOrder];
-    if (dir === 'up'   && i > 0)                        { [next[i-1], next[i]] = [next[i], next[i-1]]; }
-    if (dir === 'down' && i < s.categoryOrder.length-1) { [next[i], next[i+1]] = [next[i+1], next[i]]; }
-    set({ ...s, categoryOrder: next });
-  };
-  const dropCat = (targetCat) => {
-    if (!dragCat || dragCat === targetCat) return;
-    const next = [...s.categoryOrder];
-    const from = next.indexOf(dragCat), to = next.indexOf(targetCat);
-    next.splice(from, 1); next.splice(to, 0, dragCat);
-    set({ ...s, categoryOrder: next }); setDragCat(null);
-  };
-
-  // Service reorder within category
-  const moveSvc = (cat, id, dir) => {
-    const arr = [...(s.svcOrderByCat[cat] || [])];
-    const i   = arr.indexOf(id);
-    if (dir === 'up'   && i > 0)            { [arr[i-1], arr[i]] = [arr[i], arr[i-1]]; }
-    if (dir === 'down' && i < arr.length-1) { [arr[i], arr[i+1]] = [arr[i+1], arr[i]]; }
-    set({ ...s, svcOrderByCat: { ...s.svcOrderByCat, [cat]: arr } });
-  };
-  const dropSvc = (targetId, cat) => {
-    if (!dragSvc || dragSvc.id === targetId || dragSvc.cat !== cat) return;
-    const arr  = [...(s.svcOrderByCat[cat] || [])];
-    const from = arr.indexOf(dragSvc.id), to = arr.indexOf(targetId);
-    arr.splice(from, 1); arr.splice(to, 0, dragSvc.id);
-    set({ ...s, svcOrderByCat: { ...s.svcOrderByCat, [cat]: arr } }); setDragSvc(null);
-  };
-
-  const arrowBtn = (onClick, disabled, label) => (
-    <button onClick={onClick} disabled={disabled}
-      style={{ background: 'none', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? C.surface2 : C.muted, fontSize: 9, padding: '1px 3px', lineHeight: 1 }}>
-      {label}
-    </button>
-  );
-
-  return (
-    <div>
-      <div>
-        <SectionTitle
-          title="Services & Display"
-          sub="Drag category headers to reorder groups. Drag or use arrows to reorder services within each group. To disable a service at this branch, go to Services."
-        />
-
-        {s.categoryOrder.map((cat, catIdx) => {
-          const b       = CAT_BADGE[cat] || { bg: '#e0e0d8', text: '#555' };
-          const svcIds  = s.svcOrderByCat[cat] || [];
-          const svcs    = svcIds.map(id => SERVICES.find(x => x.id === id)).filter(Boolean);
-
-          return (
-            <div key={cat} style={{ marginBottom: 12, borderRadius: 10, overflow: 'hidden', border: `1.5px solid ${C.border}`, opacity: dragCat === cat ? 0.45 : 1 }}>
-              {/* Category header — draggable */}
-              <div
-                draggable
-                onDragStart={() => setDragCat(cat)}
-                onDragOver={e => e.preventDefault()}
-                onDrop={() => dropCat(cat)}
-                onDragEnd={() => setDragCat(null)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: b.bg, cursor: 'grab' }}>
-                <span style={{ fontSize: 14, color: b.text, opacity: 0.6, userSelect: 'none' }}>⠿</span>
-                <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: b.text, flex: 1 }}>{cat}</span>
-                <span style={{ fontSize: 11, color: b.text, opacity: 0.6 }}>{svcs.length} services</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {arrowBtn(() => moveCat(cat, 'up'),   catIdx === 0,                       '▲')}
-                  {arrowBtn(() => moveCat(cat, 'down'), catIdx === s.categoryOrder.length-1, '▼')}
-                </div>
-              </div>
-
-              {/* Services within category */}
-              {svcs.map((svc, svcIdx) => (
-                <div key={svc.id}
-                  draggable
-                  onDragStart={() => setDragSvc({ id: svc.id, cat })}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={() => dropSvc(svc.id, cat)}
-                  onDragEnd={() => setDragSvc(null)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: C.white, borderTop: `1px solid ${C.border}`, cursor: 'grab', opacity: dragSvc?.id === svc.id ? 0.45 : 1 }}>
-                  <span style={{ fontSize: 13, color: C.muted, userSelect: 'none', marginLeft: 8 }}>⠿</span>
-                  <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: C.text }}>{svc.name}</span>
-                  <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 700, color: C.text2, marginRight: 4 }}>{fmt(svc.price)}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {arrowBtn(() => moveSvc(cat, svc.id, 'up'),   svcIdx === 0,              '▲')}
-                    {arrowBtn(() => moveSvc(cat, svc.id, 'down'), svcIdx === svcs.length - 1, '▼')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-
-      </div>
-    </div>
-  );
-}
-
-// ── Tab 3: Upsell Rules ───────────────────────────────────────────────────────
-
-function UpsellRulesTab({ s, set }) {
-  const [editingId, setEditingId] = useState(null); // rule id | 'new' | null
-  const [draft,     setDraft]     = useState(null);
-
-  const deepCopyRule = r => ({ ...r, mustContain: [...r.mustContain], mustNotContain: [...r.mustNotContain] });
-
-  const startEdit = rule => { setEditingId(rule.id); setDraft(deepCopyRule(rule)); };
-  const startNew  = ()   => { setEditingId('new'); setDraft({ id: `r${Date.now()}`, mustContain: [], mustNotContain: [], outcome: 'package', pkgId: null, active: true }); };
-  const cancel    = ()   => { setEditingId(null); setDraft(null); };
-
-  const saveRule = d => {
-    const next = editingId === 'new'
-      ? [...s.upsellRules, d]
-      : s.upsellRules.map(r => r.id === d.id ? d : r);
-    set({ ...s, upsellRules: next }); cancel();
-  };
-  const deleteRule  = id => { set({ ...s, upsellRules: s.upsellRules.filter(r => r.id !== id) }); cancel(); };
-  const toggleRule  = id => set({ ...s, upsellRules: s.upsellRules.map(r => r.id === id ? { ...r, active: !r.active } : r) });
-
-  const toggleSuggest = id => {
-    const next = s.suggestServices.includes(id)
-      ? s.suggestServices.filter(x => x !== id)
-      : [...s.suggestServices, id];
-    set({ ...s, suggestServices: next });
-  };
-
-  return (
-    <div>
-      <SectionTitle
-        title="Upsell Rules"
-        sub={'Rules are evaluated top-to-bottom — first match wins. Each rule either suggests a package upgrade or shows the "Complete Your Look" popup.'}
-      />
-
-      {/* Global toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22, padding: '12px 16px', background: C.surface, borderRadius: 10 }}>
-        <Toggle on={s.upsellEnabled} onChange={() => set({ ...s, upsellEnabled: !s.upsellEnabled })} />
-        <div>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: C.text }}>
-            {s.upsellEnabled ? 'Upsell enabled' : 'Upsell disabled'}
-          </div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-            {s.upsellEnabled ? 'Rules below are active and evaluated on every cart change.' : 'No rules fire — packages and popup are suppressed globally.'}
-          </div>
-        </div>
-      </div>
-
-      {/* Rule list */}
-      <div style={{ opacity: s.upsellEnabled ? 1 : 0.4, pointerEvents: s.upsellEnabled ? 'auto' : 'none', marginBottom: 32 }}>
-
-        {/* Column headers */}
-        {s.upsellRules.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 160px 60px 56px', gap: 12, padding: '6px 14px', marginBottom: 2 }}>
-            {['#', 'Conditions', 'Outcome', 'Active', ''].map(h => (
-              <div key={h} style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{h}</div>
-            ))}
-          </div>
-        )}
-
-        {s.upsellRules.length === 0 && editingId !== 'new' && (
-          <div style={{ padding: 20, background: C.surface, borderRadius: 10, textAlign: 'center', fontSize: 13, color: C.muted, marginBottom: 10 }}>
-            No rules defined. Add one below.
-          </div>
-        )}
-
-        {s.upsellRules.map((rule, i) => {
-          const targetPkg = PACKAGE_SERVICES.find(p => p.id === rule.pkgId);
-          const isEditing = editingId === rule.id;
-          return (
-            <div key={rule.id} style={{ marginBottom: 5 }}>
-              {!isEditing && (
-                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 160px 60px 56px', gap: 12, alignItems: 'center', padding: '11px 14px', background: rule.active ? C.white : C.surface, border: `1.5px solid ${rule.active ? C.border : C.surface2}`, borderRadius: 10, transition: 'background 0.15s' }}>
-                  {/* Priority */}
-                  <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 12, color: C.muted, textAlign: 'center' }}>{i + 1}</span>
-
-                  {/* Conditions */}
-                  <div>
-                    <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: rule.active ? C.text : C.muted }}>
-                      {condSummary(rule.mustContain) || 'Any cart'}
-                    </div>
-                    {rule.mustNotContain.length > 0 && (
-                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                        not: {condSummary(rule.mustNotContain)}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Outcome badge */}
-                  <div>
-                    {rule.outcome === 'package' ? (
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: CAT_BADGE.Package.text, background: CAT_BADGE.Package.bg, padding: '2px 7px', borderRadius: 4, display: 'inline-block', marginBottom: 2 }}>Package</div>
-                        <div style={{ fontSize: 11, color: rule.active ? C.text : C.muted, fontWeight: 600 }}>
-                          {targetPkg ? targetPkg.name : <span style={{ color: C.danger }}>Not set</span>}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#6ac46a', background: '#1a2a1a', padding: '3px 8px', borderRadius: 4, display: 'inline-block' }}>
-                        Show Popup
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Active toggle */}
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <Toggle on={rule.active} onChange={() => toggleRule(rule.id)} />
-                  </div>
-
-                  {/* Edit */}
-                  <button onClick={() => startEdit(rule)}
-                    style={{ padding: '5px 10px', borderRadius: 6, background: 'none', border: `1.5px solid ${C.border}`, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 11, color: C.text2, cursor: 'pointer' }}>
-                    Edit
-                  </button>
-                </div>
-              )}
-
-              {isEditing && (
-                <RuleEditor draft={draft} setDraft={setDraft} onSave={saveRule} onCancel={cancel} onDelete={() => deleteRule(rule.id)} isNew={false} />
-              )}
-            </div>
-          );
-        })}
-
-        {editingId === 'new' && (
-          <RuleEditor draft={draft} setDraft={setDraft} onSave={saveRule} onCancel={cancel} onDelete={null} isNew={true} />
-        )}
-
-        {editingId !== 'new' && (
-          <button onClick={startNew}
-            style={{ marginTop: 8, padding: '9px 18px', borderRadius: 8, background: 'none', border: `1.5px dashed ${C.border}`, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, color: C.muted, cursor: 'pointer', width: '100%' }}>
-            + Add Rule
-          </button>
-        )}
-
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
-          {s.upsellRules.filter(r => r.active).length} of {s.upsellRules.length} rules active.
-          {' '}{s.upsellRules.filter(r => r.active && r.outcome === 'package').length} package rules,
-          {' '}{s.upsellRules.filter(r => r.active && r.outcome === 'suggest_popup').length} popup trigger rules.
-        </div>
-      </div>
-
-      {/* ── "Complete Your Look" popup config ── */}
-      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 28 }}>
-        <SectionTitle
-          title='"Complete Your Look" Popup Config'
-          sub="Configure which services appear inside the popup and the copy. The popup fires when a rule above with outcome 'Show Popup' is triggered."
-        />
-
-        {/* Services to suggest */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: C.text, marginBottom: 10 }}>
-            Services to Suggest
-            <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 400, fontSize: 11, color: C.muted, marginLeft: 8 }}>Which services appear as options inside the popup</span>
-          </div>
-
-          {/* Grouped by category */}
-          {ADDON_CATS.map(cat => {
-            const svcsInCat = ADDON_SERVICES.filter(svc => svc.cat === cat);
-            const b = CAT_BADGE[cat] || { bg: '#eee', text: '#555' };
-            return (
-              <div key={cat} style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: `1.5px solid ${C.border}` }}>
-                <div style={{ padding: '8px 14px', background: b.bg }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: b.text }}>{cat}</span>
-                </div>
-                {svcsInCat.map(svc => {
-                  const isOn = s.suggestServices.includes(svc.id);
-                  return (
-                    <div key={svc.id} onClick={() => toggleSuggest(svc.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px', background: isOn ? C.white : C.surface, borderTop: `1px solid ${C.border}`, cursor: 'pointer', transition: 'all 0.15s' }}>
-                      <Toggle on={isOn} onChange={() => toggleSuggest(svc.id)} />
-                      <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: isOn ? C.text : C.muted }}>{svc.name}</span>
-                      <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: isOn ? C.text2 : C.muted }}>{fmt(svc.price)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
-            {s.suggestServices.length} service{s.suggestServices.length !== 1 ? 's' : ''} will appear in the popup.
-          </div>
-        </div>
-
-        {/* Popup copy */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: C.text, marginBottom: 14 }}>Popup Copy</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <Field label="Popup Heading (English)">
-              <input value={s.upsellHeading} onChange={e => set({ ...s, upsellHeading: e.target.value })} style={inputStyle} />
-            </Field>
-            <Field label="Popup Heading (Bahasa Indonesia)">
-              <input value={s.upsellHeadingId} onChange={e => set({ ...s, upsellHeadingId: e.target.value })} style={inputStyle} />
-            </Field>
-            <Field label='"Switch to Package" Button'>
-              <input value={s.upsellSwitchCta} onChange={e => set({ ...s, upsellSwitchCta: e.target.value })} style={inputStyle} />
-            </Field>
-            <Field label='"Keep My Selection" Button'>
-              <input value={s.upsellKeepCta} onChange={e => set({ ...s, upsellKeepCta: e.target.value })} style={inputStyle} />
-            </Field>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-// ── Tab 4: Tip Presets ────────────────────────────────────────────────────────
-
-function TipPresetsTab({ s, set }) {
-  const [newPreset, setNewPreset] = useState('');
-  const removePreset = amt => set({ ...s, tipPresets: s.tipPresets.filter(x => x !== amt) });
-  const addPreset = () => {
-    const n = parseInt(newPreset.replace(/\D/g, ''));
-    if (!n || s.tipPresets.includes(n)) return;
-    set({ ...s, tipPresets: [...s.tipPresets, n].sort((a, b) => a - b) });
-    setNewPreset('');
-  };
-  return (
-    <div>
-      <SectionTitle title="Tip Presets" sub="Preset amounts shown on the payment screen. Sorted automatically. Min 2, max 6. Tips go 100% to the individual barber." />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-        {s.tipPresets.map(amt => (
-          <div key={amt} style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 8, padding: '8px 14px' }}>
-            <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 14, color: C.text }}>{fmt(amt)}</span>
-            <button onClick={() => removePreset(amt)} disabled={s.tipPresets.length <= 2}
-              style={{ background: 'none', border: 'none', color: s.tipPresets.length <= 2 ? C.surface2 : C.danger, cursor: s.tipPresets.length <= 2 ? 'not-allowed' : 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <input value={newPreset} onChange={e => setNewPreset(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPreset()}
-          placeholder="e.g. 30000" style={{ ...inputStyle, width: 160 }} />
-        <button onClick={addPreset} disabled={s.tipPresets.length >= 6}
-          style={{ padding: '10px 20px', borderRadius: 8, background: C.topBg, color: C.white, border: 'none', cursor: s.tipPresets.length >= 6 ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, opacity: s.tipPresets.length >= 6 ? 0.4 : 1 }}>
-          + Add Preset
-        </button>
-      </div>
-      <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
-        {s.tipPresets.length >= 6 ? 'Maximum 6 presets reached.' : `${6 - s.tipPresets.length} more can be added.`}
-      </div>
-    </div>
-  );
-}
 
 // ── Live Kiosk Preview ────────────────────────────────────────────────────────
 
@@ -814,10 +605,9 @@ export default function KioskConfig() {
 
         <div style={{ marginBottom: 40 }}>
           <div style={{ background: C.white, borderRadius: 14, padding: 28, border: `1.5px solid ${C.border}` }}>
-            {activeTab === 0 && <WelcomeTab         s={settings} set={setSettings} />}
-            {activeTab === 1 && <ServicesDisplayTab s={settings} set={setSettings} />}
-            {activeTab === 2 && <UpsellRulesTab     s={settings} set={setSettings} />}
-            {activeTab === 3 && <TipPresetsTab      s={settings} set={setSettings} />}
+            {activeTab === 0 && <WelcomeTab     s={settings} set={setSettings} />}
+            {activeTab === 1 && <UpsellRulesTab s={settings} set={setSettings} />}
+            {activeTab === 2 && <FeedbackTagsTab />}
           </div>
         </div>
 

@@ -221,6 +221,23 @@ export default function Confirm({ cart, services, barber, slot, beverages = [], 
                 </div>
               </div>
             )}
+            {/* Expiry warning — shown below points block when within warning window */}
+            {customer && pointsAvailable > 0 && customer.pointsExpiry && (() => {
+              const expiry = new Date(customer.pointsExpiry);
+              const daysLeft = Math.round((expiry - new Date('2026-04-13')) / (1000 * 60 * 60 * 24));
+              if (daysLeft <= 0 || daysLeft > 30) return null;
+              const fmtd = expiry.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+              return (
+                <div className="fi" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A', borderRadius: 10, padding: 'clamp(9px,1.2vw,13px) clamp(12px,1.5vw,16px)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>⚠️</span>
+                  <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: '#92400E', fontWeight: 600 }}>
+                    Your {pointsAvailable} pts expire on {fmtd} — use them today!
+                    <span style={{ fontWeight: 400, color: '#B45309' }}> · Poin kamu kedaluwarsa {fmtd}, gunakan sekarang!</span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {customer && pointsAvailable === 0 && (
               <div className="fi" style={{ background: C.surface, borderRadius: 10, padding: "clamp(10px,1.4vw,14px)" }}>
                 <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: C.muted }}>⭐ Welcome back, {customer.name}! You have 0 points. Earn points today by paying cash. · Kamu belum punya poin.</div>
@@ -336,7 +353,7 @@ export default function Confirm({ cart, services, barber, slot, beverages = [], 
                 {cashTotal === 0
                   ? <div style={{ fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: "#1a7a1a" }}>Fully covered by points! · Dibayar penuh dengan poin</div>
                   : <><div style={{ fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: C.text }}>Pay after service · Bayar setelah selesai</div>
-                     <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: C.muted }}>QRIS or BCA card — at the kiosk counter when done</div></>
+                     <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: C.muted }}>Xendit Terminal (QRIS / Card) — at the kiosk when done</div></>
                 }
               </div>
             </div>

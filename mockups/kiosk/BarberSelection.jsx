@@ -14,7 +14,20 @@
 
 import { C, BARBERS } from "./data.js";
 
+// Pick the barber with fewest any-available assignments today; tiebreak by sort_order (id).
+// Excludes clocked_out barbers. Matches backend logic: bookings.source='any_available' count.
+function pickAnyAvailable(barbers) {
+  const active = barbers.filter(b => b.status !== 'clocked_out');
+  return [...active].sort((a, b) => {
+    const diff = (a.anyAvailableToday ?? 0) - (b.anyAvailableToday ?? 0);
+    return diff !== 0 ? diff : a.id - b.id;
+  })[0];
+}
+
 export default function BarberSelection({ barber, setBarber, onNext, onBack }) {
+  const isAnySelected = barber?.source === 'any_available';
+  const assignedPreview = pickAnyAvailable(BARBERS); // for mockup preview pill only
+
   return (
     <div className="scroll-y" style={{ height:"calc(100vh - clamp(51px,6.5vh,63px))", padding:"clamp(16px,2.4vw,28px)" }}>
       <div className="step-header fu">
@@ -26,13 +39,22 @@ export default function BarberSelection({ barber, setBarber, onNext, onBack }) {
         {/* Any Available is null-sentinel — first card in grid */}
         {[null, ...BARBERS].map((b, i) => {
           const isAny = b === null;
-          const anyBarber = { id: 0, name: "Any Available", spec: "Fastest queue", specId: "Antrean tercepat", slots: ["09:00","09:30","10:00","10:30","11:00"], status: "available", chair: "—", nextAvailable: "Now" };
-          const data = isAny ? anyBarber : b;
-          const sel = barber?.id === data.id;
+          const data = isAny
+            ? { id: 0, name: "Any Available", spec: "Fastest queue", specId: "Antrean tercepat", status: "available" }
+            : b;
+          const sel = isAny ? isAnySelected : (barber?.id === data.id && !isAnySelected);
           return (
             <div key={data.id} className={`fu card ${sel ? "sel" : ""}`}
               style={{ animationDelay:`${i * 0.05}s`, padding:"clamp(14px,1.8vw,20px)", cursor:"pointer", textAlign:"center" }}
-              onClick={() => setBarber(data)}>
+              onClick={() => {
+                if (isAny) {
+                  // Assign barber with fewest any-available bookings today; tiebreak by sort_order (id)
+                  const pick = pickAnyAvailable(BARBERS);
+                  setBarber({ ...pick, source: 'any_available' });
+                } else {
+                  setBarber(b);
+                }
+              }}>
               {/* Avatar */}
               <div style={{ position:"relative", width:"clamp(64px,9vw,90px)", height:"clamp(64px,9vw,90px)", margin:`0 auto clamp(8px,1.2vw,12px)` }}>
                 <svg width="100%" height="100%" viewBox="0 0 68 68">
@@ -55,11 +77,26 @@ export default function BarberSelection({ barber, setBarber, onNext, onBack }) {
                   <div><div style={{ fontFamily:"'Inter',sans-serif", fontSize:"clamp(13px,1.6vw,16px)", fontWeight:700, color:sel ? C.accentText : C.text }}>{data.cuts.toLocaleString()}</div><div style={{ fontSize:"clamp(9px,1.1vw,11px)", color:sel ? "#1a1a1877" : C.muted }}>Cuts</div></div>
                 </div>
               )}
-              {/* Next available pill */}
-              <div style={{ background:sel ? "#1a1a1814" : C.surface, borderRadius:8, padding:"4px 10px", display:"inline-block" }}>
-                <span style={{ fontSize:"clamp(10px,1.2vw,12px)", color:sel ? C.accentText : C.muted }}>Next: </span>
-                <span style={{ fontSize:"clamp(11px,1.3vw,13px)", fontWeight:700, color:sel ? C.accentText : C.text }}>{isAny ? "Now" : (data.slots||[])[0] || "—"}</span>
-              </div>
+              {/* Next available pill — Any Available shows assigned barber's first slot (mockup preview) */}
+              {isAny ? (
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                  <div style={{ background:sel ? "#1a1a1814" : C.surface, borderRadius:8, padding:"4px 10px" }}>
+                    <span style={{ fontSize:"clamp(10px,1.2vw,12px)", color:sel ? C.accentText : C.muted }}>Next: </span>
+                    <span style={{ fontSize:"clamp(11px,1.3vw,13px)", fontWeight:700, color:sel ? C.accentText : C.text }}>Now</span>
+                  </div>
+                  {/* Mockup-only preview: shows which barber round-robin would assign */}
+                  <div style={{ fontSize:"clamp(9px,1vw,10px)", padding:"2px 7px", borderRadius:4,
+                    background: sel ? "#1a1a1814" : "#EFF6FF", color: sel ? C.accentText : "#2563EB",
+                    fontWeight:700, letterSpacing:"0.03em" }}>
+                    {sel ? `→ ${assignedPreview.name}` : `Next: ${assignedPreview.name} (${assignedPreview.anyAvailableToday} today)`}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background:sel ? "#1a1a1814" : C.surface, borderRadius:8, padding:"4px 10px", display:"inline-block" }}>
+                  <span style={{ fontSize:"clamp(10px,1.2vw,12px)", color:sel ? C.accentText : C.muted }}>Next: </span>
+                  <span style={{ fontSize:"clamp(11px,1.3vw,13px)", fontWeight:700, color:sel ? C.accentText : C.text }}>{(data.slots||[])[0] || "—"}</span>
+                </div>
+              )}
             </div>
           );
         })}

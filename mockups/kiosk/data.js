@@ -21,85 +21,35 @@ export const BLEACH_PRICES = {
 };
 
 // ── Real Bercut Seminyak service catalogue ────────────────────────────────────
-export const SERVICES = [
-  // HAIRCUT — washAddon means customer can toggle +Wash for +Rp10k
-  { id: 1, cat: "Haircut", name: "Just a Haircut", nameId: "Potong Rambut", dur: 30, price: 130000, washAddon: true, img: "/assets/haircut.png" },
-  { id: 2, cat: "Haircut", name: "Kids Haircut", nameId: "Potong Anak", dur: 25, price: 130000, washAddon: true, img: "/assets/kidshaircut.png" },
-  { id: 3, cat: "Haircut", name: "Skin Fade", nameId: "Skin Fade", dur: 45, price: 130000, washAddon: true, img: "/assets/skinfade.png" },
-  { id: 4, cat: "Haircut", name: "Head Shaving", nameId: "Cukur Botak", dur: 30, price: 130000, img: "/assets/headshaving.png" },
-  { id: 5, cat: "Haircut", name: "Hair Tattoo", nameId: "Tato Rambut", dur: 45, price: 150000, img: "/assets/hairtattoo.png" },
-  // BEARD
-  { id: 6, cat: "Beard", name: "Beard Trim", nameId: "Rapikan Jenggot", dur: 20, price: 75000, mutex_group: "beard_service", img: "/assets/beardtrimming.png" },
-  { id: 7, cat: "Beard", name: "Beard Shaving", nameId: "Cukur Jenggot", dur: 25, price: 95000, mutex_group: "beard_service", img: "/assets/beardshaving.png" },
-  { id: 8, cat: "Beard", name: "Beard Coloring", nameId: "Warna Jenggot", dur: 40, price: 125000, img: "/assets/beardcolor.png" },
-  // TREATMENT
-  { id: 9, cat: "Treatment", name: "Nose Wax", nameId: "Wax Hidung", dur: 15, price: 95000, img: "/assets/nosewax.png" },
-  { id: 10, cat: "Treatment", name: "Ear Wax", nameId: "Wax Telinga", dur: 15, price: 95000, img: "/assets/earwax.png", mutex_group: "ear_treatment" },
-  { id: 11, cat: "Treatment", name: "Nose Blackhead Remover", nameId: "Komedo Hidung", dur: 20, price: 55000, img: "/assets/noseblackheadremover.png" },
-  { id: 12, cat: "Treatment", name: "Face Scrub", nameId: "Scrub Wajah", dur: 20, price: 85000, img: "/assets/facescrub.png" },
-  { id: 13, cat: "Treatment", name: "Black Mask", nameId: "Masker Hitam", dur: 25, price: 85000, img: "/assets/blackmask.png" },
-  { id: 14, cat: "Treatment", name: "Creambath", nameId: "Creambath", dur: 30, price: 95000, img: "/assets/creambath.png" },
-  { id: 15, cat: "Treatment", name: "Ear Candle", nameId: "Lilin Telinga", dur: 20, price: 75000, img: "/assets/earcandle.png", mutex_group: "ear_treatment" },
-  // PACKAGE — treatmentImgs: photos of the treatment services included, shown in card
-  {
-    id: 16, cat: "Package", name: "Mask Cut Package", nameId: "Paket Masker Potong", dur: 60, price: 205000, badge: "Save 10%",
-    desc: "✂ Haircut or Skin Fade  ·  🖤 Black Mask",
-    treatmentImgs: ["/assets/haircut.png", "/assets/blackmask.png"],
-  },
-  {
-    id: 17, cat: "Package", name: "Prestige Package", nameId: "Paket Prestige", dur: 75, price: 215000, badge: "Popular",
-    desc: "✂ Haircut or Skin Fade  ·  🪒 Beard Trim or Shaving  ·  🚿 Wash",
-    treatmentImgs: ["/assets/haircut.png", "/assets/beardtrimming.png"],
-  },
-  {
-    id: 18, cat: "Package", name: "Luxury Package", nameId: "Paket Luxury", dur: 120, price: 445000, badge: "Best Value",
-    desc: "✂ Haircut  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax or Candle  ·  💆 Creambath  ·  🚿 Wash",
-    treatmentImgs: ["/assets/haircut.png", "/assets/blackmask.png", "/assets/nosewax.png", "/assets/creambath.png"],
-  },
-  {
-    id: 19, cat: "Package", name: "President Package", nameId: "Paket President", dur: 150, price: 555000, badge: "All-In",
-    desc: "✂ Haircut  ·  🪒 Beard Trim or Shaving  ·  🖤 Black Mask  ·  👃 Nose Wax  ·  👂 Ear Wax or Candle  ·  💆 Creambath  ·  🚿 Wash",
-    treatmentImgs: ["/assets/haircut.png", "/assets/beardtrimming.png", "/assets/blackmask.png", "/assets/creambath.png"],
-  },
-  // HAIR COLORING — bleach uses step-selector modal (see HairColorModal)
-  { id: 20, cat: "HairColor", name: "Hair Coloring", nameId: "Pewarnaan Rambut", dur: 60, price: 175000, ownColorPrice: 135000, desc: "Basic Color Black/Brown", img: "/assets/haircoloring.png" },
-  { id: 21, cat: "HairColor", name: "Hair Bleach", nameId: "Bleaching Rambut", dur: 90, price: 260000, bleach: true, img: "/assets/Hairbleach.png" },
-  { id: 22, cat: "HairColor", name: "Hair Highlight", nameId: "Highlight Rambut", dur: 90, price: 625000, img: "/assets/hairhighlight.png" },
-];
-
-export const CATEGORIES = [
-  { key: "Haircut", labelEn: "Haircut", labelId: "Potong Rambut", icon: "✂" },
-  { key: "Beard", labelEn: "Beard", labelId: "Jenggot", icon: "🪒" },
-  { key: "Treatment", labelEn: "Treatment", labelId: "Perawatan", icon: "✨" },
-  { key: "Package", labelEn: "Package", labelId: "Paket", icon: "⭐" },
-  { key: "HairColor", labelEn: "Hair Coloring", labelId: "Warna Rambut", icon: "🎨" },
-];
+import { SERVICES, CATEGORIES } from './catalogue.js';
+export { SERVICES, CATEGORIES };
 
 // ── Real Bercut Seminyak barbers ──────────────────────────────────────────────
 export const BARBERS = [
   // status: available | busy | on_break | clocked_out
-  { id: 1, name: "Guntur", spec: "Haircut & Fade", specId: "Potong & Fade", slots: ["09:00", "09:30", "10:30", "11:00", "14:00", "15:30"], rating: 4.9, cuts: 1240, status: "available", chair: "A1", nextAvailable: "Now" },
-  { id: 2, name: "Pangestu", spec: "Classic & Beard", specId: "Klasik & Jenggot", slots: ["09:30", "10:00", "11:30", "13:00", "14:30", "16:00"], rating: 4.8, cuts: 980, status: "busy", chair: "A2", nextAvailable: "10:30" },
-  { id: 3, name: "Rifky", spec: "Skin Fade", specId: "Skin Fade", slots: ["10:00", "10:30", "12:00", "13:30", "15:00"], rating: 4.9, cuts: 760, status: "available", chair: "B1", nextAvailable: "Now" },
-  { id: 4, name: "Sep", spec: "Hair Coloring", specId: "Pewarnaan", slots: ["09:00", "10:30", "12:30", "14:00", "15:00"], rating: 4.7, cuts: 890, status: "on_break", chair: "B2", nextAvailable: "10:15" },
-  { id: 5, name: "Agung", spec: "Haircut & Beard", specId: "Potong & Jenggot", slots: ["09:00", "09:30", "11:00", "13:00", "15:30"], rating: 4.8, cuts: 820, status: "busy", chair: "C1", nextAvailable: "11:00" },
-  { id: 6, name: "Rahmat", spec: "Treatments", specId: "Perawatan", slots: ["10:00", "11:00", "13:00", "14:00", "16:00"], rating: 4.7, cuts: 650, status: "available", chair: "C2", nextAvailable: "Now" },
-  { id: 7, name: "Axel", spec: "Skin Fade & Style", specId: "Fade & Gaya", slots: ["09:30", "10:30", "12:00", "14:30", "16:00"], rating: 4.9, cuts: 910, status: "available", chair: "D1", nextAvailable: "Now" },
-  { id: 8, name: "Rian", spec: "Classic Cut", specId: "Potong Klasik", slots: ["09:00", "10:00", "11:30", "13:30", "15:00"], rating: 4.8, cuts: 730, status: "busy", chair: "D2", nextAvailable: "10:00" },
-  { id: 9, name: "Hendra", spec: "Hair & Beard", specId: "Rambut & Jenggot", slots: ["09:30", "11:00", "12:30", "14:00", "15:30"], rating: 4.7, cuts: 680, status: "clocked_out", chair: "E1", nextAvailable: "—" },
+  // anyAvailableToday = count of bookings.source='any_available' for this barber today — round-robin basis
+  { id: 1, name: "Guntur",   spec: "Haircut & Fade",    specId: "Potong & Fade",    slots: ["09:00","09:30","10:30","11:00","14:00","15:30"], rating: 4.9, cuts: 1240, status: "available",   chair: "A1", nextAvailable: "Now",   anyAvailableToday: 3 },
+  { id: 2, name: "Pangestu", spec: "Classic & Beard",   specId: "Klasik & Jenggot", slots: ["09:30","10:00","11:30","13:00","14:30","16:00"], rating: 4.8, cuts: 980,  status: "busy",        chair: "A2", nextAvailable: "10:30", anyAvailableToday: 2 },
+  { id: 3, name: "Rifky",    spec: "Skin Fade",         specId: "Skin Fade",        slots: ["10:00","10:30","12:00","13:30","15:00"],         rating: 4.9, cuts: 760,  status: "available",   chair: "B1", nextAvailable: "Now",   anyAvailableToday: 4 },
+  { id: 4, name: "Sep",      spec: "Hair Coloring",     specId: "Pewarnaan",        slots: ["09:00","10:30","12:30","14:00","15:00"],         rating: 4.7, cuts: 890,  status: "on_break",    chair: "B2", nextAvailable: "10:15", anyAvailableToday: 2 },
+  { id: 5, name: "Agung",    spec: "Haircut & Beard",   specId: "Potong & Jenggot", slots: ["09:00","09:30","11:00","13:00","15:30"],         rating: 4.8, cuts: 820,  status: "busy",        chair: "C1", nextAvailable: "11:00", anyAvailableToday: 3 },
+  { id: 6, name: "Rahmat",   spec: "Treatments",        specId: "Perawatan",        slots: ["10:00","11:00","13:00","14:00","16:00"],         rating: 4.7, cuts: 650,  status: "available",   chair: "C2", nextAvailable: "Now",   anyAvailableToday: 1 },
+  { id: 7, name: "Axel",     spec: "Skin Fade & Style", specId: "Fade & Gaya",      slots: ["09:30","10:30","12:00","14:30","16:00"],         rating: 4.9, cuts: 910,  status: "available",   chair: "D1", nextAvailable: "Now",   anyAvailableToday: 1 },
+  { id: 8, name: "Rian",     spec: "Classic Cut",       specId: "Potong Klasik",    slots: ["09:00","10:00","11:30","13:30","15:00"],         rating: 4.8, cuts: 730,  status: "busy",        chair: "D2", nextAvailable: "10:00", anyAvailableToday: 2 },
+  { id: 9, name: "Hendra",   spec: "Hair & Beard",      specId: "Rambut & Jenggot", slots: ["09:30","11:00","12:30","14:00","15:30"],         rating: 4.7, cuts: 680,  status: "clocked_out", chair: "E1", nextAvailable: "—",    anyAvailableToday: 0 },
 ];
 
 // Beverages — shown in TimeSlot after time is selected (max 3 shown at kiosk)
 export const BEVERAGES = [
   { id: "b1", name: "Mineral Water", nameId: "Air Mineral", price: 10000, icon: "💧", desc: "Still or sparkling, served cold" },
-  { id: "b2", name: "Iced Coffee", nameId: "Kopi Es", price: 25000, icon: "☕", desc: "Local robusta, lightly sweetened" },
+  { id: "b2", name: "Iced Coffee", nameId: "Kopi Es", price: 25000, icon: "☕", desc: "Local robusta, lightly sweetened", outOfStock: true },
   { id: "b3", name: "Coconut Water", nameId: "Air Kelapa", price: 20000, icon: "🥥", desc: "Fresh young coconut, chilled" },
 ];
 
 // Products — shown in TimeSlot after time is selected (max 3 shown at kiosk)
 export const PRODUCTS = [
   { id: "p1", name: "Matte Pomade", nameId: "Pomade Matte", price: 85000, icon: "🧴", desc: "Strong hold, low shine — all-day control" },
-  { id: "p2", name: "Sea Salt Spray", nameId: "Spray Rambut", price: 70000, icon: "🌊", desc: "Texturising spray for natural beach waves" },
+  { id: "p2", name: "Sea Salt Spray", nameId: "Spray Rambut", price: 70000, icon: "🌊", desc: "Texturising spray for natural beach waves", outOfStock: true },
   { id: "p3", name: "Beard Balm", nameId: "Balm Jenggot", price: 75000, icon: "🪒", desc: "Conditions and shapes beard, light hold" },
 ];
 
@@ -176,9 +126,10 @@ export const ALL_COUNTRIES = [
 export const POINTS_RATE = 10000; // IDR per point
 
 // Mock customer lookup by phone number (production: GET /api/customers?phone=)
+// pointsExpiry: calculated server-side as points_last_activity_at + expiry window; null if no points
 export const MOCK_CUSTOMERS = {
-  "08123456789": { name: "Budi Santoso", points: 15 },
-  "08987654321": { name: "Sari Dewi", points: 7 },
-  "08555000111": { name: "Agus Pratama", points: 3 },
-  "08111222333": { name: "Ni Made Ayu", points: 0 },
+  "08123456789": { name: "Budi Santoso", points: 15, pointsExpiry: "2027-04-01"   },
+  "08987654321": { name: "Sari Dewi",    points: 7,  pointsExpiry: "2026-04-28"   }, // 15 days — warning
+  "08555000111": { name: "Agus Pratama", points: 3,  pointsExpiry: "2026-06-10"   },
+  "08111222333": { name: "Ni Made Ayu",  points: 0,  pointsExpiry: null            },
 };

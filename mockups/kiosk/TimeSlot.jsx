@@ -37,8 +37,8 @@ export default function TimeSlot({ barber, slot, setSlot, selectedBeverages, set
     }
   }, [canNow, slot, setSlot]);
 
-  const toggleBev = id => setSelectedBeverages(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  const togglePro = id => setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleBev = id => { if (BEVERAGES.find(b => b.id === id)?.outOfStock) return; setSelectedBeverages(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
+  const togglePro = id => { if (PRODUCTS.find(p => p.id === id)?.outOfStock) return; setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
 
   const extrasTotal = [
     ...BEVERAGES.filter(b => selectedBeverages.includes(b.id)),
@@ -151,13 +151,17 @@ export default function TimeSlot({ barber, slot, setSlot, selectedBeverages, set
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "clamp(8px,1.2vw,12px)", marginBottom: "clamp(12px,1.6vw,16px)" }}>
             {BEVERAGES.map(b => {
               const sel = selectedBeverages.includes(b.id);
+              const oos = b.outOfStock;
               return (
                 <div key={b.id} onClick={() => toggleBev(b.id)}
-                  style={{ background: sel ? C.topBg : C.white, border: `2px solid ${sel ? C.topBg : C.border}`, borderRadius: 12, padding: "clamp(12px,1.6vw,16px)", cursor: "pointer", textAlign: "center", transition: "all 0.15s", minHeight: 80 }}>
-                  <div style={{ fontSize: "clamp(24px,3.2vw,32px)", marginBottom: 6 }}>{b.icon}</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: sel ? C.white : C.text, lineHeight: 1.2, marginBottom: 3 }}>{b.name}</div>
-                  <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "#aaa" : C.muted, marginBottom: 4 }}>{b.desc}</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: sel ? C.topText : C.text }}>{fmt(b.price)}</div>
+                  style={{ position: "relative", background: oos ? C.surface2 : sel ? C.topBg : C.white, border: `2px solid ${oos ? C.border : sel ? C.topBg : C.border}`, borderRadius: 12, padding: "clamp(12px,1.6vw,16px)", cursor: oos ? "not-allowed" : "pointer", textAlign: "center", transition: "all 0.15s", minHeight: 80, opacity: oos ? 0.65 : 1 }}>
+                  {oos && (
+                    <div style={{ position: "absolute", top: 6, right: 6, background: C.danger, color: C.white, fontSize: "clamp(8px,1vw,10px)", fontWeight: 700, padding: "1px 7px", borderRadius: 4, letterSpacing: "0.06em" }}>HABIS</div>
+                  )}
+                  <div style={{ fontSize: "clamp(24px,3.2vw,32px)", marginBottom: 6, filter: oos ? "grayscale(1)" : "none" }}>{b.icon}</div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: oos ? C.muted : sel ? C.white : C.text, lineHeight: 1.2, marginBottom: 3 }}>{b.name}</div>
+                  <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: C.muted, marginBottom: 4 }}>{oos ? "Stok habis · Out of stock" : b.desc}</div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: oos ? C.muted : sel ? C.topText : C.text }}>{fmt(b.price)}</div>
                 </div>
               );
             })}
@@ -170,13 +174,17 @@ export default function TimeSlot({ barber, slot, setSlot, selectedBeverages, set
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "clamp(8px,1.2vw,12px)" }}>
             {PRODUCTS.map(p => {
               const sel = selectedProducts.includes(p.id);
+              const oos = p.outOfStock;
               return (
                 <div key={p.id} onClick={() => togglePro(p.id)}
-                  style={{ background: sel ? C.topBg : C.white, border: `2px solid ${sel ? C.topBg : C.border}`, borderRadius: 12, padding: "clamp(12px,1.6vw,16px)", cursor: "pointer", textAlign: "center", transition: "all 0.15s", minHeight: 80 }}>
-                  <div style={{ fontSize: "clamp(24px,3.2vw,32px)", marginBottom: 6 }}>{p.icon}</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: sel ? C.white : C.text, lineHeight: 1.2, marginBottom: 3 }}>{p.name}</div>
-                  <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: sel ? "#aaa" : C.muted, marginBottom: 4 }}>{p.desc}</div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: sel ? C.topText : C.text }}>{fmt(p.price)}</div>
+                  style={{ position: "relative", background: oos ? C.surface2 : sel ? C.topBg : C.white, border: `2px solid ${oos ? C.border : sel ? C.topBg : C.border}`, borderRadius: 12, padding: "clamp(12px,1.6vw,16px)", cursor: oos ? "not-allowed" : "pointer", textAlign: "center", transition: "all 0.15s", minHeight: 80, opacity: oos ? 0.65 : 1 }}>
+                  {oos && (
+                    <div style={{ position: "absolute", top: 6, right: 6, background: C.danger, color: C.white, fontSize: "clamp(8px,1vw,10px)", fontWeight: 700, padding: "1px 7px", borderRadius: 4, letterSpacing: "0.06em" }}>HABIS</div>
+                  )}
+                  <div style={{ fontSize: "clamp(24px,3.2vw,32px)", marginBottom: 6, filter: oos ? "grayscale(1)" : "none" }}>{p.icon}</div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: oos ? C.muted : sel ? C.white : C.text, lineHeight: 1.2, marginBottom: 3 }}>{p.name}</div>
+                  <div style={{ fontSize: "clamp(10px,1.2vw,11px)", color: C.muted, marginBottom: 4 }}>{oos ? "Stok habis · Out of stock" : p.desc}</div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.4vw,14px)", fontWeight: 700, color: oos ? C.muted : sel ? C.topText : C.text }}>{fmt(p.price)}</div>
                 </div>
               );
             })}

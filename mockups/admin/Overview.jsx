@@ -56,6 +56,9 @@ function BranchCard({ branch, onSelect, i }) {
           {branch.alerts.includes('low_stock') && (
             <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 4, background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>📦 Low Stock</span>
           )}
+          {branch.alerts.includes('absence') && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 4, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>🔴 Absence</span>
+          )}
         </div>
       </div>
 
@@ -124,7 +127,7 @@ function BranchCard({ branch, onSelect, i }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function Overview({ onSelectBranch }) {
+export default function Overview({ onSelectBranch, onOpenLiveMonitor }) {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -142,7 +145,7 @@ export default function Overview({ onSelectBranch }) {
   const dateStr = time.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1280 }}>
+    <div style={{ padding: '28px 32px' }}>
 
       {/* Page header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
@@ -160,8 +163,10 @@ export default function Overview({ onSelectBranch }) {
 
       {/* KPI strip */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-        <KpiCard i={0} label="Today's Revenue"   value={fmtM(totalRevenue)} sub="All 6 branches combined"       accent="#16A34A" />
-        <KpiCard i={1} label="In Chair Now"       value={totalActive}        sub="Customers being served"        accent={C.text}  />
+        <KpiCard i={0} label="Today's Revenue"   value={fmtM(totalRevenue)} sub={`All ${BRANCHES.length} branches combined`} accent="#16A34A" />
+        <div onClick={onOpenLiveMonitor} style={{ flex: 1, cursor: onOpenLiveMonitor ? 'pointer' : 'default' }} title="Click to open Live Monitor">
+          <KpiCard i={1} label="In Chair Now"     value={totalActive}        sub="Click to view live monitor"   accent={C.text}  />
+        </div>
         <KpiCard i={2} label="Waiting"            value={totalWaiting}       sub="Confirmed, not started"        accent="#2563EB" />
         <KpiCard i={3} label="Completed Today"    value={totalDone}          sub="Paid and out the door"         accent="#6B7280" />
       </div>
@@ -170,10 +175,12 @@ export default function Overview({ onSelectBranch }) {
       <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 14, color: C.text2, marginBottom: 14, letterSpacing: '0.01em' }}>
         All Branches
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-        {BRANCHES.map((branch, i) => (
-          <BranchCard key={branch.id} branch={branch} onSelect={onSelectBranch} i={i} />
-        ))}
+      <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 270px)', paddingBottom: 28 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+          {BRANCHES.map((branch, i) => (
+            <BranchCard key={branch.id} branch={branch} onSelect={onSelectBranch} i={i} />
+          ))}
+        </div>
       </div>
     </div>
   );

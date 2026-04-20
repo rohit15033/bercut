@@ -12,7 +12,7 @@ This guide contains ready-to-paste prompts for building each module of the Bercu
 2. Reference the prototype: "The design follows bercut-kiosk.jsx — same tokens, same component patterns."
 3. Paste the specific feature prompt
 4. Validate colour usage immediately — is yellow used as text on white anywhere? Fix before moving on.
-5. Test on Windows touchscreen landscape dimensions and verify layout before declaring a screen done.
+5. Test on Android touchscreen landscape dimensions and verify layout before declaring a screen done. No code changes needed vs Windows — same PWA, same Chrome, same behaviour.
 
 ---
 
@@ -31,20 +31,23 @@ The system has three PWA apps sharing one codebase: Kiosk, Barber App, Admin Das
 ## Tech Stack
 - Frontend: React PWA (all three apps)
 - Backend: Node.js + Express REST API
-- Database: PostgreSQL (self-hosted on Railway/Render, or Supabase Pro at $25/mo if preferred)
+- Database: PostgreSQL (self-hosted on Rumahweb VPS — no cloud DB)
 - Real-time: Server-Sent Events (SSE) on the Node.js backend — native browser EventSource API,
   zero extra cost or infrastructure. Kiosk listens on GET /api/events?branch_id= for booking
   and payment events.
-- Payments: BCA EDC terminal — handles both QRIS and card. Direct integration via Serial/USB
-  (ISO 8583) or local TCP/LAN. No third-party payment gateway. Confirm exact protocol with
-  BCA technical team.
+- Payments: Xendit Terminal H2H — REST API from Node.js backend to Xendit cloud. Terminal
+  displays payment prompt, customer taps card/QRIS, Xendit sends webhook confirmation back to
+  backend. Internet required for payments (accepted trade-off). BRI is the live Indonesia
+  acquirer; no BRI merchant account needed — funds settle to Xendit Balance T+1. BCA EDC is
+  NOT used. Midtrans is NOT used.
 - Notifications Phase 1: Web Speech API kiosk speaker announcement — completely free, zero setup.
 - Notifications Phase 2: Web Push API via PWA — free, Android Chrome, no per-message cost.
 - IMPORTANT (Meeting 2): No separate Barber App. Barber functions (clock in/out, breaks,
   start/finish service) are accessed via the kiosk Topbar logo tap → PIN-protected barber panel.
   The kiosk has two access modes: Admin (full dashboard) and Barber (queue + clock management).
 - Receipts: ESC/POS thermal printer per kiosk
-- Hosting: Railway or Render
+- Hosting: Rumahweb VPS (Nginx + PM2 + PostgreSQL self-hosted). Vite build outputs to
+  backend/public — Nginx serves from there (single origin, no CORS).
 
 ## Design Tokens (use these exact values — never deviate)
 bg:         #FAFAF8   // warm off-white page background
@@ -62,7 +65,7 @@ white:      #FFFFFF   // card surfaces
 danger:     #C0272D   // destructive actions only
 
 ## Typography
-Display/Headings: Barlow Condensed (700–900 weight)
+Display/Headings: Inter (800 weight) — Barlow Condensed was rejected (too blocky for Bercut brand)
 Body/UI copy:     DM Sans (400/500/600 weight)
 Both loaded via Google Fonts.
 
@@ -75,8 +78,8 @@ Both loaded via Google Fonts.
 
 ## Business Rules
 - Payment model: POSTPAID. Customers never pay during booking. Pay after service at kiosk counter.
-- Payment methods: QRIS and card — both via BCA EDC terminal (direct integration). NO CASH.
-- Tip: collected at payment time via kiosk. Preset Rp 10k/20k/50k + custom. Pooled per branch.
+- Payment methods: QRIS and card — both via Xendit Terminal H2H (REST API). NO CASH. NO BCA EDC.
+- Tip: collected at payment time via kiosk. Presets configurable per branch (defaults: Rp 5k/10k/20k/50k/100k) + custom + skip. Individual per barber — NOT pooled.
 - Barber triggers payment: when barber taps Complete, kiosk switches to payment mode.
 - Staff panel: triple-tap top-right corner of topbar to open (while barber app doesn't exist yet).
 - No front desk: no cashier role. Kiosk handles booking. Barber app handles queue + payment trigger.
@@ -84,7 +87,7 @@ Both loaded via Google Fonts.
 - Booking status lifecycle: confirmed → in_progress → pending_payment → completed | no_show | cancelled
 
 ## Languages
-- Kiosk: bilingual — Bahasa Indonesia (primary) + English (subtitle below each label)
+- Kiosk: bilingual — English (primary label) + Bahasa Indonesia (subtitle below each label)
 - Barber App: Bahasa Indonesia only
 - Admin Dashboard: English primary
 

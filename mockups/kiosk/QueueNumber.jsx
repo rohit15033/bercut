@@ -3,7 +3,7 @@
  *
  * What it does: Step 5 — reservasi confirmed. Shows name, barber, assigned chair, 
  *   and status. Footer has "Add Another" and "Done" (reset) buttons.
- * State managed: cart, services, barber, slot, name, phone, group (read-only), onAddAnother, onReset
+ * State managed: cart, services, barber, slot, name, group (read-only), onAddAnother, onReset
  * Production API: booking data from POST /api/bookings response
  * Feeds into: ServiceSelection (onAddAnother) or Welcome (onReset/Auto-redirect)
  *
@@ -160,6 +160,55 @@ export default function QueueNumber({ cart, services, barber, slot, name, group,
           </div>
         )}
 
+        {/* Escalation countdown / status — only shown for non-Now bookings */}
+        {!isGrouped && !isNow && barber && (() => {
+          if (escalateIn === null) {
+            // Initial state: barber has been called once, waiting to see if they start
+            return (
+              <div style={{ background: "#fafaf4", border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)", marginBottom: "clamp(10px,1.4vw,14px)", display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
+                <span style={{ fontSize: 22, flexShrink: 0 }}>📢</span>
+                <div>
+                  <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(13px,1.6vw,15px)", fontWeight: 700, color: C.text }}>Barber Notified · Kapster Diberitahu</div>
+                  <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: C.muted, marginTop: 2 }}>Announcement played · If no response, will re-announce automatically</div>
+                </div>
+              </div>
+            );
+          }
+          if (escalateIn > 0) {
+            const mins = Math.floor(escalateIn / 60);
+            const secs = escalateIn % 60;
+            const pct  = ((ESCALATE_AFTER - escalateIn) / ESCALATE_AFTER) * 100;
+            return (
+              <div style={{ background: "#fffbea", border: `1.5px solid #e8d84a`, borderRadius: 12, padding: "clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)", marginBottom: "clamp(10px,1.4vw,14px)", textAlign: "left" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>⏱</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(12px,1.5vw,14px)", fontWeight: 700, color: "#7a6000" }}>Re-announcing in {mins > 0 ? `${mins}m ` : ""}{String(secs).padStart(2, "0")}s</div>
+                    <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "#a08000", marginTop: 1 }}>Auto re-announce if barber hasn't started · Otomatis ulang jika belum mulai</div>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div style={{ height: 4, background: "#e8d84a22", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ height: "100%", background: "#e8d84a", borderRadius: 2, width: `${pct}%`, transition: "width 1s linear" }} />
+                </div>
+                <button onClick={callBarber} style={{ marginTop: 10, background: "none", border: "none", fontSize: "clamp(11px,1.3vw,13px)", color: "#a08000", fontFamily: "'DM Sans',sans-serif", textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+                  Announce now · Umumkan sekarang
+                </button>
+              </div>
+            );
+          }
+          // escalateIn === 0 — currently re-announcing
+          return (
+            <div style={{ background: "#fff3e0", border: "1.5px solid #ff9800", borderRadius: 12, padding: "clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)", marginBottom: "clamp(10px,1.4vw,14px)", display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
+              <span style={{ fontSize: 22, flexShrink: 0, animation: "pulse 0.8s ease infinite" }}>📢</span>
+              <div>
+                <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(13px,1.6vw,15px)", fontWeight: 700, color: "#e65100" }}>Re-announcing now…</div>
+                <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "#bf360c", marginTop: 2 }}>Calling {barber.name} again · Memanggil kapster kembali</div>
+              </div>
+            </div>
+          );
+        })()}
+
 
         {/* Points used note */}
         {pointsUsed > 0 && (
@@ -174,7 +223,7 @@ export default function QueueNumber({ cart, services, barber, slot, name, group,
         {/* Payment note */}
         <div style={{ background: C.topBg, borderRadius: 12, padding: "clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)", marginBottom: "clamp(16px,2.2vw,22px)", fontSize: "clamp(11px,1.3vw,13px)", color: "#888", lineHeight: 1.6, textAlign: "left" }}>
           <span style={{ color: C.accent, fontWeight: 700 }}>💳 {isGrouped ? "One payment for all." : "Pay after your service · Bayar setelah selesai."}</span>{" "}
-          Your barber will process payment via QRIS or BCA card.
+          Your barber will process payment via QRIS or card terminal.
         </div>
 
         {/* Actions row */}

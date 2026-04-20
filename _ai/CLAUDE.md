@@ -117,6 +117,7 @@ bercut-kiosk/
 │
 ├── mockups/                          ← Claude Code builds here
 │   ├── kiosk/
+│   │   ├── BercutKiosk.jsx           ← main kiosk router
 │   │   ├── Welcome.jsx
 │   │   ├── ServiceSelection.jsx
 │   │   ├── BarberSelection.jsx
@@ -124,18 +125,27 @@ bercut-kiosk/
 │   │   ├── Confirm.jsx
 │   │   ├── QueueNumber.jsx
 │   │   ├── PaymentTakeover.jsx
-│   │   └── StaffPanel.jsx
-│   ├── barber-app/
-│   │   ├── Login.jsx
-│   │   ├── ClockIn.jsx
-│   │   ├── QueueView.jsx
-│   │   └── AddServiceModal.jsx
+│   │   ├── StaffPanel.jsx
+│   │   ├── BarberPanel.jsx           ← kiosk barber mode (PIN-protected)
+│   │   └── AdminPanel.jsx            ← kiosk admin mode (password-protected)
+│   │   NOTE: No barber-app/ folder — barber functions live inside kiosk panels (Meeting 2)
 │   └── admin/
+│       ├── BercutAdmin.jsx           ← main admin router
 │       ├── Overview.jsx
 │       ├── BranchDetail.jsx
 │       ├── Reports.jsx
+│       ├── Barbers.jsx
+│       ├── Services.jsx
+│       ├── Customers.jsx
 │       ├── Expenses.jsx
 │       ├── Inventory.jsx
+│       ├── Payroll.jsx
+│       ├── OnlineBooking.jsx
+│       ├── KioskConfig.jsx
+│       ├── Branches.jsx
+│       ├── Barbers.jsx
+│       ├── Services.jsx
+│       ├── Customers.jsx
 │       └── Settings.jsx
 │
 ├── frontend/                         ← Antigravity builds here (production)
@@ -291,7 +301,7 @@ For each screen, Antigravity:
 | Backend | Node.js + Express | REST + SSE |
 | Database | PostgreSQL | Self-hosted on VPS |
 | Real-time | Server-Sent Events | `GET /api/events?branch_id=` |
-| Payment | BCA EDC — Serial/USB ISO 8583 or local TCP | No Midtrans, no gateway |
+| Payment | Xendit Terminal H2H | REST API from backend → terminal → webhook confirm. No BCA EDC, no Midtrans. |
 | Notifications P1 | Web Speech API | Kiosk speaker, free, zero setup |
 | Notifications P2 | Web Push PWA | Free, Android Chrome |
 | Receipts | ESC/POS thermal printer | Epson TM-T82 or equivalent |
@@ -427,7 +437,7 @@ YYYY-MM-DD | [decision] | [reason]
 2026-03-25 | Single Vite app with routing — not monorepo | simpler for one dev, one VPS
 2026-03-25 | Rumahweb VPS self-hosted | client already has VPS, avoids Railway/Render cost
 2026-03-25 | SSE for real-time — not WebSockets | zero extra infra, sufficient for queue updates
-2026-03-25 | BCA EDC direct integration — no payment gateway | client requirement, works offline
+2026-04-04 | Xendit Terminal H2H — replaces BCA EDC entirely | Android kiosk is half the cost of Windows; Xendit is internet-based REST so no platform constraint; internet dependency on payments accepted by Bercut
 2026-03-25 | Web Speech API for P1 notifications — no Fonnte/Zenziva | free, zero setup, barbers on premises
 ```
 

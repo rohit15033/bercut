@@ -1,9 +1,22 @@
 /**
  * MOCKUP — Bercut Kiosk: ServiceSelection
+ *
+ * What it does: Customer browses and selects one or more services before proceeding to barber selection.
+ * State managed: cart (selected service IDs), bleachConfig, ownColorToggles, showBleachModal
+ * Production API: GET /api/services?branch_id=
+ * Feeds into: BarberSelection (Step 2)
+ *
+ * VISUAL PROTOTYPE — no backend calls.
+ * Antigravity: build production version at
+ * frontend/src/apps/kiosk/screens/ServiceSelection.jsx
+ * Reference prompt: _ai/prompting-guide.md Section 03
  */
 
 import { useRef, useState } from "react";
-import { C, CATEGORIES, fmt, SERVICES } from "./data.js";
+import { C, fmt } from "./data.js";
+import { CATEGORIES, SERVICES } from "./catalogue.js";
+
+const PACKAGE_GRID = { display: "flex", flexDirection: "column", gap: "clamp(12px,1.8vw,18px)" };
 
 // ── Bleach Configurator Modal ──────────────────────────────────────────────
 function BleachModal({ onConfirm, onClose }) {
@@ -88,18 +101,30 @@ function BleachModal({ onConfirm, onClose }) {
 }
 
 // ── Main Component ──────────────────────────────────────────────────────────
-export default function ServiceSelection({ cart, setCart, ownColorToggles, setOwnColorToggles, onNext, onBack }) {
+export default function ServiceSelection({ cart, setCart, ownColorToggles, setOwnColorToggles, onNext, onBack, categoryOrder, svcOrderByCat, serviceVisible }) {
   const [showBleachModal, setShowBleachModal] = useState(false);
   const [bleachConfig, setBleachConfig] = useState(null);
   const catRefs = useRef({});
   const BLEACH_ID = 21;
 
+  // Apply admin config: filter and sort categories and services
+  const visibleIds = serviceVisible ?? SERVICES.map(s => s.id);
+  const getOrderedServices = (catKey) => {
+    const filtered = SERVICES.filter(s => s.cat === catKey && visibleIds.includes(s.id));
+    const order = svcOrderByCat?.[catKey];
+    if (!order) return filtered;
+    return [...filtered].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  };
+  const orderedCats = (categoryOrder
+    ? CATEGORIES.filter(c => categoryOrder.includes(c.key)).sort((a, b) => categoryOrder.indexOf(a.key) - categoryOrder.indexOf(b.key))
+    : CATEGORIES).filter(c => getOrderedServices(c.key).length > 0);
+
   const effPrice = (s) => (s.id === BLEACH_ID ? bleachConfig?.price ?? s.price : (s.ownColorPrice && ownColorToggles[s.id] ? s.ownColorPrice : s.price));
-  const effDur = (s) => (s.id === BLEACH_ID ? bleachConfig?.dur ?? s.dur : s.dur);
-  const effName = (s) => (s.id === BLEACH_ID && bleachConfig ? bleachConfig.label : (s.ownColorPrice && ownColorToggles[s.id] ? s.name + " (Own Color)" : s.name));
-  
+  const effDur   = (s) => (s.id === BLEACH_ID ? bleachConfig?.dur ?? s.dur : s.dur);
+  const effName  = (s) => (s.id === BLEACH_ID && bleachConfig ? bleachConfig.label : (s.ownColorPrice && ownColorToggles[s.id] ? s.name + " (Own Color)" : s.name));
+
   const total = cart.reduce((sum, id) => { const s = SERVICES.find(x => x.id === id); return sum + (s ? effPrice(s) : 0); }, 0);
-  const dur = cart.reduce((sum, id) => { const s = SERVICES.find(x => x.id === id); return sum + (s ? effDur(s) : 0); }, 0);
+  const dur   = cart.reduce((sum, id) => { const s = SERVICES.find(x => x.id === id); return sum + (s ? effDur(s) : 0); }, 0);
 
   const toggle = id => {
     if (id === BLEACH_ID) {
@@ -119,131 +144,234 @@ export default function ServiceSelection({ cart, setCart, ownColorToggles, setOw
     }
   };
 
+  // ── Card renderers ─────────────────────────────────────────────────────
+
+  const renderPackageCard = (s, i, ci) => {
+    const sel = cart.includes(s.id);
+    return (
+      <div key={s.id} onClick={() => toggle(s.id)} style={{
+        cursor: "pointer", borderRadius: 14, overflow: "hidden",
+        border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : "rgba(255,255,255,0.08)"}`,
+        animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`,
+        position: "relative", background: C.topBg,
+        display: "flex", height: "clamp(180px,23vw,250px)",
+      }}>
+
+        {/* Left — treatment image mosaic */}
+        <div style={{ width: "56%", flexShrink: 0, display: "flex", position: "relative", overflow: "hidden" }}>
+          {s.treatmentImgs?.map((img, ti) => (
+            <div key={ti} style={{ flex: 1, overflow: "hidden", borderRight: ti < s.treatmentImgs.length - 1 ? "1px solid rgba(0,0,0,0.25)" : "none" }}>
+              <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center bottom", display: "block" }} />
+            </div>
+          ))}
+          {/* Gradient blend into right panel */}
+          <div style={{ position: "absolute", inset: 0, background: sel ? "rgba(245,226,0,0.12)" : "linear-gradient(to right, transparent 55%, rgba(17,17,16,0.75) 100%)" }} />
+        </div>
+
+        {/* Right — package info */}
+        <div style={{ flex: 1, padding: "clamp(14px,1.8vw,22px) clamp(16px,2vw,24px)", display: "flex", flexDirection: "column" }}>
+          {/* Top section */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            {s.badge && (
+              <div style={{ display: "inline-block", background: C.accent, color: C.accentText, fontSize: "clamp(8px,0.9vw,10px)", fontWeight: 800, padding: "3px 9px", borderRadius: 4, marginBottom: "clamp(8px,1.2vw,12px)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{s.badge}</div>
+            )}
+            <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(16px,2.2vw,24px)", fontWeight: 800, color: sel ? C.accent : C.white, lineHeight: 1.15 }}>{s.name}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(4px,0.5vw,6px)", marginTop: "clamp(8px,1.1vw,12px)" }}>
+              {s.desc?.split("  ·  ").map((d, di) => (
+                <span key={di} style={{
+                  fontSize: "clamp(11px,1.2vw,13px)",
+                  fontWeight: 600,
+                  background: sel ? "rgba(245,226,0,0.12)" : "rgba(255,255,255,0.09)",
+                  color: sel ? C.accent : "rgba(255,255,255,0.82)",
+                  padding: "4px 10px", borderRadius: 5,
+                  border: `1px solid ${sel ? "rgba(245,226,0,0.28)" : "rgba(255,255,255,0.13)"}`,
+                }}>{d}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom row — always pinned, never pushed by chips above */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, marginTop: "clamp(8px,1.2vw,12px)" }}>
+            <span style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "rgba(255,255,255,0.4)" }}>⏱ {s.dur} min</span>
+            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,26px)", fontWeight: 800, color: sel ? C.accent : C.white }}>{fmt(effPrice(s))}</span>
+          </div>
+        </div>
+
+        {/* Selected indicator */}
+        {sel && <div style={{ position: "absolute", top: 10, right: 12, width: 26, height: 26, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: C.accentText, zIndex: 5 }}>✓</div>}
+        {sel && <div style={{ position: "absolute", inset: 0, border: `3px solid ${C.accent}`, borderRadius: 14, pointerEvents: "none" }} />}
+      </div>
+    );
+  };
+
+  const renderImageCard = (s, i, ci) => {
+    const sel = cart.includes(s.id);
+    const h = "clamp(140px,18vw,190px)";
+    return (
+      <div key={s.id} onClick={() => toggle(s.id)} style={{
+        cursor: "pointer", borderRadius: 14, overflow: "hidden",
+        position: "relative", height: h,
+        animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`,
+        border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : "transparent"}`,
+      }}>
+        <img src={s.img} alt={s.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+        {/* Gradient overlay */}
+        <div style={{ position: "absolute", inset: 0, background: sel ? "rgba(245,226,0,0.22)" : "linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.15) 55%, transparent 100%)" }} />
+
+        {/* Text content */}
+        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "clamp(10px,1.4vw,14px)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, paddingRight: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: "clamp(12px,1.5vw,15px)", lineHeight: 1.2, color: "#fff" }}>{effName(s)}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                <div style={{ fontSize: "clamp(10px,1.1vw,11px)", color: "rgba(255,255,255,0.65)" }}>⏱ {effDur(s)} min</div>
+                {s.cat === "Haircut" && (
+                  <div style={{ fontSize: 9, color: "#fff", background: "rgba(255,255,255,0.18)", padding: "1px 5px", borderRadius: 4, fontWeight: 600 }}>Optional Wash</div>
+                )}
+              </div>
+              {s.id === BLEACH_ID && (
+                <div style={{ marginTop: 6, background: sel ? C.accent : "rgba(255,255,255,0.2)", color: sel ? C.accentText : "#fff", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, display: "inline-block" }}>
+                  {sel ? "✏ Edit" : "Configure →"}
+                </div>
+              )}
+            </div>
+            <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: "clamp(13px,1.6vw,17px)", color: sel ? C.accent : "#fff", flexShrink: 0 }}>{fmt(effPrice(s))}</span>
+          </div>
+
+          {/* Own Color toggle for Hair Color services */}
+          {s.ownColorPrice && (
+            <div onClick={e => { e.stopPropagation(); setOwnColorToggles(prev => ({ ...prev, [s.id]: !prev[s.id] })); }}
+              style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.12)", borderRadius: 7, padding: "5px 9px", border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>Own Color (-{fmt(s.price - s.ownColorPrice)})</span>
+              <div style={{ width: 30, height: 16, background: ownColorToggles[s.id] ? C.accent : "rgba(255,255,255,0.25)", borderRadius: 99, position: "relative", flexShrink: 0 }}>
+                <div style={{ position: "absolute", width: 12, height: 12, background: "#fff", borderRadius: "50%", top: 2, left: ownColorToggles[s.id] ? 16 : 2, transition: "left 0.18s" }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {sel && <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: C.accentText, zIndex: 5 }}>✓</div>}
+      </div>
+    );
+  };
+
+  const renderTextCard = (s, i, ci) => {
+    const sel = cart.includes(s.id);
+    return (
+      <div key={s.id} onClick={() => toggle(s.id)} className={`card ${sel ? "sel" : ""}`}
+        style={{ padding: "clamp(14px,1.8vw,18px)", border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : "#fff", cursor: "pointer", borderRadius: 14, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: "relative" }}>
+        <div style={{ fontWeight: 700, fontSize: "clamp(14px,1.8vw,17px)", color: sel ? C.accentText : C.text, paddingRight: 24 }}>{effName(s)}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, alignItems: "center" }}>
+          <span style={{ fontSize: "clamp(11px,1.3vw,12px)", color: sel ? "rgba(0,0,0,0.5)" : C.muted }}>⏱ {effDur(s)} min</span>
+          <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{fmt(effPrice(s))}</span>
+        </div>
+        {sel && <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accentText, borderRadius: "50%", color: C.accent, fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5 }}>✓</div>}
+      </div>
+    );
+  };
+
   return (
     <>
-      {showBleachModal && <BleachModal onClose={() => setShowBleachModal(false)} onConfirm={cfg => { setBleachConfig(cfg); setCart(c => [...c.filter(x => x !== BLEACH_ID), BLEACH_ID]); setShowBleachModal(false); }} />}
-      
+      {showBleachModal && (
+        <BleachModal
+          onClose={() => setShowBleachModal(false)}
+          onConfirm={cfg => { setBleachConfig(cfg); setCart(c => [...c.filter(x => x !== BLEACH_ID), BLEACH_ID]); setShowBleachModal(false); }}
+        />
+      )}
+
       <div style={{ height: "calc(100vh - clamp(51px,6.5vh,63px))", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          
+
+          {/* ── Main content area ── */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+            {/* Header + category pills */}
             <div style={{ padding: "clamp(16px,2.4vw,28px) clamp(16px,2.4vw,28px) 0", flexShrink: 0 }}>
               <div className="step-header">
                 <div className="step-eyebrow">Step 1 of 4</div>
                 <h2 className="step-title" style={{ fontSize: "clamp(24px,3.5vw,34px)", fontWeight: 800 }}>Choose Your Services</h2>
               </div>
               <div style={{ display: "flex", gap: "clamp(6px,0.8vw,10px)", flexWrap: "wrap", margin: "18px 0", paddingBottom: 18, borderBottom: `1px solid ${C.border}` }}>
-                {CATEGORIES.map(c => (
-                  <button key={c.key} onClick={() => catRefs.current[c.key]?.scrollIntoView({ behavior: "smooth" })} className="pill" 
-                    style={{ background: cart.some(id => SERVICES.find(x => x.id === id)?.cat === c.key) ? C.topBg : "#fff", color: cart.some(id => SERVICES.find(x => x.id === id)?.cat === c.key) ? "#fff" : C.text2, border: `1.5px solid ${cart.some(id => SERVICES.find(x => x.id === id)?.cat === c.key) ? C.topBg : C.border}` }}>
+                {orderedCats.map(c => (
+                  <button key={c.key} onClick={() => catRefs.current[c.key]?.scrollIntoView({ behavior: "smooth" })} className="pill"
+                    style={{
+                      background: cart.some(id => SERVICES.find(x => x.id === id)?.cat === c.key) ? C.topBg : "#fff",
+                      color:      cart.some(id => SERVICES.find(x => x.id === id)?.cat === c.key) ? "#fff" : C.text2,
+                      border: `1.5px solid ${cart.some(id => SERVICES.find(x => x.id === id)?.cat === c.key) ? C.topBg : C.border}`,
+                    }}>
                     {c.icon} {c.labelEn}
                   </button>
                 ))}
               </div>
             </div>
 
+            {/* Scrollable service sections */}
             <div className="scroll-y" style={{ flex: 1, padding: "0 clamp(16px,2.4vw,28px) clamp(16px,2.4vw,28px)" }}>
-              {CATEGORIES.map((cat, ci) => (
-                <div key={cat.key} ref={el => catRefs.current[cat.key] = el} style={{ marginBottom: "clamp(14px,2vw,24px)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              {orderedCats.map((cat, ci) => {
+                const svcs = getOrderedServices(cat.key);
+                if (svcs.length === 0) return null;
+                return (
+                <div key={cat.key} ref={el => catRefs.current[cat.key] = el} style={{ marginBottom: "clamp(20px,2.8vw,32px)" }}>
+
+                  {/* Section header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "clamp(12px,1.6vw,18px)" }}>
                     <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(15px,2vw,20px)", fontWeight: 700, color: C.text }}>{cat.icon} {cat.labelEn}</div>
                     <div style={{ flex: 1, height: 1, background: C.border }} />
                   </div>
-                  <div className="card-grid-fluid">
-                    {SERVICES.filter(s => s.cat === cat.key).map((s, i) => {
-                      const sel = cart.includes(s.id);
-                      if (s.cat === "Package") {
-                        return (
-                          <div key={s.id} onClick={() => toggle(s.id)} style={{ cursor: "pointer", borderRadius: 14, overflow: "hidden", border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : C.border}`, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: "relative", background: C.topBg, height: "100%", display: "flex", flexDirection: "column" }}>
-                            <div style={{ height: "clamp(100px,13vw,135px)", position: "relative" }}>
-                              <div style={{ position: "absolute", inset: 0, display: "flex" }}>{s.treatmentImgs?.map((img, ti) => <img key={ti} src={img} style={{ flex: 1, height: "100%", objectFit: "cover" }} />)}</div>
-                              <div style={{ position: "absolute", inset: 0, background: sel ? "rgba(245,226,0,0.25)" : "linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.1) 50%, transparent 100%)" }} />
-                              {s.badge && <div style={{ position: "absolute", top: 8, left: 10, background: C.accent, color: C.accentText, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, zIndex: 2 }}>{s.badge}</div>}
-                              
-                              <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "clamp(10px,1.4vw,14px)" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", color: "#fff" }}>
-                                  <div>
-                                    <div style={{ fontWeight: 700, fontSize: "clamp(13px,1.6vw,16px)", lineHeight: 1.2 }}>{s.name}</div>
-                                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{s.dur} min</div>
-                                  </div>
-                                  <span style={{ fontWeight: 800, fontSize: "clamp(14px,1.8vw,18px)", color: sel ? C.accent : "#fff" }}>{fmt(effPrice(s))}</span>
-                                </div>
-                              </div>
-                            </div>
-                            {/* Dark footer area for labels — blends with card background to avoid white gap */}
-                            <div style={{ padding: "clamp(8px,1vw,12px) clamp(10px,1.4vw,14px)", display: "flex", flexWrap: "wrap", gap: 4, background: C.topBg }}>
-                              {s.desc?.split("  ·  ").map((d, di) => (
-                                <span key={di} style={{ fontSize: 9, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.8)", padding: "2px 6px", borderRadius: 4 }}>{d}</span>
-                              ))}
-                            </div>
-                            
-                            {sel && <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText, zIndex: 5 }}>✓</div>}
-                            {sel && <div style={{ position: "absolute", inset: 0, border: `3px solid ${C.accent}`, borderRadius: 14 }} />}
-                          </div>
-                        );
-                      }
-                      if (s.img) {
-                        return (
-                          <div key={s.id} onClick={() => toggle(s.id)} style={{ cursor: "pointer", borderRadius: 14, overflow: "hidden", position: "relative", height: "clamp(140px,18vw,190px)", animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both` }}>
-                            <img src={s.img} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-                            <div style={{ position: "absolute", inset: 0, background: sel ? "rgba(245,226,0,0.25)" : "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.1) 50%, transparent 100%)" }} />
-                            <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "clamp(10px,1.4vw,14px)" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", color: "#fff" }}>
-                                <div>
-                                  <div style={{ fontWeight: 700, fontSize: "clamp(13px,1.6vw,16px)", lineHeight: 1.2 }}>{effName(s)}</div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)" }}>{effDur(s)} min</div>
-                                    {s.cat === "Haircut" && <div style={{ fontSize: 9, color: "#fff", background: "rgba(255,255,255,0.2)", padding: "1px 5px", borderRadius: 4, fontWeight: 600 }}>Optional Wash</div>}
-                                  </div>
-                                  {s.id === BLEACH_ID && <div style={{ marginTop: 6, background: sel ? C.accent : "rgba(255,255,255,0.2)", color: sel ? C.accentText : "#fff", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, display: "inline-block" }}>{sel ? "✏ Edit" : "Configure →"}</div>}
-                                </div>
-                                <span style={{ fontWeight: 800, fontSize: "clamp(14px,1.8vw,18px)", color: sel ? C.accent : "#fff" }}>{fmt(effPrice(s))}</span>
-                              </div>
-                            </div>
-                            {sel && <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText, zIndex: 5 }}>✓</div>}
-                            {sel && <div style={{ position: "absolute", inset: 0, border: `3px solid ${C.accent}`, borderRadius: 14 }} />}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={s.id} onClick={() => toggle(s.id)} className={`card ${sel ? "sel" : ""}`} style={{ padding: "clamp(14px,1.8vw,18px)", border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : "#fff", cursor: "pointer", borderRadius: 14, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: "relative" }}>
-                          <div style={{ fontWeight: 700, fontSize: "clamp(14px,1.8vw,17px)", color: sel ? C.accentText : C.text, paddingRight: 24 }}>{effName(s)}</div>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, alignItems: "center" }}>
-                            <span style={{ fontSize: "clamp(11px,1.3vw,12px)", color: sel ? "rgba(0,0,0,0.5)" : C.muted }}>⏱ {effDur(s)} min</span>
-                            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: sel ? C.accentText : C.text }}>{fmt(effPrice(s))}</span>
-                          </div>
-                          {s.ownColorPrice && (
-                            <div onClick={e => { e.stopPropagation(); setOwnColorToggles(prev => ({ ...prev, [s.id]: !prev[s.id] })); }} style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", background: sel ? "rgba(255,255,255,0.15)" : C.surface, borderRadius: 8, padding: "6px 10px", border: `1px solid ${sel ? "rgba(255,255,255,0.3)" : C.border}` }}>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: sel ? C.accentText : C.text2 }}>Own Color (-{fmt(s.price - s.ownColorPrice)})</span>
-                              <div style={{ width: 30, height: 16, background: ownColorToggles[s.id] ? (sel ? C.accentText : C.topBg) : (sel ? "rgba(0,0,0,0.2)" : "#ccc"), borderRadius: 99, position: "relative" }}><div style={{ position: "absolute", width: 12, height: 12, background: "#fff", borderRadius: "50%", top: 2, left: ownColorToggles[s.id] ? 16 : 2 }} /></div>
-                            </div>
-                          )}
-                          {sel && <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, background: C.accentText, borderRadius: "50%", color: C.accent, fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5 }}>✓</div>}
-                        </div>
-                      );
+
+                  {/* Per-category grid — packages full-width, everything else uniform */}
+                  <div className={cat.key !== "Package" ? "card-grid-fluid" : undefined} style={cat.key === "Package" ? PACKAGE_GRID : undefined}>
+                    {svcs.map((s, i) => {
+                      if (s.cat === "Package") return renderPackageCard(s, i, ci);
+                      if (s.img)              return renderImageCard(s, i, ci);
+                      return                         renderTextCard(s, i, ci);
                     })}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ width: "clamp(240px,28vw,300px)", borderLeft: `1px solid ${C.border}`, padding: "clamp(14px,2vw,22px)", display: "flex", flexDirection: "column", background: C.bg }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 16 }}>Your Selection</div>
-            <div style={{ flex: 1, overflowY: "auto" }}>
-              {cart.length === 0 ? <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, opacity: 0.5 }}>No services selected</div> : cart.map(id => {
-                const s = SERVICES.find(x => x.id === id);
-                return (
-                  <div key={id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 700 }}>{effName(s)}</div><div style={{ fontSize: 11, color: C.muted }}>{fmt(effPrice(s))}</div></div>
-                    <button onClick={() => toggle(id)} style={{ background: "none", border: "none", color: "#ccc", fontSize: 24, padding: "0 8px", cursor: "pointer" }}>×</button>
-                  </div>
                 );
               })}
             </div>
-            {cart.length > 0 && <div style={{ borderTop: `2px solid ${C.topBg}`, padding: "16px 0" }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.muted, marginBottom: 4 }}><span>Est. Duration</span><span>{dur} min</span></div><div style={{ display: "flex", justifyContent: "space-between", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 800 }}><span>Total</span><span>{fmt(total)}</span></div></div>}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}><button className="btnP" style={{ width: "100%" }} disabled={cart.length === 0} onClick={onNext}>Continue →</button><button className="btnG" style={{ width: "100%" }} onClick={onBack}>← Back</button></div>
           </div>
+
+          {/* ── Sidebar cart ── */}
+          <div style={{ width: "clamp(240px,28vw,300px)", borderLeft: `1px solid ${C.border}`, padding: "clamp(14px,2vw,22px)", display: "flex", flexDirection: "column", background: C.bg }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 16 }}>Your Selection</div>
+
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {cart.length === 0
+                ? <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, opacity: 0.5 }}>No services selected</div>
+                : cart.map(id => {
+                    const s = SERVICES.find(x => x.id === id);
+                    return (
+                      <div key={id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{effName(s)}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{fmt(effPrice(s))}</div>
+                        </div>
+                        <button onClick={() => toggle(id)} style={{ background: "none", border: "none", color: "#ccc", fontSize: 24, padding: "0 8px", cursor: "pointer" }}>×</button>
+                      </div>
+                    );
+                  })
+              }
+            </div>
+
+            {cart.length > 0 && (
+              <div style={{ borderTop: `2px solid ${C.topBg}`, padding: "16px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.muted, marginBottom: 4 }}>
+                  <span>Est. Duration</span><span>{dur} min</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 800 }}>
+                  <span>Total</span><span>{fmt(total)}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+              <button className="btnP" style={{ width: "100%" }} disabled={cart.length === 0} onClick={onNext}>Continue →</button>
+              <button className="btnG" style={{ width: "100%" }} onClick={onBack}>← Back</button>
+            </div>
+          </div>
+
         </div>
       </div>
     </>

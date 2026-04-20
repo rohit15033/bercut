@@ -15,7 +15,7 @@
 import { useState, useEffect } from "react";
 import { BERCUT_LOGO, C } from "./data.js";
 
-export default function Welcome({ onStart }) {
+export default function Welcome({ onStart, welcomeCta = 'Start Booking', welcomeCtaId = 'Mulai Booking', welcomeSubtitle = 'Touch screen to begin', welcomeSubtitleId = 'Sentuh layar untuk memulai' }) {
   const [time, setTime] = useState(new Date());
   useEffect(() => { const t = setInterval(()=>setTime(new Date()),1000); return ()=>clearInterval(t); }, []);
   const tickerItems = ["BERCUT BARBERSHOP","SEMINYAK","CANGGU","UBUD","ULUWATU","SANUR","DEWI SRI","NO.1 BARBERSHOP IN BALI","OPEN 10:00 – 20:00 EVERY DAY"];
@@ -64,10 +64,10 @@ export default function Welcome({ onStart }) {
             onMouseDown={e=>e.currentTarget.style.transform="scale(0.98)"}
             onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
             <span style={{ fontSize:"clamp(18px,2.4vw,24px)" }}>✂</span>
-            Start Booking / Mulai Booking
+            {welcomeCta} / {welcomeCtaId}
           </button>
           <div style={{ textAlign:"center", marginTop:14, fontSize:"clamp(11px,1.3vw,13px)", color:"#555" }}>
-            Touch screen to begin · Sentuh layar untuk memulai
+            {welcomeSubtitle} · {welcomeSubtitleId}
           </div>
         </div>
       </div>

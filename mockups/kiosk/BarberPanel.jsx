@@ -278,15 +278,41 @@ function BarberDetail({ barber, onBack, onClose, onPaymentTrigger }) {
   const [showAddSvc, setShowAddSvc] = useState(false);
   const [elapsed, setElapsed]       = useState(0);
   const [announced, setAnnounced]   = useState(false);
+  const [earningsView, setEarningsView] = useState("today"); // 'today' | 'month'
+  const [now, setNow]               = useState(Date.now());
 
   const active = queue.find(b => b.status === "in_progress") || null;
   const next   = queue.find(b => b.status === "confirmed")   || null;
+
+  // Clock that ticks every 30s — used for late-start detection
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   // Completed bookings today
   const done = queue.filter(b => b.status === "completed");
   const commissionRate = barber.commission_rate ?? 35;
   const commissionEarned = done.reduce((a, b) => a + Math.round(b.total * commissionRate / 100), 0);
   const tipsEarned       = done.reduce((a, b) => a + (b.tip || 0), 0);
+
+  // Monthly mock data (static for prototype — production pulls from API)
+  const MONTHLY = {
+    commission: commissionEarned * 18 + 340000,
+    tips:       tipsEarned * 14 + 175000,
+    bookings:   done.length * 20 + 87,
+    days:       22,
+  };
+
+  // Late-start detection for next booking
+  const nextLateMin = (() => {
+    if (!next || next.slot === "Now") return 0;
+    const [h, m] = (next.slot || "").split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return 0;
+    const slotMs = new Date().setHours(h, m, 0, 0);
+    const overMs = now - slotMs;
+    return overMs > 0 ? Math.floor(overMs / 60000) : 0;
+  })();
 
   // Elapsed timer
   useEffect(() => {
@@ -323,6 +349,14 @@ function BarberDetail({ barber, onBack, onClose, onPaymentTrigger }) {
     else alert(`Pembayaran dipicu untuk ${booking.name}\nTotal: ${fmt(booking.total)}`);
     // Close panel so PaymentTakeover has the full kiosk screen for the customer
     onClose();
+  };
+
+  const [alertSent, setAlertSent] = useState(false);
+  const handleClientNotArrived = id => {
+    setAlertSent(true);
+    // Production: POST /api/bookings/:id/client-not-arrived
+    // → sends WA to branch backoffice_alert_phone + SSE alert badge in LiveMonitor
+    console.info('[Bercut] Client not arrived alert sent for booking', id);
   };
 
   const handleAddServices = ids => {
@@ -515,24 +549,39 @@ function BarberDetail({ barber, onBack, onClose, onPaymentTrigger }) {
           {/* BERIKUTNYA */}
           {next && (
             <div style={{ padding:"clamp(14px,1.8vw,20px)", flex:1, display:"flex", flexDirection:"column" }}>
-              <div style={{ fontSize:"clamp(10px,1.2vw,11px)", fontWeight:700, letterSpacing:"0.14em", color:"#444", textTransform:"uppercase", marginBottom:10 }}>→ Berikutnya</div>
-              <div style={{ background:"#1a1a18", borderRadius:14, padding:"clamp(12px,1.6vw,16px)", border:"1.5px solid #2a2a28" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <div style={{ fontSize:"clamp(10px,1.2vw,11px)", fontWeight:700, letterSpacing:"0.14em", color:"#444", textTransform:"uppercase" }}>→ Berikutnya</div>
+                {nextLateMin >= 5 && (
+                  <div style={{ display:"flex", alignItems:"center", gap:5, background:"#2a0a0a", border:"1px solid #7a1a1a", borderRadius:5, padding:"2px 8px" }}>
+                    <span style={{ fontSize:10 }}>⚠</span>
+                    <span style={{ fontSize:"clamp(9px,1.1vw,10px)", fontWeight:700, color:"#ef5350", letterSpacing:"0.06em" }}>TERLAMBAT {nextLateMin}M</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ background:"#1a1a18", borderRadius:14, padding:"clamp(12px,1.6vw,16px)", border:`1.5px solid ${nextLateMin >= 10 ? "#7a1a1a" : nextLateMin >= 5 ? "#5a3a0a" : "#2a2a28"}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
                   <div>
                     <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:"clamp(14px,1.8vw,18px)", color:C.white }}>{next.name}</div>
                     <div style={{ fontSize:"clamp(11px,1.3vw,12px)", color:"#666", marginTop:2 }}>{next.services.map(s=>s.name).join(" + ")}</div>
-                    <div style={{ fontSize:"clamp(10px,1.2vw,11px)", color:"#444", marginTop:4 }}>Slot: {next.slot}</div>
+                    <div style={{ fontSize:"clamp(10px,1.2vw,11px)", color: nextLateMin >= 5 ? "#ef9a50" : "#444", marginTop:4 }}>
+                      Slot: {next.slot}{nextLateMin >= 5 ? ` · ${nextLateMin} menit terlambat` : ""}
+                    </div>
                   </div>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:"clamp(13px,1.7vw,16px)", color:C.accent }}>{fmt(next.total)}</div>
                 </div>
-                <div style={{ display:"flex", gap:8 }}>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <button onClick={() => handleCall(next.name)}
-                    style={{ flex:1, padding:"clamp(10px,1.3vw,12px)", borderRadius:9, background: announced ? "#1a3a1a" : "#2a2a28", color: announced ? "#4caf50" : "#888", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:"clamp(11px,1.3vw,13px)", border:"none", cursor:"pointer", minHeight:44 }}>
+                    style={{ flex:1, minWidth:60, padding:"clamp(10px,1.3vw,12px)", borderRadius:9, background: announced ? "#1a3a1a" : "#2a2a28", color: announced ? "#4caf50" : "#888", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:"clamp(11px,1.3vw,13px)", border:"none", cursor:"pointer", minHeight:44 }}>
                     {announced ? "✓ Dipanggil" : "📢 Panggil"}
+                  </button>
+                  <button onClick={() => !alertSent && handleClientNotArrived(next.id)}
+                    disabled={alertSent}
+                    style={{ flex:1, minWidth:60, padding:"clamp(10px,1.3vw,12px)", borderRadius:9, background: alertSent ? "#1a2a1a" : "#2a2a28", color: alertSent ? "#4caf50" : "#888", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:"clamp(11px,1.3vw,13px)", border:"none", cursor: alertSent ? "not-allowed" : "pointer", minHeight:44 }}>
+                    {alertSent ? "✓ Admin diberitahu" : "⚠ Belum Datang"}
                   </button>
                   <button onClick={() => !active && !isBreak && !isOut && handleStart(next.id)}
                     disabled={!!active || isBreak || isOut}
-                    style={{ flex:2, padding:"clamp(10px,1.3vw,12px)", borderRadius:9, background:(!active&&!isBreak&&!isOut)?C.white:"#2a2a28", color:(!active&&!isBreak&&!isOut)?C.text:"#555", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:"clamp(12px,1.5vw,14px)", border:"none", cursor:(!active&&!isBreak&&!isOut)?"pointer":"not-allowed", minHeight:44 }}>
+                    style={{ flex:2, minWidth:100, padding:"clamp(10px,1.3vw,12px)", borderRadius:9, background:(!active&&!isBreak&&!isOut)?C.white:"#2a2a28", color:(!active&&!isBreak&&!isOut)?C.text:"#555", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:"clamp(12px,1.5vw,14px)", border:"none", cursor:(!active&&!isBreak&&!isOut)?"pointer":"not-allowed", minHeight:44 }}>
                     {active ? "Selesaikan dulu ↑" : isBreak ? "Sedang istirahat" : isOut ? "Clock in dulu" : "Mulai Layanan →"}
                   </button>
                 </div>
@@ -545,18 +594,33 @@ function BarberDetail({ barber, onBack, onClose, onPaymentTrigger }) {
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
           {/* Earnings summary cards */}
-          <div style={{ padding:"clamp(12px,1.6vw,16px) clamp(14px,1.8vw,20px)", display:"flex", gap:10, flexShrink:0, borderBottom:"1px solid #1a1a18" }}>
-            {[
-              { label:"Komisi Hari Ini",   value: fmt(commissionEarned), sub:`${commissionRate}% dari layanan selesai`, accent:"#4caf50" },
-              { label:"Tips Hari Ini",     value: tipsEarned > 0 ? fmt(tipsEarned) : "—",  sub:"100% untuk kamu",             accent:C.accent },
-              { label:"Layanan Selesai",   value: done.length,           sub:`dari ${queue.length} booking hari ini`,   accent:C.white   },
-            ].map(s => (
-              <div key={s.label} style={{ flex:1, background:"#1a1a18", borderRadius:12, padding:"clamp(10px,1.4vw,14px)", border:"1.5px solid #2a2a28" }}>
-                <div style={{ fontSize:"clamp(9px,1.1vw,10px)", fontWeight:700, letterSpacing:"0.12em", color:"#555", textTransform:"uppercase", marginBottom:6 }}>{s.label}</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:900, fontSize:"clamp(17px,2.2vw,24px)", color:s.accent, lineHeight:1 }}>{s.value}</div>
-                <div style={{ fontSize:"clamp(9px,1.1vw,11px)", color:"#444", marginTop:5 }}>{s.sub}</div>
-              </div>
-            ))}
+          <div style={{ padding:"clamp(10px,1.3vw,14px) clamp(14px,1.8vw,20px)", flexShrink:0, borderBottom:"1px solid #1a1a18" }}>
+            {/* Toggle */}
+            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+              {[["today","Hari Ini"],["month","Bulan Ini"]].map(([k, lbl]) => (
+                <button key={k} onClick={() => setEarningsView(k)}
+                  style={{ padding:"5px 14px", borderRadius:20, border:`1.5px solid ${earningsView===k ? C.accent : "#2a2a28"}`, background:earningsView===k ? "#1a1a0a" : "#111110", color:earningsView===k ? C.accent : "#555", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:"clamp(10px,1.2vw,12px)", cursor:"pointer" }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              {(earningsView === "today" ? [
+                { label:"Komisi",          value: fmt(commissionEarned), sub:`${commissionRate}% dari layanan`, accent:"#4caf50" },
+                { label:"Tips",            value: tipsEarned > 0 ? fmt(tipsEarned) : "—", sub:"100% untuk kamu", accent:C.accent },
+                { label:"Selesai",         value: done.length, sub:`dari ${queue.length} booking`, accent:C.white },
+              ] : [
+                { label:"Komisi Bulan Ini",  value: fmt(MONTHLY.commission), sub:`${commissionRate}% · ${MONTHLY.days} hari kerja`, accent:"#4caf50" },
+                { label:"Tips Bulan Ini",    value: fmt(MONTHLY.tips),       sub:"100% untuk kamu", accent:C.accent },
+                { label:"Total Layanan",     value: MONTHLY.bookings,        sub:"booking selesai bulan ini", accent:C.white },
+              ]).map(s => (
+                <div key={s.label} style={{ flex:1, background:"#1a1a18", borderRadius:12, padding:"clamp(10px,1.4vw,14px)", border:"1.5px solid #2a2a28" }}>
+                  <div style={{ fontSize:"clamp(9px,1.1vw,10px)", fontWeight:700, letterSpacing:"0.12em", color:"#555", textTransform:"uppercase", marginBottom:6 }}>{s.label}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:900, fontSize:"clamp(17px,2.2vw,24px)", color:s.accent, lineHeight:1 }}>{s.value}</div>
+                  <div style={{ fontSize:"clamp(9px,1.1vw,11px)", color:"#444", marginTop:5 }}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Unified scrollable list — colour-coded left border per status */}

@@ -12,7 +12,7 @@
  * Reference prompt: _ai/prompting-guide.md Section 03
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BERCUT_LOGO, C, FEEDBACK_TAGS, fmt, fmtK, TIPS } from "./data.js";
 
 // ── Combined Payment Success + Review Screen ──────────────────────────────────
@@ -106,10 +106,86 @@ function ReviewScreen({ booking, grand, onDone }) {
   );
 }
 
+// ── Receipt Screen ─────────────────────────────────────────────────────────────
+function ReceiptScreen({ booking, grand, onNext }) {
+  const [printing, setPrinting] = useState(true);
+  const [waSent, setWaSent] = useState(false);
+  const hasPhone = !!(booking.phone || booking.guest_phone);
+
+  useEffect(() => {
+    // Simulate print job completing after 2.5s, then auto-advance after 5s total
+    const printTimer = setTimeout(() => setPrinting(false), 2500);
+    const autoTimer  = setTimeout(() => onNext(), 8000);
+    return () => { clearTimeout(printTimer); clearTimeout(autoTimer); };
+  }, [onNext]);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.topBg, zIndex: 998, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "clamp(20px,3vw,40px)", textAlign: "center" }}>
+      <div className="si" style={{ maxWidth: "clamp(320px,48vw,480px)", width: "100%" }}>
+
+        {/* Payment confirmed badge */}
+        <div style={{ width: 72, height: 72, background: "#1a2a1a", border: "2px solid #2d7a2d", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto clamp(16px,2.2vw,22px)" }}>✓</div>
+        <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(20px,2.8vw,30px)", fontWeight: 800, color: C.white, marginBottom: 4 }}>Pembayaran Berhasil</div>
+        <div style={{ fontSize: "clamp(12px,1.4vw,14px)", color: "#666", marginBottom: 4 }}>Payment Confirmed</div>
+        <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,26px)", fontWeight: 800, color: C.accent, marginBottom: "clamp(24px,3vw,32px)" }}>{fmt(grand)}</div>
+
+        <div style={{ width: "100%", height: 1, background: "#1a1a18", marginBottom: "clamp(20px,2.8vw,28px)" }} />
+
+        {/* Receipt printer state */}
+        <div style={{ background: "#0d0d0b", border: "1px solid #2a2a28", borderRadius: 14, padding: "clamp(16px,2.2vw,24px)", marginBottom: "clamp(16px,2.2vw,22px)" }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🧾</div>
+          {printing ? (
+            <>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: C.white, marginBottom: 6 }}>Mencetak Struk…</div>
+              <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666", marginBottom: 14 }}>Printing receipt…</div>
+              {/* Animated progress bar */}
+              <div style={{ height: 4, background: "#1a1a18", borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ height: "100%", background: C.accent, borderRadius: 2, animation: "printProgress 2.5s linear forwards" }} />
+              </div>
+              <style>{`@keyframes printProgress { from{width:0%} to{width:100%} }`}</style>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: "#6fcf6f", marginBottom: 6 }}>Struk Tercetak ✓</div>
+              <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>Receipt printed</div>
+            </>
+          )}
+        </div>
+
+        {/* WhatsApp option */}
+        {hasPhone && !waSent && (
+          <button onClick={() => setWaSent(true)}
+            style={{ width: "100%", background: "#0d2b1a", border: "1.5px solid #1a5c35", color: "#4caf82", padding: "clamp(12px,1.8vh,16px)", borderRadius: 12, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(13px,1.5vw,15px)", fontWeight: 600, cursor: "pointer", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <span>📱</span>
+            <span>Kirim ke WhatsApp · Send to WhatsApp</span>
+          </button>
+        )}
+        {waSent && (
+          <div style={{ fontSize: "clamp(12px,1.4vw,14px)", color: "#4caf82", fontWeight: 600, marginBottom: 10 }}>📱 Sent to WhatsApp ✓</div>
+        )}
+
+        {/* Re-print option */}
+        {!printing && (
+          <button onClick={() => setPrinting(true)}
+            style={{ background: "none", border: "none", color: "#555", fontSize: "clamp(11px,1.3vw,13px)", fontFamily: "'DM Sans',sans-serif", textDecoration: "underline", cursor: "pointer", marginBottom: 16 }}>
+            Cetak ulang · Reprint receipt
+          </button>
+        )}
+
+        <button onClick={onNext}
+          style={{ width: "100%", background: C.accent, color: C.accentText, padding: "clamp(14px,2vh,18px)", borderRadius: 12, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(14px,1.7vw,17px)", fontWeight: 700, border: "none", cursor: "pointer" }}>
+          Lanjut · Continue
+        </button>
+        <div style={{ fontSize: "clamp(10px,1.2vw,12px)", color: "#444", marginTop: 10 }}>Auto-continues in a few seconds</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Payment Takeover ──────────────────────────────────────────────────────────
-export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUsed = 0, cashTotal = null, onDone }) {
+export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUsed = 0, cashTotal = null, onDone, tipPresets = TIPS, branchName = 'Bercut' }) {
   const [method, setMethod] = useState(null);
-  const [paid, setPaid] = useState(false);
+  const [phase, setPhase] = useState("payment"); // 'payment' | 'receipt' | 'review'
 
   // Per-booking tips
   const isGroup = booking.groupItems && booking.groupItems.length > 0;
@@ -145,7 +221,8 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
     );
   };
 
-  if (paid) return <ReviewScreen booking={booking} grand={grand} onDone={onDone} />;
+  if (phase === "review")  return <ReviewScreen booking={booking} grand={grand} onDone={onDone} />;
+  if (phase === "receipt") return <ReceiptScreen booking={booking} grand={grand} onNext={() => setPhase("review")} />;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: C.topBg, zIndex: 999, display: "flex", flexDirection: "column" }}>
@@ -153,7 +230,7 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
       <div style={{ background: "#0a0a08", padding: "clamp(14px,2vh,20px) clamp(20px,3vw,32px)", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #1a1a18" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <img src={BERCUT_LOGO} alt="Bercut" style={{ height: "clamp(26px,3.5vh,36px)", width: "auto", objectFit: "contain" }} />
-          <span style={{ color: "#555", fontSize: "clamp(11px,1.3vw,13px)" }}>Seminyak · Payment</span>
+          <span style={{ color: "#555", fontSize: "clamp(11px,1.3vw,13px)" }}>{branchName} · Payment</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {isGroup && <div style={{ background: "#1a1a18", border: "1px solid #333", borderRadius: 6, padding: "4px 10px", fontSize: "clamp(10px,1.2vw,12px)", color: "#888" }}>Group · {allItems.length} people</div>}
@@ -204,7 +281,7 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "nowrap" }}>
-                    {TIPS.map(t => (
+                    {tipPresets.map(t => (
                       <button key={t}
                         onClick={() => setTips(prev => ({ ...prev, [b.number]: prev[b.number] === t ? null : t }))}
                         style={{
@@ -312,7 +389,7 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
               <div style={{ fontSize: 48 }}>⭐</div>
               <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,26px)", fontWeight: 800, color: "#6fcf6f" }}>Fully Covered by Points!</div>
               <div style={{ fontSize: "clamp(12px,1.4vw,14px)", color: "#555" }}>No payment needed · Tidak perlu bayar</div>
-              <button onClick={() => setPaid(true)} style={{ width: "100%", background: "#6fcf6f", color: "#0d1f0d", padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: "pointer", marginTop: 8 }}>
+              <button onClick={() => setPhase("receipt")} style={{ width: "100%", background: "#6fcf6f", color: "#0d1f0d", padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: "pointer", marginTop: 8 }}>
                 Confirm & Complete ✓
               </button>
             </div>
@@ -331,7 +408,7 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
                     <div style={{ width: 44, height: 44, background: method === "qris" ? C.accent : "#1a1a18", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>⬛</div>
                     <div>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.white }}>QRIS</div>
-                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>GoPay · OVO · Dana · Bank Transfer</div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>GoPay · OVO · Dana · Bank · QRIS</div>
                     </div>
                     {method === "qris" && <div style={{ marginLeft: "auto", width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText }}>✓</div>}
                   </div>
@@ -363,7 +440,7 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
                     <div style={{ width: 44, height: 44, background: method === "card" ? C.accent : "#1a1a18", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>💳</div>
                     <div>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.white }}>Card</div>
-                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>BCA EDC · Tap or Insert</div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666" }}>Xendit Terminal · Tap, Insert, or Swipe</div>
                     </div>
                     {method === "card" && <div style={{ marginLeft: "auto", width: 22, height: 22, background: C.accent, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: C.accentText }}>✓</div>}
                   </div>
@@ -371,14 +448,14 @@ export default function PaymentTakeover({ booking, pointsRedeemed = [], pointsUs
                     <div style={{ background: "#0d0d0b", borderRadius: 10, padding: 16, textAlign: "center" }}>
                       <div style={{ fontSize: 40, marginBottom: 8 }}>🏦</div>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(14px,1.8vw,18px)", fontWeight: 700, color: C.white, marginBottom: 4 }}>Tap or insert card</div>
-                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666", marginBottom: 8 }}>Tap or insert card on BCA EDC terminal</div>
+                      <div style={{ fontSize: "clamp(11px,1.3vw,13px)", color: "#666", marginBottom: 8 }}>Use the Xendit Terminal on the counter</div>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontSize: "clamp(18px,2.4vw,24px)", fontWeight: 700, color: C.accent }}>{fmt(grand)}</div>
                     </div>
                   )}
                 </div>
               </div>
 
-              <button onClick={() => setPaid(true)} disabled={!method} style={{ width: "100%", background: method ? C.accent : C.surface2, color: method ? C.accentText : C.muted, padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: method ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.2s" }}>
+              <button onClick={() => setPhase("receipt")} disabled={!method} style={{ width: "100%", background: method ? C.accent : C.surface2, color: method ? C.accentText : C.muted, padding: "clamp(16px,2.2vh,20px)", borderRadius: 14, fontFamily: "'DM Sans',sans-serif", fontSize: "clamp(15px,1.8vw,18px)", fontWeight: 700, border: "none", cursor: method ? "pointer" : "not-allowed", flexShrink: 0, transition: "all 0.2s" }}>
                 {method === "qris" ? "Confirm QRIS Payment ✓" : method === "card" ? "Confirm Card Payment ✓" : "Select Payment Method"}
               </button>
             </>

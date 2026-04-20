@@ -2,13 +2,11 @@
  * MOCKUP — Bercut Admin: Branch Detail
  *
  * What it does: Single-branch drill-down. Live queue table with status filter,
- *   barber status board, per-row actions (trigger payment, cancel, no-show).
+ *   barber status board, per-row actions (trigger payment, stop WA escalation). Cancel/no-show handled by LiveMonitor.
  * State managed: filter, bookings (local mutation for demo), selectedBooking
  * Production API:
  *   GET /api/admin/branch-overview?branch_id=&date=today
  *   GET /api/bookings?branch_id=&date=today
- *   PATCH /api/bookings/:id/cancel
- *   PATCH /api/bookings/:id/no-show
  *   POST  /api/bookings/:id/payment-trigger
  * Feeds into: PaymentTakeover (manual trigger)
  *
@@ -49,12 +47,22 @@ function BarberChip({ b }) {
 
 // ── Action menu ───────────────────────────────────────────────────────────────
 
-function ActionMenu({ booking, onCancel, onNoShow, onPayment }) {
+function ActionMenu({ booking, isEscalating, onPayment, onStopEscalation }) {
   const [open, setOpen] = useState(false);
-  const canPay    = booking.status === 'in_progress' || booking.status === 'pending_payment';
-  const canCancel = booking.status === 'confirmed';
-  const canNoShow = booking.status === 'confirmed';
-  const hasActions = canPay || canCancel || canNoShow;
+  const canPay            = booking.status === 'in_progress' || booking.status === 'pending_payment';
+  const canStopEscalation = booking.status === 'confirmed' && isEscalating;
+  const hasActions        = canPay || canStopEscalation;
+
+  function MenuItem({ onClick, color, hoverBg, icon, label }) {
+    return (
+      <button onClick={onClick}
+        style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+        onMouseEnter={e => e.currentTarget.style.background = hoverBg}
+        onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+        {icon} {label}
+      </button>
+    );
+  }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -64,32 +72,16 @@ function ActionMenu({ booking, onCancel, onNoShow, onPayment }) {
         onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } }}
       >···</button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: 34, background: C.white, border: '1px solid ' + C.border, borderRadius: 10, zIndex: 50, minWidth: 175, boxShadow: '0 8px 24px rgba(0,0,0,0.08)', overflow: 'hidden' }}
+        <div style={{ position: 'absolute', right: 0, top: 34, background: C.white, border: '1px solid ' + C.border, borderRadius: 10, zIndex: 50, minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,0.08)', overflow: 'hidden' }}
           onMouseLeave={() => setOpen(false)}>
           {!hasActions && <div style={{ padding: '10px 14px', fontSize: 12, color: C.muted }}>No actions available</div>}
           {canPay && (
-            <button onClick={() => { onPayment(booking); setOpen(false); }}
-              style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color: '#16A34A', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-              onMouseEnter={e => e.currentTarget.style.background = '#F0FDF4'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              💳 Trigger Payment
-            </button>
+            <MenuItem onClick={() => { onPayment(booking); setOpen(false); }}
+              color='#16A34A' hoverBg='#F0FDF4' icon='💳' label='Trigger Payment' />
           )}
-          {canCancel && (
-            <button onClick={() => { onCancel(booking.id); setOpen(false); }}
-              style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color: C.danger, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-              onMouseEnter={e => e.currentTarget.style.background = '#FEF2F2'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              ✕ Cancel Booking
-            </button>
-          )}
-          {canNoShow && (
-            <button onClick={() => { onNoShow(booking.id); setOpen(false); }}
-              style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', color: C.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-              onMouseEnter={e => e.currentTarget.style.background = C.surface}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              👻 Mark No-show
-            </button>
+          {canStopEscalation && (
+            <MenuItem onClick={() => { onStopEscalation(booking.id); setOpen(false); }}
+              color='#D97706' hoverBg='#FFFBEB' icon='🔕' label='Stop WA Escalation' />
           )}
         </div>
       )}
@@ -99,14 +91,22 @@ function ActionMenu({ booking, onCancel, onNoShow, onPayment }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// Mock: first two confirmed bookings start as escalating
+const INITIAL_ESCALATING = new Set(
+  BOOKINGS.filter(b => b.status === 'confirmed').slice(0, 2).map(b => b.id)
+);
+
 export default function BranchDetail({ branch, onBack }) {
   const b = branch || { id: 1, name: 'Bercut Seminyak', city: 'Seminyak', inProgress: 2, queueWaiting: 7, completed: 8, noShow: 1, revenue: 1850000 };
-  const [filter, setFilter]     = useState('all');
-  const [bookings, setBookings] = useState(BOOKINGS);
+  const [filter,        setFilter]        = useState('all');
+  const [bookings]      = useState(BOOKINGS);
+  const [escalatingIds, setEscalatingIds] = useState(INITIAL_ESCALATING);
 
-  const handleCancel  = (id) => setBookings(prev => prev.map(bk => bk.id === id ? { ...bk, status: 'cancelled' } : bk));
-  const handleNoShow  = (id) => setBookings(prev => prev.map(bk => bk.id === id ? { ...bk, status: 'no_show'   } : bk));
   const handlePayment = (bk)  => alert(`Manual payment trigger for ${bk.name} — ${fmt(bk.total)}\n\nIn production this emits SSE payment_trigger event and opens PaymentTakeover on the kiosk.`);
+  const handleStopEscalation = (id) => {
+    setEscalatingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    // Production: PATCH /api/bookings/:id/stop-escalation
+  };
 
   const filtered = filter === 'all' ? bookings : bookings.filter(bk => bk.status === filter);
   const revenue  = bookings.filter(bk => bk.payment === 'paid').reduce((a, bk) => a + bk.total, 0);
@@ -185,25 +185,26 @@ export default function BranchDetail({ branch, onBack }) {
         </div>
 
         {/* Table header */}
-        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 110px 1fr 70px 110px 120px 44px', gap: 0, padding: '8px 16px', borderBottom: '1px solid ' + C.surface }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '0.5fr 1.5fr 1fr 2fr 0.5fr 0.8fr 1fr 0.4fr', gap: 0, padding: '8px 16px', borderBottom: '1px solid ' + C.surface }}>
           {cols.map((c, i) => (
             <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.muted }}>{c.key}</div>
           ))}
         </div>
 
         {/* Rows */}
-        <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 'calc(100vh - 400px)', minHeight: 200, overflowY: 'auto' }}>
           {filtered.length === 0 && (
             <div style={{ padding: '40px 0', textAlign: 'center', color: C.muted, fontSize: 14 }}>No bookings match this filter</div>
           )}
           {filtered.map((bk, i) => {
-            const sm = STATUS_META[bk.status] || STATUS_META.cancelled;
+            const sm          = STATUS_META[bk.status] || STATUS_META.cancelled;
+            const isEscalating = escalatingIds.has(bk.id);
             return (
-              <div key={bk.id} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 110px 1fr 70px 110px 120px 44px', gap: 0, padding: '12px 16px', borderBottom: '1px solid ' + C.surface, alignItems: 'center', transition: 'background 0.1s', animation: `fadeUp 0.2s ease ${i * 0.03}s both` }}
+              <div key={bk.id} style={{ display: 'grid', gridTemplateColumns: '0.5fr 1.5fr 1fr 2fr 0.5fr 0.8fr 1fr 0.4fr', gap: 0, padding: '12px 16px', borderBottom: '1px solid ' + C.surface, alignItems: 'center', transition: 'background 0.1s', animation: `fadeUp 0.2s ease ${i * 0.03}s both`, borderLeft: isEscalating ? '3px solid #F59E0B' : '3px solid transparent' }}
                 onMouseEnter={e => e.currentTarget.style.background = C.bg}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
 
-                <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: C.accent === '#F5E200' ? C.text : C.text }}>
+                <div>
                   <span style={{ background: C.topBg, color: C.accent, padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>#{bk.number}</span>
                 </div>
 
@@ -219,11 +220,16 @@ export default function BranchDetail({ branch, onBack }) {
 
                 <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: C.text }}>{fmt(bk.total)}</div>
 
-                <div>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: sm.bg, color: sm.color, border: '1px solid ' + sm.border, whiteSpace: 'nowrap' }}>{sm.label}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: sm.bg, color: sm.color, border: '1px solid ' + sm.border, whiteSpace: 'nowrap', display: 'inline-block' }}>{sm.label}</span>
+                  {isEscalating && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                      🔔 WA Escalating
+                    </span>
+                  )}
                 </div>
 
-                <ActionMenu booking={bk} onCancel={handleCancel} onNoShow={handleNoShow} onPayment={handlePayment} />
+                <ActionMenu booking={bk} isEscalating={isEscalating} onPayment={handlePayment} onStopEscalation={handleStopEscalation} />
               </div>
             );
           })}

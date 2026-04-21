@@ -1,33 +1,38 @@
-// frontend/src/App.jsx
-// Root router — maps URL paths to the three sub-apps.
-//
-// /kiosk/*  → KioskApp   (customer-facing, Windows touchscreen, landscape)
-// /barber/* → BarberApp  (staff-facing, mobile PWA, portrait, Bahasa Indonesia)
-// /admin/*  → AdminApp   (owner/manager, desktop, English)
-// /*        → redirect to /kiosk
-
+import React, { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { tokens } from './shared/tokens.js'
 import KioskApp  from './apps/kiosk/KioskApp.jsx'
 import BarberApp from './apps/barber/BarberApp.jsx'
 import AdminApp  from './apps/admin/AdminApp.jsx'
 
-// Import mockups from external directory via Vite alias
-import BercutKioskMockup  from '@mockups/kiosk/BercutKiosk.jsx'
-import BercutAdminMockup  from '@mockups/admin/BercutAdmin.jsx'
+// Mockups — only loaded in development to keep production bundle clean
+const BercutKioskMockup = !import.meta.env.PROD 
+  ? lazy(() => import('@mockups/kiosk/BercutKiosk.jsx'))
+  : null
+const BercutAdminMockup = !import.meta.env.PROD 
+  ? lazy(() => import('@mockups/admin/BercutAdmin.jsx'))
+  : null
 
 export default function App() {
   return (
     <BrowserRouter>
       <div style={{ background: tokens.bg, minHeight: '100dvh' }}>
-        <Routes>
-          <Route path="/kiosk/*"       element={<KioskApp />} />
-          <Route path="/barber/*"      element={<BarberApp />} />
-          <Route path="/admin/*"       element={<AdminApp />} />
-          <Route path="/mockup/kiosk"  element={<BercutKioskMockup />} />
-          <Route path="/mockup/admin"  element={<BercutAdminMockup />} />
-          <Route path="*"              element={<Navigate to="/mockup/kiosk" replace />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/kiosk/*"       element={<KioskApp />} />
+            <Route path="/barber/*"      element={<BarberApp />} />
+            <Route path="/admin/*"       element={<AdminApp />} />
+            
+            {!import.meta.env.PROD && (
+              <>
+                <Route path="/mockup/kiosk"  element={<BercutKioskMockup />} />
+                <Route path="/mockup/admin"  element={<BercutAdminMockup />} />
+              </>
+            )}
+
+            <Route path="*"              element={<Navigate to="/kiosk" replace />} />
+          </Routes>
+        </Suspense>
       </div>
     </BrowserRouter>
   )

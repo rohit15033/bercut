@@ -20,22 +20,23 @@ export const tokens = {
 }
 
 export const font = {
-  heading: "'Barlow Condensed', sans-serif",
+  heading: "'Inter', sans-serif",
   body:    "'DM Sans', sans-serif",
 }
 
+// 1366x768 kiosk — clamp values tuned for this exact resolution
 export const size = {
-  titleKiosk: 'clamp(32px, 4.5vw, 48px)',
-  nameLarge:  'clamp(18px, 2.4vw, 24px)',
-  price:      'clamp(16px, 2.2vw, 22px)',
-  queueHero:  'clamp(88px, 18vw, 136px)',
-  cta:        'clamp(18px, 2.2vw, 22px)',
-  body:       'clamp(12px, 1.4vw, 14px)',
-  label:      'clamp(10px, 1.2vw, 12px)',
+  titleKiosk: 'clamp(24px, 2.8vw, 36px)',
+  nameLarge:  'clamp(14px, 1.5vw, 18px)',
+  price:      'clamp(14px, 1.4vw, 18px)',
+  queueHero:  'clamp(72px, 10vw, 120px)',
+  cta:        'clamp(15px, 1.4vw, 17px)',
+  body:       'clamp(12px, 1.1vw, 14px)',
+  label:      'clamp(10px, 1vw, 12px)',
   tapMin:     '72px',  // minimum touch target height — kiosk rule
 }
 
-// JWT helpers — used by api.js
+// JWT helpers — used by api.js for admin auth
 export function getToken() {
   return localStorage.getItem('bercut_token') ?? null
 }
@@ -43,4 +44,14 @@ export function getToken() {
 export function setToken(t) {
   if (t) localStorage.setItem('bercut_token', t)
   else   localStorage.removeItem('bercut_token')
+}
+
+// Kiosk device token helpers
+export function getKioskToken() {
+  return localStorage.getItem('kiosk_token') ?? null
+}
+
+export function setKioskToken(t) {
+  if (t) localStorage.setItem('kiosk_token', t)
+  else   localStorage.removeItem('kiosk_token')
 }

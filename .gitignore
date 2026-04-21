@@ -5,3 +5,4 @@ dist/
 backend/public/
 .env
 .env.local
+frontend/package-lock.json

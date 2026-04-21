@@ -33,7 +33,7 @@ sudo -u postgres psql
 Inside psql, run these four lines (change the password to something strong):
 
 ```sql
-CREATE USER bercut_user WITH PASSWORD 'YOUR_STRONG_PASSWORD_HERE';
+CREATE USER bercut_user WITH PASSWORD '10v3Jesus1503';
 CREATE DATABASE bercut OWNER bercut_user;
 GRANT ALL PRIVILEGES ON DATABASE bercut TO bercut_user;
 \q
@@ -46,7 +46,8 @@ GRANT ALL PRIVILEGES ON DATABASE bercut TO bercut_user;
 ```bash
 mkdir -p /var/www/bercut
 cd /var/www
-git clone https://github.com/YOUR_GITHUB_USERNAME/bercut.git bercut
+git clone https://github.com/rohit15033/bercut
+git bercut
 ```
 
 > If the repo is private, you'll need to either add a deploy key or use a personal access token:

@@ -169,66 +169,66 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
   }
 
   return (
-    <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(16px,2.4vw,28px)' }}>
+    <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(10px,1.6vw,18px) clamp(16px,2.4vw,28px)' }}>
       {showCP && <CountryPicker selected={country} onSelect={setCountry} onClose={() => setShowCP(false)} />}
 
-      <div className="step-header fu">
+      <div className="step-header fu" style={{ marginBottom:'clamp(8px,1.2vw,14px)' }}>
         <div className="step-eyebrow">Step 4 of 4 · Confirm</div>
-        <h2 className="step-title">Confirm Your Reservation</h2>
-        <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted, marginTop:4 }}>Confirm Reservation · Konfirmasi Reservasi</div>
+        <h2 className="step-title" style={{ fontSize:'clamp(20px,2.6vw,30px)' }}>Confirm Your Reservation</h2>
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginTop:2 }}>Confirm Reservation · Konfirmasi Reservasi</div>
       </div>
 
       <div className="confirm-layout">
         {/* LEFT — name + phone + loyalty + CTA */}
         <div>
-          <div className="fu" style={{ animationDelay:'0.05s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(16px,2.2vw,24px)', marginBottom:'clamp(12px,1.6vw,16px)' }}>
+          <div className="fu" style={{ animationDelay:'0.05s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(12px,1.4vw,16px)', marginBottom:'clamp(8px,1vw,10px)' }}>
 
             {/* Prominent name heading */}
-            <div style={{ marginBottom:'clamp(18px,2.4vw,24px)' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(17px,2.2vw,22px)', fontWeight:800, color:C.text, marginBottom:4 }}>
+            <div style={{ marginBottom:'clamp(10px,1.2vw,14px)' }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,1.8vw,19px)', fontWeight:800, color:C.text, marginBottom:2 }}>
                 What's your name?
               </div>
-              <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>
+              <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
                 Required for your reservation · Wajib diisi sebelum lanjut
               </div>
             </div>
 
             {/* Name — required */}
-            <div style={{ marginBottom:'clamp(14px,1.8vw,18px)' }}>
-              <label style={{ fontSize:'clamp(13px,1.5vw,15px)', fontWeight:700, display:'block', marginBottom:7, color:C.text }}>
+            <div style={{ marginBottom:'clamp(10px,1.2vw,12px)' }}>
+              <label style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, display:'block', marginBottom:5, color:C.text }}>
                 Name / Nama <span style={{ color:C.danger }}>*</span>
               </label>
               <input ref={nameRef} value={name} type="text" autoComplete="given-name"
                 onChange={e => setName(e.target.value)}
                 placeholder="Tap here and type your name"
-                style={{ width:'100%', padding:'clamp(14px,1.9vh,18px) 16px', borderRadius:11, border:`2px solid ${name.trim().length > 0 ? C.topBg : C.accent}`, fontSize:'clamp(15px,1.8vw,17px)', background:C.white, fontFamily:"'DM Sans',sans-serif", animation:name.trim().length === 0 ? 'namePulse 1.4s ease 3' : 'none', transition:'border-color 0.15s' }}
+                style={{ width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:10, border:`2px solid ${name.trim().length > 0 ? C.topBg : C.accent}`, fontSize:'clamp(14px,1.6vw,16px)', background:C.white, fontFamily:"'DM Sans',sans-serif", animation:name.trim().length === 0 ? 'namePulse 1.4s ease 3' : 'none', transition:'border-color 0.15s' }}
                 onFocus={e => { e.target.style.borderColor = C.topBg; e.target.style.animation = 'none' }}
                 onBlur={e => { e.target.style.borderColor = name.trim().length > 0 ? C.topBg : C.accent }}
               />
               {name.trim().length > 0 && name.trim().length < 2 && (
-                <div style={{ fontSize:'clamp(11px,1.3vw,12px)', color:C.danger, marginTop:5 }}>
+                <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:C.danger, marginTop:4 }}>
                   Name must be at least 2 characters · Minimal 2 karakter
                 </div>
               )}
             </div>
 
             {/* WhatsApp — optional */}
-            <div style={{ marginBottom:'clamp(12px,1.6vw,16px)' }}>
-              <label style={{ fontSize:'clamp(13px,1.5vw,15px)', fontWeight:700, display:'block', marginBottom:7, color:C.text }}>
-                WhatsApp <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:400, color:C.muted }}>(Optional / Opsional)</span>
+            <div style={{ marginBottom:'clamp(8px,1vw,10px)' }}>
+              <label style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, display:'block', marginBottom:5, color:C.text }}>
+                WhatsApp <span style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:400, color:C.muted }}>(Optional / Opsional)</span>
               </label>
               <div style={{ display:'flex', gap:8, alignItems:'stretch' }}>
                 <button type="button" onClick={() => setShowCP(true)}
-                  style={{ display:'flex', alignItems:'center', gap:'clamp(4px,0.6vw,7px)', padding:'0 clamp(10px,1.4vw,14px)', borderRadius:11, border:`1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, background:C.white, cursor:'pointer', flexShrink:0, minHeight:'clamp(48px,6vh,56px)', transition:'border-color 0.15s, background 0.12s', whiteSpace:'nowrap' }}
+                  style={{ display:'flex', alignItems:'center', gap:'clamp(4px,0.6vw,7px)', padding:'0 clamp(10px,1.4vw,14px)', borderRadius:10, border:`1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, background:C.white, cursor:'pointer', flexShrink:0, minHeight:'clamp(40px,5.2vh,48px)', transition:'border-color 0.15s, background 0.12s', whiteSpace:'nowrap' }}
                   onMouseEnter={e => e.currentTarget.style.background = C.surface}
                   onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                  <span style={{ fontSize:'clamp(18px,2.4vw,24px)', lineHeight:1 }}>{country.flag}</span>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.5vw,15px)', fontWeight:700, color:C.text }}>{country.code}</span>
-                  <span style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted, marginLeft:1 }}>▾</span>
+                  <span style={{ fontSize:'clamp(16px,2vw,20px)', lineHeight:1 }}>{country.flag}</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:C.text }}>{country.code}</span>
+                  <span style={{ fontSize:'clamp(9px,1vw,10px)', color:C.muted, marginLeft:1 }}>▾</span>
                 </button>
                 <input value={phone} type="tel" onChange={e => setPhone(e.target.value)}
                   placeholder="812 3456 7890"
-                  style={{ flex:1, minWidth:0, padding:'clamp(13px,1.7vh,17px) 14px', borderRadius:11, border:`1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, fontSize:'clamp(14px,1.7vw,16px)', background:C.white, fontFamily:"'DM Sans',sans-serif", transition:'border-color 0.15s' }}
+                  style={{ flex:1, minWidth:0, padding:'clamp(10px,1.3vh,13px) 14px', borderRadius:10, border:`1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, fontSize:'clamp(13px,1.5vw,15px)', background:C.white, fontFamily:"'DM Sans',sans-serif", transition:'border-color 0.15s' }}
                   onFocus={e => e.target.style.borderColor = C.topBg}
                   onBlur={e => e.target.style.borderColor = phone.trim().length > 0 ? C.topBg : C.border}
                 />
@@ -237,28 +237,28 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
 
             {/* Loyalty states */}
             {customer && points > 0 && (
-              <div className="fi" style={{ background:'#f0faf0', border:'1.5px solid #a8d5a8', borderRadius:10, padding:'clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:10 }}>
-                <span style={{ fontSize:20 }}>⭐</span>
+              <div className="fi" style={{ background:'#f0faf0', border:'1.5px solid #a8d5a8', borderRadius:10, padding:'clamp(8px,1vw,11px)', display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:18 }}>⭐</span>
                 <div>
-                  <div style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:'#1a7a1a' }}>
+                  <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>
                     Welcome back, {customer.name}! · Selamat datang kembali!
                   </div>
-                  <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#2e7d32' }}>
+                  <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#2e7d32' }}>
                     You have <strong>{points} points</strong> — tap services on the right to redeem · Tekan layanan untuk gunakan poin
                   </div>
                 </div>
               </div>
             )}
             {customer && points === 0 && (
-              <div className="fi" style={{ background:C.surface, borderRadius:10, padding:'clamp(10px,1.4vw,14px)' }}>
-                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>⭐ Welcome back, {customer.name}! You have 0 points. Earn points today. · Kamu belum punya poin.</div>
+              <div className="fi" style={{ background:C.surface, borderRadius:10, padding:'clamp(8px,1vw,11px)' }}>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>⭐ Welcome back, {customer.name}! You have 0 points. Earn points today. · Kamu belum punya poin.</div>
               </div>
             )}
             {!customer && !phone.trim() && (
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(9px,1.2vw,13px) clamp(12px,1.6vw,16px)', display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:16 }}>⭐</span>
-                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.text2 }}>
-                  Have points? Enter your WhatsApp number to check your balance and redeem.
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(8px,1vw,11px) clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:14 }}>⭐</span>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.text2 }}>
+                  Have points? Enter your WhatsApp number to redeem.
                   <span style={{ color:C.muted }}> · Punya poin? Masukkan nomor WhatsApp.</span>
                 </div>
               </div>
@@ -266,20 +266,20 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
           </div>
 
           {error && (
-            <div style={{ marginBottom:10, padding:'clamp(10px,1.4vw,14px)', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:C.danger, fontSize:'clamp(12px,1.4vw,14px)' }}>{error}</div>
+            <div style={{ marginBottom:8, padding:'clamp(8px,1vw,11px)', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:C.danger, fontSize:'clamp(12px,1.4vw,13px)' }}>{error}</div>
           )}
 
           <button className="btnP" disabled={!valid || loading} onClick={handleConfirm}
-            style={{ fontSize:'clamp(15px,1.8vw,18px)', marginBottom:8, padding:'clamp(16px,2.2vh,20px)' }}>
+            style={{ fontSize:'clamp(14px,1.6vw,16px)', marginBottom:7, padding:'clamp(12px,1.6vh,15px)' }}>
             {loading ? 'Confirming…' : valid ? 'Confirm Reservation ✓' : 'Enter your name to continue'}
           </button>
-          <button className="btnG" onClick={onBack} style={{ width:'100%' }}>← Back / Kembali</button>
+          <button className="btnG" onClick={onBack} style={{ width:'100%', minHeight:44, padding:'10px 20px' }}>← Back / Kembali</button>
         </div>
 
         {/* RIGHT — order summary */}
         <div>
-          <div className="fu" style={{ animationDelay:'0.08s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(14px,2vw,22px)' }}>
-            <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.12em', color:C.muted, textTransform:'uppercase', marginBottom:14 }}>Order Summary · Ringkasan Reservasi</div>
+          <div className="fu" style={{ animationDelay:'0.08s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(10px,1.4vw,14px)' }}>
+            <div style={{ fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, letterSpacing:'0.12em', color:C.muted, textTransform:'uppercase', marginBottom:10 }}>Order Summary · Ringkasan Reservasi</div>
 
             {/* Services with per-service points toggle */}
             {selectedServices.map(svc => {
@@ -288,25 +288,25 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
               const canToggle = canRedeem && (isToggled || pointsRemaining >= cost)
               const price     = parseFloat(svc.price ?? svc.base_price ?? 0)
               return (
-                <div key={svc.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(10px,1.4vh,13px) 0', borderBottom:`1px solid ${C.border}`, gap:10 }}>
+                <div key={svc.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:`1px solid ${C.border}`, gap:8 }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:'clamp(13px,1.6vw,16px)', fontWeight:600 }}>{svc.name}</div>
-                    <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
+                    <div style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{svc.name}</div>
+                    <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted }}>
                       {svc.name_id || ''}{svc.name_id ? ' · ' : ''}{svc.duration_min || svc.duration_minutes || 30} min
                     </div>
                   </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
                     {canRedeem && (
                       <button onClick={() => togglePoints(svc.id)}
-                        style={{ padding:'5px 10px', borderRadius:999, fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, fontFamily:"'DM Sans',sans-serif", cursor:canToggle ? 'pointer' : 'not-allowed', border:`1.5px solid ${isToggled ? C.topBg : C.border}`, background:isToggled ? C.topBg : C.white, color:isToggled ? C.white : canToggle ? C.text2 : C.muted, transition:'all 0.15s', opacity:canToggle ? 1 : 0.45 }}>
+                        style={{ padding:'4px 8px', borderRadius:999, fontSize:'clamp(9px,1vw,10px)', fontWeight:700, fontFamily:"'DM Sans',sans-serif", cursor:canToggle ? 'pointer' : 'not-allowed', border:`1.5px solid ${isToggled ? C.topBg : C.border}`, background:isToggled ? C.topBg : C.white, color:isToggled ? C.white : canToggle ? C.text2 : C.muted, transition:'all 0.15s', opacity:canToggle ? 1 : 0.45 }}>
                         {isToggled ? `✓ ${cost} pts` : `${cost} pts`}
                       </button>
                     )}
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,2vw,20px)', fontWeight:700, textDecoration:isToggled ? 'line-through' : 'none', color:isToggled ? C.muted : C.text }}>
+                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,17px)', fontWeight:700, textDecoration:isToggled ? 'line-through' : 'none', color:isToggled ? C.muted : C.text }}>
                       {fmt(price)}
                     </div>
                     {isToggled && (
-                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:'#1a7a1a' }}>Free</div>
+                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>Free</div>
                     )}
                   </div>
                 </div>
@@ -315,9 +315,9 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
 
             {/* Extras */}
             {selectedExtrasItems.map(item => (
-              <div key={item.stock_id || item.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(8px,1.2vh,11px) 0', borderBottom:`1px solid ${C.border}` }}>
-                <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:C.text2 }}>{item.name}</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:600 }}>{fmt(item.price)}</div>
+              <div key={item.stock_id || item.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(6px,0.9vh,9px) 0', borderBottom:`1px solid ${C.border}` }}>
+                <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.text2 }}>{item.name}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{fmt(item.price)}</div>
               </div>
             ))}
 
@@ -327,46 +327,46 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
               ['Time / Waktu', slot === 'Now' ? 'Now ⚡' : slot],
               ['Duration / Durasi', `${totalDur} min`],
             ].map(([k, v]) => (
-              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'clamp(8px,1.2vh,11px) 0', borderBottom:`1px solid ${C.border}` }}>
-                <span style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted }}>{k}</span>
-                <span style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{v}</span>
+              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'clamp(6px,0.9vh,9px) 0', borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>{k}</span>
+                <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:600 }}>{v}</span>
               </div>
             ))}
 
             {/* Points deduction row */}
             {pointsUsed > 0 && (
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(8px,1.2vh,11px) 0', borderBottom:`1px solid ${C.border}` }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(6px,0.9vh,9px) 0', borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:14 }}>⭐</span>
+                  <span style={{ fontSize:13 }}>⭐</span>
                   <div>
-                    <div style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:'#1a7a1a' }}>Points Applied · Poin Digunakan</div>
-                    <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>{pointsUsed} pts used · {pointsRemaining} pts remaining</div>
+                    <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>Points Applied · Poin Digunakan</div>
+                    <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted }}>{pointsUsed} pts used · {pointsRemaining} pts remaining</div>
                   </div>
                 </div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:700, color:'#1a7a1a' }}>−{fmt(pointsDiscount)}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:'#1a7a1a' }}>−{fmt(pointsDiscount)}</div>
               </div>
             )}
 
             {/* Total */}
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:14, marginBottom:12 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:10, marginBottom:8 }}>
               <div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,2vw,20px)', fontWeight:800 }}>{pointsUsed > 0 ? 'CASH TOTAL' : 'TOTAL'}</div>
-                {pointsUsed > 0 && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>Bayar Tunai</div>}
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,17px)', fontWeight:800 }}>{pointsUsed > 0 ? 'CASH TOTAL' : 'TOTAL'}</div>
+                {pointsUsed > 0 && <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted }}>Bayar Tunai</div>}
               </div>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.8vw,30px)', fontWeight:800 }}>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,26px)', fontWeight:800 }}>
                 {cashTotal === 0 ? <span style={{ color:'#1a7a1a' }}>Rp 0</span> : fmt(cashTotal)}
               </span>
             </div>
 
             {/* Payment note */}
-            <div style={{ display:'flex', alignItems:'center', gap:10, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
-              <span style={{ fontSize:16, flexShrink:0 }}>{cashTotal === 0 ? '⭐' : '💳'}</span>
+            <div style={{ display:'flex', alignItems:'center', gap:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:14, flexShrink:0 }}>{cashTotal === 0 ? '⭐' : '💳'}</span>
               <div>
                 {cashTotal === 0
-                  ? <div style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:'#1a7a1a' }}>Fully covered by points! · Dibayar penuh dengan poin</div>
+                  ? <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>Fully covered by points! · Dibayar penuh dengan poin</div>
                   : <>
-                      <div style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:C.text }}>Pay after service · Bayar setelah selesai</div>
-                      <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>Xendit Terminal (QRIS / Card) — at the kiosk when done</div>
+                      <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:C.text }}>Pay after service · Bayar setelah selesai</div>
+                      <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted }}>Xendit Terminal (QRIS / Card) — at the kiosk when done</div>
                     </>
                 }
               </div>

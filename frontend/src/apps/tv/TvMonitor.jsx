@@ -3,15 +3,15 @@ import { useParams } from 'react-router-dom'
 import { api, BASE } from '../../shared/api.js'
 
 const T = {
-  bg: '#0A0A0A',
-  surface: '#171717',
-  border: '#262626',
-  text: '#FFFFFF',
-  muted: '#A3A3A3',
+  bg: '#FAFAF8',
+  surface: '#FFFFFF',
+  border: '#DDDBD4',
+  text: '#111110',
+  muted: '#88887E',
   accent: '#16A34A',
-  accentBg: 'rgba(22, 163, 74, 0.1)',
+  accentBg: 'rgba(22, 163, 74, 0.08)',
   waiting: '#2563EB',
-  waitingBg: 'rgba(37, 99, 235, 0.1)',
+  waitingBg: 'rgba(37, 99, 235, 0.08)',
 }
 
 function formatTime(iso) {
@@ -186,7 +186,7 @@ export default function TvMonitor() {
     <div style={{ background: T.bg, color: T.text, height: '100vh', padding: '3vw 4vw', fontFamily: "'Inter', sans-serif", overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <style>{`
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        body { margin: 0; overflow: hidden; background: #0A0A0A; }
+        body { margin: 0; overflow: hidden; background: #FAFAF8; }
       `}</style>
 
       {/* Header */}

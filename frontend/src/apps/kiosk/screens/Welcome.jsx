@@ -36,7 +36,7 @@ export default function Welcome({ onStart, settings = {}, branchName = 'Bercut' 
         {/* Clock */}
         <div className="fu" style={{ textAlign: 'center', marginBottom: 'clamp(16px,2.4vw,28px)', animationDelay: '0.08s' }}>
           <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 'clamp(36px,5.5vw,64px)', fontWeight: 800, color: C.white, lineHeight: 1, letterSpacing: '-0.04em' }}>
-            {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+            {time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
           </div>
           <div style={{ fontSize: 'clamp(12px,1.4vw,15px)', color: '#888', marginTop: 7, letterSpacing: '0.04em' }}>
             {time.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}

@@ -6,7 +6,7 @@ const fs = require('fs')
 const { requireAdmin } = require('../middleware/auth')
 
 const storage = multer.memoryStorage()
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 })
@@ -17,10 +17,12 @@ router.post('/image', requireAdmin, upload.single('image'), async (req, res) => 
       return res.status(400).json({ message: 'No file uploaded' })
     }
 
-    const uploadDir = path.join(__dirname, '../public/uploads')
+    // Use absolute path from project root for reliability
+    const uploadDir = path.resolve(__dirname, '../public/uploads')
 
     // Ensure directory exists
     if (!fs.existsSync(uploadDir)) {
+      console.log('Creating upload directory:', uploadDir)
       fs.mkdirSync(uploadDir, { recursive: true })
     }
 

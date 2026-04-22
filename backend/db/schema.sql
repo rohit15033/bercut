@@ -456,7 +456,16 @@ CREATE TABLE IF NOT EXISTS barber_breaks (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 29. FEEDBACK TAGS
+-- 29. PACKAGE SERVICES (junction table for services included in a package)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS package_services (
+  package_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  PRIMARY KEY (package_id, service_id)
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 30. FEEDBACK TAGS
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS feedback_tags (
   id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),

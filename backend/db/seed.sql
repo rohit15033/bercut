@@ -20,16 +20,10 @@
    'Dari {barber_name}: {customer_name} (#{booking_number}) belum datang. Queue #{queue_position} di {branch}.'
  ) ON CONFLICT DO NOTHING;
 
- -- ── Owner User ────────────────────────────────────────────────────────────
- INSERT INTO users (id, email, password_hash, name, role, is_active)
- VALUES ('00000000-0000-0000-0000-000000000001', 'owner@bercut.id',
-   '$2b$10$REPLACE_THIS_HASH_BEFORE_PRODUCTION_DEPLOY', 'Raynand Bercut', 'owner', true)
- ON CONFLICT (email) DO NOTHING;
-
  -- ── Services (Images Removed) ─────────────────────────────────────────────
  INSERT INTO services (id, name, name_id, category, base_price, duration_minutes, badge, description, sort_order, image_url, mutex_group) VALUES
-   ('30000000-0000-0000-0000-000000000001', 'Fade & Style',           'Fade & Style',            'haircut',    120000,  45, NULL,        'Precision fade with your preferred style',    1,  NULL,  NULL),
-   ('30000000-0000-0000-0000-000000000002', 'Skin Fade',               'Skin Fade',               'haircut',    140000,  50, 'POPULER',   'Zero-skin fade, sharp taper',                 2,  NULL,  NULL),
+   ('30000000-0000-0000-0000-000000000001', 'Just a Haircut',           'Potong Rambut',            'haircut',    120000,  45, 'Popular',      'Classic haircut',               1,  NULL,  NULL),
+   ('30000000-0000-0000-0000-000000000002', 'Skin Fade',               'Skin Fade',               'haircut',    140000,  50, NULL,   'Zero-skin fade, sharp taper',                 2,  NULL,  NULL),
    ('30000000-0000-0000-0000-000000000003', 'Hair Tattoo',             'Tato Rambut',             'haircut',    160000,  60, NULL,        'Artistic razor designs on the scalp',         3,  NULL,  NULL),
    ('30000000-0000-0000-0000-000000000004', 'Head Shaving',            'Cukur Kepala',            'haircut',    110000,  40, NULL,        'Full head clean shave',                       4,  NULL,  NULL),
    ('30000000-0000-0000-0000-000000000005', 'Kids Haircut',            'Potong Rambut Anak',      'haircut',     80000,  30, NULL,        'Gentle cut for children under 12',            5,  NULL,  NULL),
@@ -54,12 +48,7 @@
 
  -- ── Expense Categories ───────────────────────────────────────────────────
  INSERT INTO expense_categories (key, label, color, bg, sort_order) VALUES
-   ('petty_cash', 'Petty Cash', '#111110', '#F2F0EB', 1),
-   ('supplies',   'Supplies',   '#1a5276', '#d6eaf8', 2),
-   ('utilities',  'Utilities',  '#145a32', '#d5f5e3', 3),
-   ('equipment',  'Equipment',  '#6e2f8e', '#e8daef', 4),
-   ('marketing',  'Marketing',  '#7d6608', '#fef9e7', 5),
-   ('other',      'Other',      '#616a6b', '#f2f3f4', 6)
+   ('other',      'Other',      '#616a6b', '#f2f3f4', 1)
  ON CONFLICT (key) DO NOTHING;
 
  -- ── Feedback Tags ────────────────────────────────────────────────────────

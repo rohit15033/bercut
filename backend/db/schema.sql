@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS barber_services (
   barber_id  UUID    NOT NULL REFERENCES barbers(id) ON DELETE CASCADE,
   service_id UUID    NOT NULL REFERENCES services(id) ON DELETE CASCADE,
   is_enabled BOOLEAN NOT NULL DEFAULT true,
+  commission_rate DECIMAL(5,2), -- per-barber-per-service override
   PRIMARY KEY (barber_id, service_id)
 );
 

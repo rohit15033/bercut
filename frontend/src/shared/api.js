@@ -5,7 +5,7 @@
 
 import { getToken, getKioskToken } from './tokens.js'
 
-const BASE = import.meta.env.VITE_API_URL ?? '/api'
+export const BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 async function request(method, path, body, opts = {}) {
   const headers = {}

@@ -234,7 +234,8 @@ router.patch('/kiosk/:branch_id', requireAdmin, async (req, res) => {
       'payment_methods_enabled','receipt_footer','theme_accent_color',
       'welcome_cta','welcome_cta_id','welcome_subtitle','welcome_subtitle_id',
       'upsell_enabled','upsell_rules','suggest_services',
-      'upsell_heading','upsell_heading_id','upsell_switch_cta','upsell_keep_cta']
+      'upsell_heading','upsell_heading_id','upsell_switch_cta','upsell_keep_cta',
+      'kiosk_admin_pin','kiosk_barber_pin']
     const jsonCols = new Set(['upsell_rules','suggest_services'])
     const sets = ['updated_at = NOW()']; const vals = []; let idx = 1
     for (const key of allowed) {

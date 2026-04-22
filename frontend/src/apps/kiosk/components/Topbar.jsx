@@ -4,7 +4,7 @@ import { kioskApi } from '../../../shared/api.js'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
-function AccessModal({ onBarberAccess, onStaffAccess, onClose }) {
+function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
   const [view,  setView]  = useState('choose')
   const [pin,   setPin]   = useState('')
   const [error, setError] = useState('')
@@ -12,21 +12,27 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose }) {
 
   const tryAccess = async () => {
     if (pin.length < 4) return
-    setBusy(true)
-    try {
-      // For barber: verify PIN against barbers table
-      if (view === 'barber') {
+    setError('')
+    
+    const adminPin = settings?.kioskAdminPin || '1234'
+    const barberPin = settings?.kioskBarberPin || '0000'
+
+    if (view === 'staff') {
+      if (pin === adminPin) {
+        onStaffAccess(pin)
+        onClose()
+      } else {
+        setError('PIN Staff salah.')
+        setPin('')
+      }
+    } else if (view === 'barber') {
+      if (pin === barberPin) {
         onBarberAccess(pin)
         onClose()
       } else {
-        onStaffAccess(pin)
-        onClose()
+        setError('PIN Barber salah.')
+        setPin('')
       }
-    } catch {
-      setError('PIN salah. Coba lagi.')
-      setPin('')
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -58,14 +64,43 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose }) {
           ) : (
             <div>
               <div style={{ fontSize:'clamp(13px,1.5vw,15px)', color:C.text2, marginBottom:16 }}>Enter PIN for {label}</div>
-              <input type="password" inputMode="numeric" maxLength={6} value={pin}
-                onChange={e => { setPin(e.target.value); setError('') }}
-                onKeyDown={e => e.key === 'Enter' && tryAccess()}
-                placeholder="● ● ● ●"
-                autoFocus
-                style={{ width:'100%', padding:'clamp(14px,1.8vw,18px) 16px', borderRadius:12, border:`2px solid ${error ? C.danger : C.border}`, fontSize:'clamp(20px,2.6vw,26px)', fontFamily:'monospace', letterSpacing:'0.3em', textAlign:'center', background:C.bg, marginBottom:8 }} />
-              {error && <div style={{ color:C.danger, fontSize:'clamp(12px,1.4vw,14px)', marginBottom:12 }}>{error}</div>}
-              <div style={{ display:'flex', gap:10, marginTop:12 }}>
+              
+              {/* Display */}
+              <div style={{ width:'100%', padding:'clamp(14px,1.8vw,18px) 16px', borderRadius:12, border:`2px solid ${error ? C.danger : C.border}`, fontSize:'clamp(20px,2.6vw,26px)', fontFamily:'monospace', letterSpacing:'0.3em', textAlign:'center', background:C.bg, marginBottom:20, minHeight:68, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {pin ? pin.split('').map(() => '●').join('') : <span style={{ color:'#ccc', letterSpacing:0 }}>● ● ● ●</span>}
+              </div>
+
+              {error && <div style={{ color:C.danger, fontSize:'clamp(12px,1.4vw,14px)', marginBottom:12, textAlign:'center' }}>{error}</div>}
+
+              {/* Keypad */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10, marginBottom:20 }}>
+                {[1,2,3,4,5,6,7,8,9, 'C', 0, '⌫'].map(key => {
+                  const isAction = typeof key === 'string'
+                  return (
+                    <button key={key}
+                      onClick={() => {
+                        setError('')
+                        if (key === 'C') setPin('')
+                        else if (key === '⌫') setPin(p => p.slice(0, -1))
+                        else if (pin.length < 6) setPin(p => p + key)
+                      }}
+                      style={{ 
+                        padding:'clamp(14px,1.8vw,18px) 0', 
+                        borderRadius:12, 
+                        background: isAction ? C.surface : C.white, 
+                        border:`1.5px solid ${C.border}`,
+                        color: key === 'C' ? C.danger : C.text,
+                        fontSize:'clamp(18px,2.4vw,22px)',
+                        fontWeight:700,
+                        cursor:'pointer'
+                      }}>
+                      {key}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div style={{ display:'flex', gap:10 }}>
                 <button onClick={() => { setView('choose'); setPin(''); setError('') }}
                   style={{ flex:1, padding:'clamp(12px,1.6vw,16px)', borderRadius:10, background:C.surface, color:C.text2, border:`1.5px solid ${C.border}`, fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:'clamp(14px,1.6vw,16px)', cursor:'pointer' }}>
                   ← Back
@@ -83,7 +118,7 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose }) {
   )
 }
 
-export default function Topbar({ step, cartTotal, groupCount, branchName, onHome, onBarberAccess, onStaffAccess }) {
+export default function Topbar({ step, cartTotal, groupCount, branchName, onHome, onBarberAccess, onStaffAccess, settings }) {
   const [time, setTime] = useState(new Date())
   const [showAccess, setShowAccess] = useState(false)
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t) }, [])
@@ -96,6 +131,7 @@ export default function Topbar({ step, cartTotal, groupCount, branchName, onHome
           onBarberAccess={(pin) => { onBarberAccess?.(pin); setShowAccess(false) }}
           onStaffAccess={(pin)  => { onStaffAccess?.(pin);  setShowAccess(false) }}
           onClose={() => setShowAccess(false)}
+          settings={settings}
         />
       )}
       <div style={{ background:C.topBg, userSelect:'none' }}>

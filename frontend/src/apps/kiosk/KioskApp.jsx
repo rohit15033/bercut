@@ -187,6 +187,8 @@ function KioskContent({ config }) {
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
   }, [])
 
+  const [lastQueueUpdate, setLastQueueUpdate] = useState(Date.now())
+
   // SSE — real-time updates
   useSSE(branchId, {
     payment_trigger: (data) => {
@@ -203,7 +205,12 @@ function KioskContent({ config }) {
       setBarbers(prev => prev.map(b =>
         b.id == data.barber_id ? { ...b, status: data.status === 'available' ? 'active' : data.status } : b
       ))
-    }
+      setLastQueueUpdate(Date.now())
+    },
+    new_booking: () => setLastQueueUpdate(Date.now()),
+    booking_updated: () => setLastQueueUpdate(Date.now()),
+    booking_started: () => setLastQueueUpdate(Date.now()),
+    booking_cancelled: () => setLastQueueUpdate(Date.now()),
   })
 
   // Idle timer
@@ -265,6 +272,7 @@ function KioskContent({ config }) {
         <BarberPanel
           barbers={barbers}
           branchId={branchId}
+          lastQueueUpdate={lastQueueUpdate}
           onClose={() => setBarberPanelOpen(false)}
           onHome={() => { setBarberPanelOpen(false); reset() }}
           triggerPayment={(data) => { setPaymentBooking(data); setPaymentPending(true) }}
@@ -284,6 +292,7 @@ function KioskContent({ config }) {
         onHome={reset}
         onBarberAccess={() => setBarberPanelOpen(true)}
         onStaffAccess={() => setStaffPanelOpen(true)}
+        settings={settings}
       />
       {step === 0 && (
         <Welcome

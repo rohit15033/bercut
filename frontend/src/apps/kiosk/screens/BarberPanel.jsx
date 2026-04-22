@@ -206,17 +206,20 @@ function PinScreen({ barber, onUnlock, onBack }) {
 
 // ── Barber Picker ─────────────────────────────────────────────────────────────
 
-function BarberPicker({ branchId, onSelect, onClose }) {
+function BarberPicker({ branchId, onSelect, onClose, lastQueueUpdate }) {
   const [barbers, setBarbers] = useState([])
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(null)
 
-  useEffect(() => {
+  const loadBarbers = () => {
     kioskApi.get(`/barbers?branch_id=${branchId}`)
       .then(data => setBarbers(Array.isArray(data) ? data.filter(b => b.is_active !== false) : []))
       .catch(() => setBarbers([]))
       .finally(() => setLoading(false))
-  }, [branchId])
+  }
+
+  useEffect(() => { loadBarbers() }, [branchId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (lastQueueUpdate) loadBarbers() }, [lastQueueUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCall = (e, barber) => {
     e.stopPropagation()
@@ -331,7 +334,7 @@ function BarberPicker({ branchId, onSelect, onClose }) {
 
 // ── Barber Detail ─────────────────────────────────────────────────────────────
 
-function BarberDetail({ barber, branchId, onBack, onClose }) {
+function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQueueUpdate }) {
   const today = new Date().toISOString().slice(0, 10)
 
   const [queue, setQueue] = useState([])
@@ -371,6 +374,7 @@ function BarberDetail({ barber, branchId, onBack, onClose }) {
   }
 
   useEffect(() => { loadQueue() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (lastQueueUpdate) loadQueue() }, [lastQueueUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     kioskApi.get(`/services?branch_id=${branchId}`)
@@ -461,14 +465,30 @@ function BarberDetail({ barber, branchId, onBack, onClose }) {
   const handleComplete = async (bookingId) => {
     setBusyId(bookingId)
     try {
+      console.log('[BarberPanel] Completing booking:', bookingId)
       const res = await kioskApi.patch(`/bookings/${bookingId}/complete`)
+      console.log('[BarberPanel] Complete response:', res)
+      
       setStatus('available')
-      // Fallback: manually trigger payment in case SSE is slow
+      
+      // Crucial: Trigger payment immediately using the response data
       if (typeof triggerPayment === 'function') {
-        triggerPayment({ ...res, booking_id: res.id, amount: res.total_amount })
+        console.log('[BarberPanel] Triggering payment takeover...')
+        triggerPayment({ 
+          ...res, 
+          id: res.id || bookingId, 
+          booking_id: res.id || bookingId, 
+          amount: res.total_amount 
+        })
+      } else {
+        console.warn('[BarberPanel] triggerPayment prop is missing or not a function')
       }
+      
       onClose()
-    } catch (err) { alert(err.message || 'Complete failed') }
+    } catch (err) { 
+      console.error('[BarberPanel] Complete failed:', err)
+      alert(err.message || 'Complete failed') 
+    }
     finally { setBusyId(null) }
   }
 
@@ -858,7 +878,7 @@ function BarberDetail({ barber, branchId, onBack, onClose }) {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHome, triggerPayment }) {
+export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHome, triggerPayment, lastQueueUpdate }) {
   const [step, setStep] = useState('picker')
   const [barber, setBarber] = useState(null)
 
@@ -876,6 +896,7 @@ export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHo
       <BarberDetail
         barber={barber}
         branchId={branchId}
+        lastQueueUpdate={lastQueueUpdate}
         onBack={() => { setStep('picker'); setBarber(null) }}
         onClose={onClose || onHome}
         triggerPayment={triggerPayment}
@@ -885,7 +906,8 @@ export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHo
   return (
     <BarberPicker
       branchId={branchId}
-      onSelect={b => { setBarber(b); setStep('pin') }}
+      lastQueueUpdate={lastQueueUpdate}
+      onSelect={b => { setBarber(b); setStep('detail') }}
       onClose={onClose}
     />
   )

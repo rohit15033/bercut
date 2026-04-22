@@ -15,15 +15,30 @@ function emitEvent(branchId, type, data) {
   for (const res of set) { try { res.write(payload) } catch { set.delete(res) } }
 }
 
-router.get('/', requireKioskOrAdmin, (req, res) => {
-  const branchId = req.branchId || req.query.branch_id
+// SSE endpoint — GET /api/events?branch_id=
+router.get('/', (req, res) => {
+  const branchId = req.query.branch_id
   if (!branchId) return res.status(400).json({ message: 'branch_id required' })
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' })
+
+  res.set({ 
+    'Content-Type': 'text/event-stream', 
+    'Cache-Control': 'no-cache', 
+    'Connection': 'keep-alive', 
+    'X-Accel-Buffering': 'no' 
+  })
   res.flushHeaders()
-  const ping = setInterval(() => { try { res.write(': ping\n\n') } catch { clearInterval(ping) } }, 25000)
+
+  const ping = setInterval(() => { 
+    try { res.write(': ping\n\n') } catch { clearInterval(ping) } 
+  }, 25000)
+
   const set = getClients(branchId)
   set.add(res)
-  req.on('close', () => { clearInterval(ping); set.delete(res) })
+
+  req.on('close', () => { 
+    clearInterval(ping)
+    set.delete(res) 
+  })
 })
 
 module.exports = router

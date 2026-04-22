@@ -222,6 +222,44 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
   }
 })
 
+// ── GET /api/bookings/public ──────────────────────────────────────────────────
+router.get('/public', async (req, res) => {
+  try {
+    const { branch_id, date } = req.query
+    if (!branch_id) return res.status(400).json({ message: 'branch_id required' })
+
+    const targetDate = date || new Date().toISOString().slice(0, 10)
+
+    const { rows } = await pool.query(
+      `SELECT bk.id, bk.booking_number, bk.status, bk.scheduled_at, bk.started_at,
+              bk.barber_id, b.name AS barber_name,
+              (SELECT label FROM chairs ch 
+               LEFT JOIN chair_overrides co ON co.chair_id = ch.id AND co.resolved_by IS NULL
+               WHERE ch.barber_id = b.id OR co.barber_id = b.id 
+               LIMIT 1) AS chair_label,
+              COALESCE(bk.guest_name, c.name) AS customer_name,
+              svc_names.service_names,
+              COALESCE(svc_names.est_duration_min, 30) AS est_duration_min
+       FROM bookings bk
+       LEFT JOIN barbers b ON b.id = bk.barber_id
+       LEFT JOIN customers c ON c.id = bk.customer_id
+       LEFT JOIN (
+          SELECT bs.booking_id, 
+                 STRING_AGG(s.name, ', ') AS service_names,
+                 SUM(s.duration_minutes) AS est_duration_min
+          FROM booking_services bs 
+          JOIN services s ON s.id = bs.service_id
+          GROUP BY bs.booking_id
+        ) svc_names ON svc_names.booking_id = bk.id
+       WHERE bk.branch_id = $1 
+         AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
+         AND bk.status IN ('confirmed', 'in_progress')
+       ORDER BY bk.scheduled_at ASC`,
+      [branch_id, targetDate])
+    res.json(rows)
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // ── GET /api/bookings ──────────────────────────────────────────────────────────
 
 router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
@@ -244,8 +282,11 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
               COALESCE(s_total.total, 0) + COALESCE(e_total.total, 0) -
                 (bk.points_redeemed * COALESCE(gs.points_redemption_rate, 10000)) AS total_amount,
               (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::time::text AS slot_time,
+              (bk.started_at AT TIME ZONE 'Asia/Makassar')::time::text AS started_time,
               (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::date AS date,
               svc_names.booking_services,
+              svc_names.service_names,
+              COALESCE(svc_names.est_duration_min, 30) AS est_duration_min,
               COALESCE(t.amount, 0) AS tip
        FROM bookings bk
        LEFT JOIN barbers b ON b.id = bk.barber_id
@@ -262,7 +303,9 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
                    'price', bs.price_charged, 
                    'added_mid_cut', bs.added_mid_cut,
                    'commission_rate', COALESCE(bar_svc.commission_rate, brs.commission_rate, b_inner.commission_rate, 35)
-                 )) AS booking_services 
+                 )) AS booking_services,
+                 STRING_AGG(s.name, ', ') AS service_names,
+                 SUM(s.duration_minutes) AS est_duration_min
           FROM booking_services bs 
           JOIN services s ON s.id = bs.service_id
           JOIN bookings bk_inner ON bk_inner.id = bs.booking_id

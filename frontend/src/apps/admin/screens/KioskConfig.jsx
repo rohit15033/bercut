@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { tokens as T } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
 
-const TABS = ['Welcome Screen', 'Upsell Rules', 'Feedback Tags']
+const TABS = ['Welcome Screen', 'Upsell Rules', 'Feedback Tags', 'Access & PINs']
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 function SectionTitle({ title, sub }) {
@@ -528,6 +528,50 @@ function FeedbackTagsTab() {
   )
 }
 
+// ── Access & PINs tab ────────────────────────────────────────────────────────
+function AccessTab({ cfg, setCfg }) {
+  return (
+    <div>
+      <SectionTitle title="Access Control"
+        sub="Shared PINs for accessing administrative and staff panels directly on the kiosk." />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 12 }}>
+        <Field label="Kiosk Admin PIN (Staff Access)" sub="Used to access the Staff/Admin panel from the kiosk topbar.">
+          <input
+            type="text"
+            maxLength={6}
+            value={cfg.kiosk_admin_pin || ''}
+            onChange={e => setCfg(c => ({ ...c, kiosk_admin_pin: e.target.value.replace(/\D/g, '') }))}
+            placeholder="e.g. 1234"
+            style={{ ...inputStyle, letterSpacing: '0.3em', fontWeight: 800, fontSize: 16 }}
+          />
+        </Field>
+
+        <Field label="Barber Panel PIN (Shared)" sub="Used to access the Barber stats/management panel.">
+          <input
+            type="text"
+            maxLength={6}
+            value={cfg.kiosk_barber_pin || ''}
+            onChange={e => setCfg(c => ({ ...c, kiosk_barber_pin: e.target.value.replace(/\D/g, '') }))}
+            placeholder="e.g. 0000"
+            style={{ ...inputStyle, letterSpacing: '0.3em', fontWeight: 800, fontSize: 16 }}
+          />
+        </Field>
+      </div>
+
+      <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: 16, marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <span style={{ fontSize: 18 }}>💡</span>
+          <div style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>
+            <strong>Security Tip:</strong> These PINs are shared for all staff at this branch.
+            The Barber Panel PIN allows barbers to view their stats and manage their queue without entering their individual password every time.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Token modal ───────────────────────────────────────────────────────────────
 function TokenModal({ branch, onClose }) {
   const [token,   setToken]   = useState(null)
@@ -645,7 +689,9 @@ export default function KioskConfig() {
         upsell_heading:          cfg.upsell_heading,
         upsell_heading_id:       cfg.upsell_heading_id,
         upsell_switch_cta:       cfg.upsell_switch_cta,
-        upsell_keep_cta:         cfg.upsell_keep_cta,
+        upsell_keep_cta:     cfg.upsell_keep_cta,
+        kiosk_admin_pin:     cfg.kiosk_admin_pin,
+        kiosk_barber_pin:    cfg.kiosk_barber_pin,
       })
       setSaved(true); setTimeout(() => setSaved(false), 2500)
     } catch { /* ignore */ } finally { setBusy(false) }
@@ -714,6 +760,7 @@ export default function KioskConfig() {
             {activeTab === 0 && <WelcomeTab     cfg={cfg} setCfg={setCfg} />}
             {activeTab === 1 && <UpsellRulesTab cfg={cfg} setCfg={setCfg} branchId={branchId} />}
             {activeTab === 2 && <FeedbackTagsTab />}
+            {activeTab === 3 && <AccessTab       cfg={cfg} setCfg={setCfg} />}
           </div>
         )}
 

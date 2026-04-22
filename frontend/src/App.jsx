@@ -4,6 +4,7 @@ import { tokens } from './shared/tokens.js'
 import KioskApp  from './apps/kiosk/KioskApp.jsx'
 import BarberApp from './apps/barber/BarberApp.jsx'
 import AdminApp  from './apps/admin/AdminApp.jsx'
+import TvMonitor from './apps/tv/TvMonitor.jsx'
 
 // Mockups — only loaded in development to keep production bundle clean
 const BercutKioskMockup = !import.meta.env.PROD 
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/kiosk/*"       element={<KioskApp />} />
             <Route path="/barber/*"      element={<BarberApp />} />
             <Route path="/admin/*"       element={<AdminApp />} />
+            <Route path="/tv/:slug"      element={<TvMonitor />} />
             
             {!import.meta.env.PROD && (
               <>

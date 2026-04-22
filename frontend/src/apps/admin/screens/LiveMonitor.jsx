@@ -12,6 +12,11 @@ const BARBER_STATUS = {
   off:         { dot: '#DDDBD4', label: 'Day Off'        },
 }
 
+function formatTime(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+}
+
 const BOOKING_STATUS = {
   in_progress: { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0', label: 'In Service' },
   confirmed:   { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', label: 'Waiting'    },
@@ -163,19 +168,23 @@ function LogPaxOutModal({ branches, onLog, onClose }) {
 
 function ElapsedBar({ startedAt, estDurationMin, nextSlot }) {
   const elapsed   = startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000) : 0
-  const total     = estDurationMin || 45
+  const total     = parseInt(estDurationMin) || 45
   const pct       = Math.min(100, Math.round((elapsed / total) * 100))
   const leftMin   = Math.max(0, total - elapsed)
   const overMin   = Math.max(0, elapsed - total)
   const isOverrun = elapsed > total
 
-  const finishDate = new Date(Date.now() + leftMin * 60 * 1000)
-  const finish     = finishDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  let finish = '—'
+  if (startedAt) {
+    const finishDate = new Date(new Date(startedAt).getTime() + total * 60 * 1000)
+    finish = finishDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  }
 
   let conflictsNext = false
   if (!isOverrun && nextSlot) {
     const [h, m]   = nextSlot.split(':').map(Number)
     const slotDate = new Date(); slotDate.setHours(h, m, 0, 0)
+    const finishDate = new Date(new Date(startedAt).getTime() + total * 60 * 1000)
     conflictsNext  = finishDate > slotDate
   }
 
@@ -282,9 +291,10 @@ function BarberActionMenu({ barber, onAction }) {
 function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
   const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
-  const slotTime = booking.scheduled_at
-    ? new Date(booking.scheduled_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    : '—'
+  
+  const schedTime = formatTime(booking.scheduled_at)
+  const startTime = formatTime(booking.started_at)
+  const estEnd    = booking.calculatedEstEnd ? booking.calculatedEstEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'
   const serviceNames = booking.service_names || '—'
 
   return (
@@ -292,7 +302,7 @@ function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
       onMouseEnter={e => { if (!booking.client_not_arrived) e.currentTarget.style.background = T.bg }}
       onMouseLeave={e => { e.currentTarget.style.background = booking.client_not_arrived ? '#FFFDF5' : 'transparent' }}>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1.6fr 55px 130px 40px', alignItems: 'center', gap: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '45px 1fr 1.2fr 65px 65px 65px 90px 40px', alignItems: 'center', gap: 0 }}>
         <div>
           <span style={{ background: T.topBg, color: '#F5E200', padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{booking.booking_number}</span>
         </div>
@@ -302,7 +312,9 @@ function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
         <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
           {serviceNames}
         </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{slotTime}</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: T.text2 }}>{schedTime}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: isInProg ? '#16A34A' : T.muted }}>{startTime}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{estEnd}</div>
         <div>
           <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: sm.bg, color: sm.color, border: `1px solid ${sm.border}`, whiteSpace: 'nowrap', display: 'inline-block' }}>
             {sm.label}
@@ -314,7 +326,7 @@ function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
       </div>
 
       {isInProg && (
-        <div style={{ paddingLeft: 60, paddingRight: 44 }}>
+        <div style={{ paddingLeft: 45, paddingRight: 40 }}>
           <ElapsedBar startedAt={booking.started_at} estDurationMin={booking.est_duration_min} nextSlot={nextSlot} />
         </div>
       )}
@@ -359,24 +371,41 @@ function BarberQueueBlock({ barber, onCancel, onStart, onBarberAction }) {
 
       {expanded && activeQ.length > 0 && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1.6fr 55px 130px 40px', gap: 0, padding: '6px 14px', background: T.bg, borderBottom: `1px solid ${T.border}` }}>
-            {['#', 'Customer', 'Services', 'Time', 'Status', ''].map((h, i) => (
-              <div key={i} style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: T.muted }}>{h}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '45px 1fr 1.2fr 65px 65px 65px 90px 40px', gap: 0, padding: '6px 14px', background: T.bg, borderBottom: `1px solid ${T.border}` }}>
+            {['#', 'Customer', 'Services', 'Sched', 'Started', 'Est.End', 'Status', ''].map((h, i) => (
+              <div key={i} style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: T.muted }}>{h}</div>
             ))}
           </div>
-          {activeQ.map((bk, idx) => {
-            const nextConfirmed = activeQ.slice(idx + 1).find(q => q.status === 'confirmed')
-            const nextSlotTime  = bk.status === 'in_progress' && nextConfirmed && nextConfirmed.scheduled_at
-              ? new Date(nextConfirmed.scheduled_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-              : null
-            return (
-              <BookingRow key={bk.id} booking={bk}
-                onCancel={onCancel} onStart={onStart}
-                barberBusy={barber.status === 'busy'}
-                nextSlot={nextSlotTime}
-              />
-            )
-          })}
+          {(() => {
+            let lastFinish = new Date();
+            return activeQ.map((bk, idx) => {
+              const duration = parseInt(bk.est_duration_min) || 30;
+              let estEnd;
+              
+              if (bk.status === 'in_progress') {
+                const start = new Date(bk.started_at);
+                estEnd = new Date(start.getTime() + duration * 60000);
+              } else {
+                const sched = new Date(bk.scheduled_at);
+                const start = sched > lastFinish ? sched : lastFinish;
+                estEnd = new Date(start.getTime() + duration * 60000);
+              }
+              lastFinish = estEnd;
+
+              const nextConfirmed = activeQ.slice(idx + 1).find(q => q.status === 'confirmed')
+              const nextSlotTime  = bk.status === 'in_progress' && nextConfirmed && nextConfirmed.scheduled_at
+                ? new Date(nextConfirmed.scheduled_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                : null
+              
+              return (
+                <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
+                  onCancel={onCancel} onStart={onStart}
+                  barberBusy={barber.status === 'busy'}
+                  nextSlot={nextSlotTime}
+                />
+              )
+            })
+          })()}
         </div>
       )}
     </div>

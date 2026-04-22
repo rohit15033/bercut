@@ -25,6 +25,17 @@ router.get('/:id', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// ── GET /api/branches/slug/:slug (Public) ──────────────────────────────────────
+router.get('/slug/:slug', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, city, online_booking_enabled FROM branches WHERE LOWER(online_booking_slug) = LOWER($1) AND is_active = true', 
+      [req.params.slug])
+    if (!rows.length) return res.status(404).json({ message: 'Branch not found' })
+    res.json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // ── POST /api/branches ─────────────────────────────────────────────────────────
 router.post('/', requireAdmin, requireOwner, async (req, res) => {
   try {

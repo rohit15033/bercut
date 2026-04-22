@@ -12,13 +12,22 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
 
   const allowedIds = settings.suggestServices?.length ? settings.suggestServices : null
   const addonSvcs = svcs.filter(s => s.cat !== 'Package' && (!allowedIds || allowedIds.includes(s.id)))
+
+  // Items in the cart that are NOT among the suggested/addon services
+  const baseCart = cart.filter(id => {
+    const s = svcs.find(x => x.id === id)
+    if (!s || s.cat === 'Package') return true
+    if (allowedIds && !allowedIds.includes(id)) return true
+    return false
+  })
+
   const CAT_HEADERS = { Haircut: '✂ Haircut', Beard: '🪒 Beard', Treatment: '✨ Treatments', HairColor: '🎨 Hair Color' }
   const catsPresent = [...new Set(addonSvcs.map(s => s.cat))].filter(c => CAT_HEADERS[c])
 
   const toggleExtra = id => setExtras(e => e.includes(id) ? e.filter(x => x !== id) : [...e, id])
 
   const handleSuggestProceed = () => {
-    const merged = [...new Set([...cart, ...extras])]
+    const merged = [...new Set([...baseCart, ...extras])]
     const nu = findRuleForCart(merged)
     if (nu?.outcome === 'package') { setWorkCart(merged); setPkgRule(nu); setPhase('package') }
     else onConfirm(merged, null)
@@ -96,9 +105,9 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
           <div style={{ padding: 'clamp(12px,1.6vw,18px) clamp(16px,2.4vw,26px)', borderTop: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {extras.length > 0
               ? <button className="btnP" onClick={handleSuggestProceed}>Add {extras.length} service{extras.length > 1 ? 's' : ''} & continue →</button>
-              : <button className="btnP" onClick={() => onConfirm(cart, null)}>Continue with selection →</button>
+              : <button className="btnP" onClick={() => onConfirm(baseCart, null)}>Continue with selection →</button>
             }
-            <button className="btnG" onClick={() => onConfirm(cart, null)} style={{ width: '100%', fontSize: 'clamp(12px,1.4vw,14px)' }}>Skip · Lewati</button>
+            <button className="btnG" onClick={() => onConfirm(baseCart, null)} style={{ width: '100%', fontSize: 'clamp(12px,1.4vw,14px)' }}>Skip · Lewati</button>
           </div>
         </div>
       </div>
@@ -312,8 +321,18 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
   const effDur = (s) => s.id === BLEACH_ID ? (bleachConfig?.dur ?? s.dur) : s.dur
   const effName = (s) => s.id === BLEACH_ID && bleachConfig ? bleachConfig.label : s.name
 
-  const total = cart.reduce((sum, id) => { const s = svcs.find(x => x.id === id); return sum + (s ? effPrice(s) : 0) }, 0)
-  const dur = cart.reduce((sum, id) => { const s = svcs.find(x => x.id === id); return sum + (s ? effDur(s) : 0) }, 0)
+  const allowedIds = settings.suggestServices?.length ? settings.suggestServices : null
+  const displayCart = upsellRule
+    ? [...cart.filter(id => {
+      const s = svcs.find(x => x.id === id)
+      if (!s || s.cat === 'Package') return true
+      if (allowedIds && !allowedIds.includes(id)) return true
+      return false
+    }), ...upsellExtras]
+    : cart
+
+  const total = displayCart.reduce((sum, id) => { const s = svcs.find(x => x.id === id); return sum + (s ? effPrice(s) : 0) }, 0)
+  const dur = displayCart.reduce((sum, id) => { const s = svcs.find(x => x.id === id); return sum + (s ? effDur(s) : 0) }, 0)
 
   // Evaluate upsell rules against any given cart array
   const findRuleForCart = (cartArr) => {
@@ -334,8 +353,32 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
 
   const handleContinue = () => {
     if (cart.length === 0) return
+
+    // If modal is already open, sidebar "Continue" confirms it
+    if (upsellRule) {
+      const merged = [...new Set([...cart.filter(id => {
+        const s = svcs.find(x => x.id === id)
+        if (!s || s.cat === 'Package') return true
+        if (allowedIds && !allowedIds.includes(id)) return true
+        return false
+      }), ...upsellExtras])]
+      handleUpsellConfirm(merged, null)
+      return
+    }
+
     const rule = findRuleForCart(cart)
-    if (rule) { setUpsellRule(rule); setUpsellExtras([]); return }
+    if (rule) {
+      setUpsellRule(rule)
+      // Pre-populate extras with items already in cart that are suggested services
+      const inCartExtras = cart.filter(id => {
+        const s = svcs.find(x => x.id === id)
+        if (!s || s.cat === 'Package') return false
+        if (allowedIds) return allowedIds.includes(id)
+        return true
+      })
+      setUpsellExtras(inCartExtras)
+      return
+    }
     onNext()
   }
 
@@ -348,6 +391,15 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
   }
 
   const toggle = (id) => {
+    // If upsell modal is open and we toggle a suggested service, sync with upsellExtras
+    if (upsellRule) {
+      const s = svcs.find(x => x.id === id)
+      const isSuggested = s && s.cat !== 'Package' && (!allowedIds || allowedIds.includes(id))
+      if (isSuggested) {
+        setUpsellExtras(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+      }
+    }
+
     if (id === BLEACH_ID) {
       if (cart.includes(id)) { setCart(c => c.filter(x => x !== id)); setBleachConfig(null) }
       else setShowBleachModal(true)
@@ -525,9 +577,9 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
           <div style={{ width: 'clamp(230px,26vw,290px)', borderLeft: `1px solid ${C.border}`, padding: 'clamp(14px,1.8vw,20px)', display: 'flex', flexDirection: 'column', background: C.bg, flexShrink: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 14 }}>Your Selection</div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {cart.length === 0
+              {displayCart.length === 0
                 ? <div style={{ textAlign: 'center', padding: 'clamp(28px,4vh,40px) 0', color: C.muted, opacity: 0.5, fontSize: 'clamp(12px,1.4vw,14px)' }}>No services selected</div>
-                : cart.map(id => {
+                : displayCart.map(id => {
                   const s = svcs.find(x => x.id === id)
                   if (!s) return null
                   return (
@@ -542,7 +594,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
                 })
               }
             </div>
-            {cart.length > 0 && (
+            {displayCart.length > 0 && (
               <div style={{ borderTop: `2px solid ${C.topBg}`, padding: '14px 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.muted, marginBottom: 4 }}>
                   <span>Est. Duration</span><span>{dur} min</span>
@@ -553,7 +605,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-              <button className="btnP" style={{ width: '100%' }} disabled={cart.length === 0} onClick={handleContinue}>Continue →</button>
+              <button className="btnP" style={{ width: '100%' }} disabled={displayCart.length === 0} onClick={handleContinue}>Continue →</button>
               <button className="btnG" style={{ width: '100%' }} onClick={onBack}>← Back</button>
             </div>
           </div>

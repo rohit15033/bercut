@@ -411,7 +411,7 @@ function BranchModal({ branch, onSave, onClose }) {
     finally { setLoading(false) }
   }
 
-  const TABS = [{ key: 'details', label: 'Details' }, { key: 'ops', label: 'Operations' }, { key: 'devices', label: 'Kiosk Devices' }]
+  const TABS = [{ key: 'details', label: 'Details' }, { key: 'ops', label: 'Operations' }, { key: 'devices', label: 'Devices & TV' }]
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -566,9 +566,43 @@ function BranchModal({ branch, onSave, onClose }) {
             </div>
           )}
 
-          {/* ── Kiosk Devices ── */}
+          {/* ── Devices & TV ── */}
           {tab === 'devices' && (
             <div>
+              {/* TV Monitor Link */}
+              <div style={{ marginBottom: 24, padding: '16px', borderRadius: 12, background: T.bg, border: `1.5px solid ${T.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 14, color: T.text }}>Live TV Monitor</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Dashboard for real-time customer queue and status.</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: form.online_booking_slug ? '#16A34A' : '#EF4444' }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: form.online_booking_slug ? '#16A34A' : '#EF4444', textTransform: 'uppercase' }}>
+                      {form.online_booking_slug ? 'Active' : 'Missing Slug'}
+                    </span>
+                  </div>
+                </div>
+
+                {form.online_booking_slug ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.white, padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}` }}>
+                    <div style={{ flex: 1, fontFamily: 'monospace', fontSize: 13, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {window.location.origin}/tv/{form.online_booking_slug}
+                    </div>
+                    <button onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/tv/${form.online_booking_slug}`);
+                      alert('TV Link copied!');
+                    }} style={{ padding: '6px 12px', borderRadius: 6, background: T.topBg, color: T.white, border: 'none', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                      Copy Link
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: T.danger, background: '#FEF2F2', padding: '10px 12px', borderRadius: 8, border: '1px solid #FCA5A5' }}>
+                    ⚠ Please set an <strong>Online Booking Slug</strong> in the Details tab to enable the TV monitor.
+                  </div>
+                )}
+              </div>
+
               {showGenerate && branch?.id && (
                 <GenerateTokenModal
                   branchId={branch.id}
@@ -754,8 +788,10 @@ export default function Branches() {
                         {branch.online_booking_enabled ? 'Online On' : 'Online Off'}
                       </span>
                     </div>
-                    {branch.online_booking_enabled && branch.online_booking_slug && (
-                      <div style={{ fontSize: 10, color: T.muted }}>/{branch.online_booking_slug}</div>
+                    {branch.online_booking_slug ? (
+                      <div style={{ fontSize: 10, color: T.muted }}>Slug: {branch.online_booking_slug}</div>
+                    ) : (
+                      <div style={{ fontSize: 10, color: '#DC2626' }}>No slug set</div>
                     )}
                   </div>
 

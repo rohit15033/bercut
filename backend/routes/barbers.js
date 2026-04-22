@@ -16,6 +16,10 @@ router.get('/', async (req, res) => {
     let query = `
       SELECT b.id, b.name, b.specialty, b.specialty_id, b.avatar_url, b.status, b.sort_order,
              b.commission_rate, b.pay_type,
+             (SELECT label FROM chairs c 
+              LEFT JOIN chair_overrides co ON co.chair_id = c.id AND co.resolved_by IS NULL
+              WHERE c.barber_id = b.id OR co.barber_id = b.id 
+              LIMIT 1) AS chair_label,
              COALESCE(
                (SELECT COUNT(*) FROM bookings bk
                 WHERE bk.barber_id = b.id AND bk.branch_id = $1

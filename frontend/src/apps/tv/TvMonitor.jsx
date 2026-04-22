@@ -22,6 +22,7 @@ function formatTime(iso) {
 function ChairCard({ barber, booking }) {
   if (!barber) return null
   const isInProg = booking?.status === 'in_progress'
+  const isBreak = barber.status === 'on_break'
   const duration = parseInt(booking?.est_duration_min) || 30
 
   let elapsed = 0
@@ -32,12 +33,12 @@ function ChairCard({ barber, booking }) {
   }
 
   return (
-    <div style={{ background: T.surface, border: `0.2vw solid ${isInProg ? T.accent : T.border}`, borderRadius: '1.5vw', padding: '2vw', display: 'flex', flexDirection: 'column', gap: '1vw', transition: 'all 0.3s' }}>
+    <div style={{ background: T.surface, border: `0.2vw solid ${isInProg ? T.accent : (isBreak ? '#F59E0B' : T.border)}`, borderRadius: '1.5vw', padding: '2vw', display: 'flex', flexDirection: 'column', gap: '1vw', transition: 'all 0.3s' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5vw' }}>
           <div style={{
-            background: isInProg ? T.accent : T.border,
-            color: isInProg ? T.bg : T.text,
+            background: isInProg ? T.accent : (isBreak ? '#F59E0B' : T.border),
+            color: (isInProg || isBreak) ? T.bg : T.text,
             padding: '0.8vw 1.5vw',
             borderRadius: '1vw',
             display: 'flex',
@@ -50,11 +51,13 @@ function ChairCard({ barber, booking }) {
             <div style={{ fontSize: '2.5vw', fontWeight: 900, lineHeight: 1 }}>{barber.chair_label || '?'}</div>
           </div>
           <div>
-            <div style={{ fontSize: '2vw', fontWeight: 800, color: T.text }}>{barber.name}</div>
+            <div style={{ fontSize: '3vw', fontWeight: 900, color: T.text, lineHeight: 1 }}>{barber.name}</div>
           </div>
         </div>
         {isInProg ? (
           <div style={{ background: T.accentBg, color: T.accent, padding: '0.5vw 1vw', borderRadius: '0.8vw', fontSize: '1vw', fontWeight: 800, border: `0.1vw solid ${T.accent}` }}>IN SERVICE</div>
+        ) : isBreak ? (
+          <div style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B', padding: '0.5vw 1vw', borderRadius: '0.8vw', fontSize: '1vw', fontWeight: 800, border: '0.1vw solid #F59E0B' }}>ISTIRAHAT / ON BREAK</div>
         ) : (
           <div style={{ background: T.border, color: T.muted, padding: '0.5vw 1vw', borderRadius: '0.8vw', fontSize: '1vw', fontWeight: 800 }}>AVAILABLE</div>
         )}
@@ -67,6 +70,8 @@ function ChairCard({ barber, booking }) {
             <div style={{ fontSize: '2.2vw', fontWeight: 800, color: T.text, lineHeight: 1.1 }}>{booking.customer_name}</div>
             <div style={{ fontSize: '1.1vw', color: T.muted, marginTop: '0.6vw' }}>{booking.service_names}</div>
           </>
+        ) : isBreak ? (
+          <div style={{ fontSize: '1.5vw', color: '#F59E0B', fontStyle: 'italic' }}>Taking a short break</div>
         ) : (
           <div style={{ fontSize: '1.5vw', color: T.muted, fontStyle: 'italic' }}>Ready for next customer</div>
         )}
@@ -89,6 +94,18 @@ function ChairCard({ barber, booking }) {
 
 export default function TvMonitor() {
   const { slug } = useParams()
+
+  // Force dark background immediately — prevents white flash before React hydrates
+  useEffect(() => {
+    const prev = document.body.style.background
+    document.body.style.background = T.bg
+    document.documentElement.style.background = T.bg
+    return () => {
+      document.body.style.background = prev
+      document.documentElement.style.background = ''
+    }
+  }, [])
+
   const [branch, setBranch] = useState(null)
   const [barbers, setBarbers] = useState([])
   const [queue, setQueue] = useState([])
@@ -159,14 +176,14 @@ export default function TvMonitor() {
     }
   }, [slug, loadData])
 
-  if (loading) return <div style={{ background: T.bg, height: '100dvh', color: T.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>Loading Screen...</div>
-  if (error) return <div style={{ background: T.bg, height: '100dvh', color: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{error}</div>
+  if (loading) return <div style={{ background: T.bg, height: '100vh', color: T.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>Loading Screen...</div>
+  if (error) return <div style={{ background: T.bg, height: '100vh', color: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>{error}</div>
 
   const inProg = queue.filter(b => b.status === 'in_progress')
   const waiting = queue.filter(b => b.status === 'confirmed').slice(0, 8)
 
   return (
-    <div style={{ background: T.bg, color: T.text, height: '100dvh', padding: '3vw 4vw', fontFamily: "'Inter', sans-serif", overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: T.bg, color: T.text, height: '100vh', padding: '3vw 4vw', fontFamily: "'Inter', sans-serif", overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <style>{`
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         body { margin: 0; overflow: hidden; background: #0A0A0A; }
@@ -198,12 +215,20 @@ export default function TvMonitor() {
         {/* Left Side: Now Serving */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5vw' }}>
           <div style={{ fontSize: '1.3vw', fontWeight: 800, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Now Serving</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22vw, 1fr))', gap: '1.5vw', flex: 1, alignContent: 'start' }}>
-            {barbers.map(barber => {
-              const booking = inProg.find(b => b.barber_id === barber.id)
-              return <ChairCard key={barber.id} barber={barber} booking={booking} />
-            })}
-          </div>
+          {barbers.filter(b => b.status !== 'clocked_out').length === 0 ? (
+            <div style={{ background: T.surface, borderRadius: '1.5vw', padding: '4vw 3vw', textAlign: 'center', color: T.muted, border: `0.15vw dashed ${T.border}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.5vw', flex: 1 }}>
+              <div style={{ fontSize: '4vw', opacity: 0.5 }}>☕</div>
+              <div style={{ fontSize: '2vw', fontWeight: 800, color: T.text }}>No Barbers Clocked In</div>
+              <div style={{ fontSize: '1.2vw', maxWidth: '30vw', lineHeight: 1.5 }}>Our team is currently preparing for the next shift or on a complete break. Please check back soon!</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22vw, 1fr))', gap: '1.5vw', flex: 1, alignContent: 'start' }}>
+              {barbers.filter(b => b.status !== 'clocked_out').map(barber => {
+                const booking = inProg.find(b => b.barber_id === barber.id)
+                return <ChairCard key={barber.id} barber={barber} booking={booking} />
+              })}
+            </div>
+          )}
         </div>
 
         {/* Right Side: Waiting List */}

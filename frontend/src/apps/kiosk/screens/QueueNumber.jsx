@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
+import { speak } from '../../../shared/speak.js'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
@@ -18,17 +19,11 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
     const barberName   = barber?.name || booking?.barber_name || 'kapster'
     const customerName = displayName
     const text = `Panggil kapster ${barberName}. Customer atas nama ${customerName} sedang menunggu.`
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel()
-      const u = new SpeechSynthesisUtterance(text)
-      u.lang   = 'id-ID'
-      u.rate   = 0.95
-      u.onend  = () => setCalling(false)
-      u.onerror = () => setCalling(false)
-      window.speechSynthesis.speak(u)
-    } else {
-      setTimeout(() => setCalling(false), 2000)
-    }
+    speak(text, {
+      rate: 0.95,
+      onend:  () => setCalling(false),
+      onerror: () => setCalling(false),
+    }).catch(() => setCalling(false))
     setEscalateIn(ESCALATE_AFTER)
   }
 

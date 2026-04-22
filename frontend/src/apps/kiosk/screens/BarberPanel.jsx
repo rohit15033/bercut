@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
+import { speak } from '../../../shared/speak.js'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
@@ -223,11 +224,7 @@ function BarberPicker({ branchId, onSelect, onClose, lastQueueUpdate }) {
 
   const handleCall = (e, barber) => {
     e.stopPropagation()
-    if (!('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
-    const u = new SpeechSynthesisUtterance(`Panggil kapster ${barber.name}. Tamu sedang menunggu.`)
-    u.lang = 'id-ID'
-    window.speechSynthesis.speak(u)
+    speak(`Panggil kapster ${barber.name}. Tamu sedang menunggu.`)
     setCalling(barber.id)
     setTimeout(() => setCalling(c => c === barber.id ? null : c), 3000)
   }
@@ -524,12 +521,7 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
   }
 
   const handleCall = (name) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel()
-      const u = new SpeechSynthesisUtterance(`Panggil kapster ${barber.name}. Tamu atas nama ${name} sedang menunggu.`)
-      u.lang = 'id-ID'; u.rate = 0.95
-      window.speechSynthesis.speak(u)
-    }
+    speak(`Panggil kapster ${barber.name}. Tamu atas nama ${name} sedang menunggu.`, { rate: 0.95 })
     setAnnounced(true)
   }
 

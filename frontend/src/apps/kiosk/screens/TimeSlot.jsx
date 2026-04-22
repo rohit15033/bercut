@@ -13,7 +13,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
 
   const totalDur = serviceIds.reduce((s, id) => {
     const svc = services.find(x => x.id === id)
-    return s + (svc?.duration_min || 30)
+    return s + (svc?.duration_minutes || svc?.duration_min || 30)
   }, 0)
 
   useEffect(() => {
@@ -26,7 +26,27 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   }, [barber?.id, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const barberAvailable = barber?.status === 'active'
-  const canNow = barberAvailable
+
+  // Current WITA time as "HH:MM"
+  const nowWitaStr = (() => {
+    const d = new Date()
+    const witaMs = d.getTime() + (d.getTimezoneOffset() * 60000) + (8 * 3600000)
+    const w = new Date(witaMs)
+    return w.getHours().toString().padStart(2, '0') + ':' + w.getMinutes().toString().padStart(2, '0')
+  })()
+
+  const nowMin = (() => {
+    const [h, m] = nowWitaStr.split(':').map(Number)
+    return h * 60 + m
+  })()
+
+  // "Now" is available if barber is active and current time + service duration
+  // doesn't overlap any taken slot (first available slot is at or before now)
+  const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
+  const canNow = barberAvailable && (firstSlotMin !== null && firstSlotMin <= nowMin + 30)
+
+  // If barber busy but slots available, offer first slot as "Next"
+  const nextSlot = !canNow && slots.length > 0 ? slots[0] : null
 
   useEffect(() => {
     if (!canNow && slot === 'Now') setSlot(null)
@@ -75,12 +95,41 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
           ? <div style={{ color:C.muted, fontSize:'clamp(13px,1.5vw,15px)', padding:16 }}>Loading slots…</div>
           : (
             <div className="slot-grid">
-              {/* Now */}
+              {/* Now / Next */}
+              {/* Now — always shown, but disabled if unavailable */}
               <button onClick={() => canNow && setSlot('Now')}
-                style={{ padding:'clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)', borderRadius:12, fontSize:'clamp(15px,2vw,20px)', fontFamily:"'Inter',sans-serif", fontWeight:700, background:slot === 'Now' ? C.topBg : canNow ? C.white : C.surface2, color:slot === 'Now' ? C.white : canNow ? C.text : C.muted, border:`2px solid ${slot === 'Now' ? C.topBg : canNow ? C.topBg : C.border}`, transition:'all 0.15s', minWidth:'clamp(80px,10vw,110px)', minHeight:'clamp(52px,7vh,64px)', cursor:canNow ? 'pointer' : 'not-allowed', opacity:canNow ? 1 : 0.6, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 }}>
+                style={{ 
+                  padding:'clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)', borderRadius:12, 
+                  fontSize:'clamp(15px,2vw,20px)', fontFamily:"'Inter',sans-serif", fontWeight:700, 
+                  background:slot === 'Now' ? C.topBg : canNow ? C.white : C.surface2, 
+                  color:slot === 'Now' ? C.white : canNow ? C.text : C.muted, 
+                  border:`2px solid ${slot === 'Now' ? C.topBg : canNow ? C.border : C.border}`, 
+                  transition:'all 0.15s', minWidth:'clamp(80px,10vw,110px)', minHeight:'clamp(52px,7vh,64px)', 
+                  cursor: canNow ? 'pointer' : 'not-allowed', opacity: canNow ? 1 : 0.6,
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 
+                }}>
                 <span>Now ⚡</span>
-                <span style={{ fontSize:'clamp(9px,1.1vw,11px)', fontWeight:400, color:slot === 'Now' ? 'rgba(255,255,255,0.7)' : C.muted }}>{canNow ? 'Langsung' : 'Unavailable'}</span>
+                <span style={{ fontSize:'clamp(9px,1.1vw,11px)', fontWeight:400, color:slot === 'Now' ? 'rgba(255,255,255,0.7)' : C.muted }}>
+                  {canNow ? nowWitaStr : (barber?.status === 'on_break' ? 'On Break' : 'Busy')}
+                </span>
               </button>
+
+              {/* Next — only shown if Now is unavailable and slots are left */}
+              {!canNow && nextSlot && (
+                <button onClick={() => setSlot(nextSlot)}
+                  style={{ 
+                    padding:'clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)', borderRadius:12, 
+                    fontSize:'clamp(15px,2vw,20px)', fontFamily:"'Inter',sans-serif", fontWeight:700, 
+                    background:slot === nextSlot ? C.topBg : C.white, 
+                    color:slot === nextSlot ? C.white : C.text, 
+                    border:`2px solid ${slot === nextSlot ? C.topBg : C.border}`, 
+                    transition:'all 0.15s', minWidth:'clamp(80px,10vw,110px)', minHeight:'clamp(52px,7vh,64px)', 
+                    cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 
+                  }}>
+                  <span>Next →</span>
+                  <span style={{ fontSize:'clamp(9px,1.1vw,11px)', fontWeight:400, color:slot === nextSlot ? 'rgba(255,255,255,0.7)' : C.muted }}>{nextSlot}</span>
+                </button>
+              )}
 
               {/* Time slots */}
               {slots.map((s, i) => (
@@ -107,18 +156,16 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,2vw,21px)', fontWeight:700, color:C.accentText }}>Selected: {slot}</div>
             <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#1a1a1899' }}>{barber?.name} · {today}</div>
           </div>
-          {slot !== 'Now' && (
-            <div style={{ borderLeft:`1.5px solid #11111015`, paddingLeft:'clamp(12px,2.2vw,20px)', maxWidth:'clamp(140px,22vw,220px)' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                <span style={{ fontSize:14 }}>⏱</span>
-                <span style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:800, color:'#111110', textTransform:'uppercase', letterSpacing:'0.02em' }}>Auto-cancel in 15m</span>
-              </div>
-              <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:'#5a4a00', lineHeight:1.3 }}>
-                Arrive within 15 mins or booking is canceled.<br />
-                <span style={{ opacity:0.7 }}>Batal otomatis jika lewat 15 menit.</span>
-              </div>
+          <div style={{ borderLeft:`1.5px solid #11111015`, paddingLeft:'clamp(12px,2.2vw,20px)', maxWidth:'clamp(140px,22vw,220px)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+              <span style={{ fontSize:14 }}>⏱</span>
+              <span style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:800, color:'#111110', textTransform:'uppercase', letterSpacing:'0.02em' }}>Auto-cancel in 15m</span>
             </div>
-          )}
+            <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:'#5a4a00', lineHeight:1.3 }}>
+              Arrive within 15 mins or booking is canceled.<br />
+              <span style={{ opacity:0.7 }}>Batal otomatis jika lewat 15 menit.</span>
+            </div>
+          </div>
         </div>
       )}
 

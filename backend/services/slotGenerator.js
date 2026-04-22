@@ -33,13 +33,17 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
      JOIN services s ON s.id = bsv.service_id
      WHERE bk.barber_id = $1
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
-       AND bk.status NOT IN ('cancelled','no_show')
+       AND bk.status IN ('confirmed','in_progress')
      GROUP BY bk.id, bk.scheduled_at`,
     [barberId, date])
 
-  // Barber breaks
+  // Barber breaks (started_at/ended_at are TIMESTAMPTZ)
   const breaks = await pool.query(
-    'SELECT start_time, end_time FROM barber_breaks WHERE barber_id = $1 AND break_date = $2',
+    `SELECT TO_CHAR(started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS start_time,
+            TO_CHAR(COALESCE(ended_at, started_at + (COALESCE(duration_minutes,30) * INTERVAL '1 minute')) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS end_time
+     FROM barber_breaks
+     WHERE barber_id = $1
+       AND DATE(started_at AT TIME ZONE 'Asia/Makassar') = $2`,
     [barberId, date])
 
   const blocked = []
@@ -56,8 +60,13 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
     })
   }
 
+  const { rows: timeRows } = await pool.query("SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d")
+  const nowMin = minutesFromMidnight(timeRows[0].t)
+  const isToday = timeRows[0].d === date
+  const actualStart = isToday ? Math.max(openTime, Math.ceil(nowMin / SLOT_DURATION) * SLOT_DURATION) : openTime
+
   const slots = []
-  for (let t = openTime; t + durationMin <= closeTime; t += SLOT_DURATION) {
+  for (let t = actualStart; t + durationMin <= closeTime; t += SLOT_DURATION) {
     const slotEnd = t + durationMin
     const overlaps = blocked.some(b => t < b.end && slotEnd > b.start)
     if (!overlaps) slots.push(minutesToTime(t))

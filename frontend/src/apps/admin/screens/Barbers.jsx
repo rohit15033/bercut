@@ -313,9 +313,14 @@ export default function Barbers() {
     if (barberSvcs[barberId]) return
     try {
       const rows = await api.get(`/barbers/${barberId}/services`)
-      const map = {}
-      for (const r of rows) map[r.id] = r.is_enabled !== false
-      setBarberSvcs(prev => ({ ...prev, [barberId]: map }))
+      const svcMap = {}
+      const rateMap = {}
+      for (const r of rows) {
+        svcMap[r.id] = r.is_enabled !== false
+        rateMap[r.id] = r.commission_rate
+      }
+      setBarberSvcs(prev => ({ ...prev, [barberId]: svcMap }))
+      setBarberSvcRates(prev => ({ ...prev, [barberId]: rateMap }))
     } catch (_) {}
   }
 
@@ -329,16 +334,21 @@ export default function Barbers() {
 
   async function toggleService(barberId, serviceId) {
     const current = barberSvcs[barberId]?.[serviceId] !== false
+    const rate = barberSvcRates[barberId]?.[serviceId]
     setBarberSvcs(prev => ({ ...prev, [barberId]: { ...prev[barberId], [serviceId]: !current } }))
     try {
-      await api.put(`/barbers/${barberId}/services/${serviceId}`, { is_enabled: !current })
+      await api.put(`/barbers/${barberId}/services/${serviceId}`, { is_enabled: !current, commission_rate: rate })
     } catch (_) {
       setBarberSvcs(prev => ({ ...prev, [barberId]: { ...prev[barberId], [serviceId]: current } }))
     }
   }
 
-  function setServiceRate(barberId, serviceId, rate) {
+  async function setServiceRate(barberId, serviceId, rate) {
+    const enabled = barberSvcs[barberId]?.[serviceId] !== false
     setBarberSvcRates(prev => ({ ...prev, [barberId]: { ...(prev[barberId] || {}), [serviceId]: rate } }))
+    try {
+      await api.put(`/barbers/${barberId}/services/${serviceId}`, { is_enabled: enabled, commission_rate: rate })
+    } catch (_) {}
   }
 
   function handleExpandBarber(barberId) {
@@ -351,7 +361,7 @@ export default function Barbers() {
     .filter(b => {
       if (branchFilter === 'all') return true
       if (branchFilter === 'freelance') return b.pay_type === 'daily_rate'
-      return b.branch_id && branches.find(br => br.id === b.branch_id && (br.city === branchFilter || br.name === branchFilter))
+      return b.branch_id && branches.find(br => br.id === b.branch_id && br.name === branchFilter)
     })
     .filter(b => showInactive ? true : b.is_active !== false)
 
@@ -416,7 +426,7 @@ export default function Barbers() {
       {activeTab === 'barbers' && (
         <>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            {[{ key: 'all', label: 'All Branches' }, ...branches.map(b => ({ key: b.city || b.name, label: b.city || b.name })), { key: 'freelance', label: 'Freelance' }].map(f => (
+            {[{ key: 'all', label: 'All Branches' }, ...branches.map(b => ({ key: b.name, label: b.name })), { key: 'freelance', label: 'Freelance' }].map(f => (
               <button key={f.key} onClick={() => setBranchFilter(f.key)}
                 style={{ padding: '6px 14px', borderRadius: 20, border: `1px solid ${branchFilter === f.key ? T.topBg : T.border}`, background: branchFilter === f.key ? T.topBg : 'transparent', color: branchFilter === f.key ? T.white : T.text2, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer', transition: 'all 0.15s' }}>
                 {f.label}
@@ -449,7 +459,7 @@ export default function Barbers() {
                 const isExpanded = expandedBarber === b.id
                 const isFreelance = b.pay_type === 'daily_rate'
                 const branchObj  = branches.find(br => br.id === b.branch_id)
-                const branchName = branchObj?.city || branchObj?.name || '—'
+                const branchName = branchObj?.name || '—'
 
                 return (
                   <div key={b.id} style={{ animation: `fadeUp 0.2s ease ${i * 0.03}s both` }}>

@@ -3,7 +3,7 @@ import { tokens as C } from '../../../shared/tokens.js'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
-export default function QueueNumber({ booking, group = [], name, cart = [], services = [], barber, slot, pointsUsed = 0, onAddAnother, onReset, settings }) {
+export default function QueueNumber({ booking, group = [], name, cart = [], services = [], barber, barbers = [], slot, pointsUsed = 0, onAddAnother, onReset, settings }) {
   const [calling,    setCalling]    = useState(false)
   const [escalateIn, setEscalateIn] = useState(null)
   const ESCALATE_AFTER = 120
@@ -50,29 +50,31 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
   const total = parseFloat(booking?.total_amount || 0)
   const groupTotal = group.reduce((s, b) => s + parseFloat(b.total_amount || b.total || 0), 0) + total
   const dur   = cart.reduce((s, id) => s + (services.find(x => x.id === id)?.duration_min || services.find(x => x.id === id)?.duration_minutes || 30), 0)
-  const barberName = barber?.name || booking?.barber_name || '—'
-  const chairNum   = barber?.chair || null
+  
+  const targetBarber = barber || barbers.find(b => b.id === booking?.barber_id)
+  const barberName   = targetBarber?.name || booking?.barber_name || '—'
+  const chairNum     = targetBarber?.chair || null
   const slotDisplay = slot === 'Now' ? 'Now ⚡' : (slot || booking?.slot_time || '—')
   const serviceNames = cart.map(id => services.find(x => x.id === id)?.name).filter(Boolean).join(', ')
 
   return (
-    <div style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', display:'flex', alignItems:'center', justifyContent:'center', padding:'clamp(16px,3vw,32px)', overflowY:'auto' }}>
+    <div style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', display:'flex', alignItems:'center', justifyContent:'center', padding:'clamp(10px,2vw,20px)', overflowY:'auto' }}>
       <div className="si" style={{ maxWidth:'clamp(360px,58vw,600px)', width:'100%', textAlign:'center' }}>
 
         {/* Status eyebrow */}
-        <div style={{ fontSize:'clamp(10px,1.2vw,12px)', letterSpacing:'0.18em', textTransform:'uppercase', color:C.muted, marginBottom:6 }}>
+        <div style={{ fontSize:'clamp(10px,1.1vw,11px)', letterSpacing:'0.18em', textTransform:'uppercase', color:C.muted, marginBottom:4 }}>
           {isGrouped ? 'Group Booking / Reservasi Grup' : 'Reservation Confirmed · Dikonfirmasi'}
         </div>
 
         {/* Name hero */}
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:isGrouped ? 'clamp(22px,4vw,42px)' : 'clamp(32px,6vw,58px)', fontWeight:800, lineHeight:1.1, color:C.text, letterSpacing:'-0.02em', animation:'pop 0.5s ease 0.2s both', marginBottom:16 }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:isGrouped ? 'clamp(20px,3vw,36px)' : 'clamp(28px,5vw,50px)', fontWeight:800, lineHeight:1.1, color:C.text, letterSpacing:'-0.02em', animation:'pop 0.5s ease 0.2s both', marginBottom:12 }}>
           {isGrouped
             ? [...group.map(b => b.customer_name || b.name || 'Guest'), displayName].join(' + ') + ' ✓'
             : displayName
           }
         </div>
 
-        <div style={{ background:C.accent, height:4, borderRadius:999, margin:'0 auto clamp(16px,2.2vh,22px)', width:'clamp(60px,10vw,100px)' }} />
+        <div style={{ background:C.accent, height:3, borderRadius:999, margin:'0 auto clamp(12px,1.8vh,18px)', width:'clamp(50px,8vw,80px)' }} />
 
         {/* Group summary */}
         {isGrouped && (
@@ -105,7 +107,7 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
 
         {/* Single booking details */}
         {!isGrouped && (
-          <div style={{ background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', marginBottom:'clamp(12px,1.8vw,18px)', textAlign:'left' }}>
+          <div style={{ background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(10px,1.6vw,16px)', marginBottom:'clamp(10px,1.5vw,14px)', textAlign:'left' }}>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'clamp(12px,1.6vw,16px) clamp(16px,2.2vw,24px)' }}>
               {[
                 ['Barber',            barberName],
@@ -126,15 +128,18 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
 
         {/* Barber status card */}
         {!isGrouped && (
-          <div style={{ background:isNow ? '#e8f5e9' : C.surface, border:`1.5px solid ${isNow ? '#4caf50' : C.border}`, borderRadius:12, padding:'clamp(12px,1.6vh,18px) clamp(14px,2vw,20px)', marginBottom:'clamp(10px,1.4vw,14px)', display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center', gap:6 }}>
-            <span style={{ fontSize:'clamp(22px,2.8vw,28px)' }}>{isNow ? '✂' : '⏳'}</span>
+          <div style={{ background:isNow ? '#e8f5e9' : C.surface, border:`1.5px solid ${isNow ? '#4caf50' : C.border}`, borderRadius:12, padding:'clamp(10px,1.4vh,15px) clamp(14px,2vw,20px)', marginBottom:'clamp(8px,1.2vw,12px)', display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center', gap:4 }}>
+            <span style={{ fontSize:'clamp(20px,2.4vw,24px)' }}>{isNow ? '✂' : '⏳'}</span>
             {isNow ? (
               <>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2vw,20px)', fontWeight:800, color:'#1a5c1a' }}>
-                  {barberName} will greet you{chairNum ? ` at chair ${chairNum}` : ''}
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:'#1a5c1a', marginBottom:2 }}>
+                  Take a seat at:
                 </div>
-                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#2e7d32' }}>
-                  {chairNum ? `Langsung ke kursi ${chairNum} · siap sekarang` : 'Langsung ke kapster · siap sekarang'}
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(28px,5vw,48px)', fontWeight:900, color:'#1a5c1a', lineHeight:1, marginBottom:4, letterSpacing:'-0.02em' }}>
+                  {chairNum || 'Barber Chair'}
+                </div>
+                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#2e7d32', fontWeight:600 }}>
+                  {barberName} will serve you now · Siap sekarang
                 </div>
               </>
             ) : (
@@ -150,55 +155,11 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
           </div>
         )}
 
-        {/* Escalation status — non-Now bookings */}
-        {!isGrouped && !isNow && (() => {
-          if (escalateIn === null) return (
-            <div style={{ background:'#fafaf4', border:`1.5px solid ${C.border}`, borderRadius:12, padding:'clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)', marginBottom:'clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:12, textAlign:'left' }}>
-              <span style={{ fontSize:22, flexShrink:0 }}>📢</span>
-              <div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.text }}>Barber Notified · Kapster Diberitahu</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted, marginTop:2 }}>Announcement played · If no response, will re-announce automatically</div>
-              </div>
-            </div>
-          )
-          if (escalateIn > 0) {
-            const mins = Math.floor(escalateIn / 60)
-            const secs = escalateIn % 60
-            const pct  = ((ESCALATE_AFTER - escalateIn) / ESCALATE_AFTER) * 100
-            return (
-              <div style={{ background:'#fffbea', border:'1.5px solid #e8d84a', borderRadius:12, padding:'clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)', marginBottom:'clamp(10px,1.4vw,14px)', textAlign:'left' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
-                  <span style={{ fontSize:20, flexShrink:0 }}>⏱</span>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.5vw,14px)', fontWeight:700, color:'#7a6000' }}>
-                      Re-announcing in {mins > 0 ? `${mins}m ` : ''}{String(secs).padStart(2, '0')}s
-                    </div>
-                    <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#a08000', marginTop:1 }}>Auto re-announce if barber hasn't started · Otomatis ulang jika belum mulai</div>
-                  </div>
-                </div>
-                <div style={{ height:4, background:'#e8d84a22', borderRadius:2, overflow:'hidden' }}>
-                  <div style={{ height:'100%', background:'#e8d84a', borderRadius:2, width:`${pct}%`, transition:'width 1s linear' }} />
-                </div>
-                <button onClick={callBarber} style={{ marginTop:10, background:'none', border:'none', fontSize:'clamp(11px,1.3vw,13px)', color:'#a08000', fontFamily:"'DM Sans',sans-serif", textDecoration:'underline', cursor:'pointer', padding:0 }}>
-                  Announce now · Umumkan sekarang
-                </button>
-              </div>
-            )
-          }
-          return (
-            <div style={{ background:'#fff3e0', border:'1.5px solid #ff9800', borderRadius:12, padding:'clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)', marginBottom:'clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:12, textAlign:'left' }}>
-              <span style={{ fontSize:22, flexShrink:0, animation:'pulse 0.8s ease infinite' }}>📢</span>
-              <div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:'#e65100' }}>Re-announcing now…</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#bf360c', marginTop:2 }}>Calling {barberName} again · Memanggil kapster kembali</div>
-              </div>
-            </div>
-          )
-        })()}
+
 
         {/* Points used note */}
         {pointsUsed > 0 && (
-          <div style={{ background:'#0d1f0d', border:'1px solid #1a4d1a', borderRadius:12, padding:'clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)', marginBottom:'clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ background:'#0d1f0d', border:'1px solid #1a4d1a', borderRadius:12, padding:'clamp(8px,1.2vh,12px) clamp(14px,2vw,20px)', marginBottom:'clamp(8px,1.2vw,12px)', display:'flex', alignItems:'center', gap:10 }}>
             <span style={{ fontSize:18 }}>⭐</span>
             <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#6fcf6f', lineHeight:1.5 }}>
               <strong>{pointsUsed} points applied</strong> to this reservation · {pointsUsed} poin digunakan untuk reservasi ini
@@ -207,30 +168,29 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
         )}
 
         {/* Payment note */}
-        <div style={{ background:C.topBg, borderRadius:12, padding:'clamp(10px,1.4vh,14px) clamp(14px,2vw,20px)', marginBottom:'clamp(16px,2.2vw,22px)', fontSize:'clamp(11px,1.3vw,13px)', color:'#888', lineHeight:1.6, textAlign:'left' }}>
+        <div style={{ background:C.topBg, borderRadius:12, padding:'clamp(8px,1.2vh,12px) clamp(14px,2vw,20px)', marginBottom:'clamp(12px,1.8vw,18px)', fontSize:'clamp(11px,1.3vw,13px)', color:'#888', lineHeight:1.5, textAlign:'left' }}>
           <span style={{ color:C.accent, fontWeight:700 }}>
             💳 {isGrouped ? 'One payment for all.' : 'Pay after your service · Bayar setelah selesai.'}
           </span>{' '}
           Your barber will process payment via QRIS or card terminal.
         </div>
 
-        {/* Action buttons */}
-        <div style={{ display:'flex', gap:12, marginBottom:16 }}>
+        <div style={{ display:'flex', gap:12, marginBottom:12 }}>
           <button onClick={onAddAnother}
-            style={{ flex:1, minHeight:72, background:C.white, border:`1.5px solid ${C.border}`, color:C.text, borderRadius:14, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2vw,19px)', fontWeight:800, textTransform:'uppercase', lineHeight:1 }}>
+            style={{ flex:1, minHeight:60, background:C.white, border:`1.5px solid ${C.border}`, color:C.text, borderRadius:14, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:1 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:800, textTransform:'uppercase', lineHeight:1 }}>
               + Add Another Person
             </div>
-            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(10px,1.2vw,12px)', fontWeight:500, color:C.muted }}>
-              Tambah Orang · Pay together at the end
+            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(9px,1.1vw,11px)', fontWeight:500, color:C.muted }}>
+              Tambah Orang
             </div>
           </button>
           <button onClick={onReset}
-            style={{ flex:1, minHeight:72, background:C.topBg, border:'none', color:C.white, borderRadius:14, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2vw,19px)', fontWeight:800, textTransform:'uppercase', lineHeight:1 }}>
+            style={{ flex:1, minHeight:60, background:C.topBg, border:'none', color:C.white, borderRadius:14, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:1 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:800, textTransform:'uppercase', lineHeight:1 }}>
               Done
             </div>
-            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(10px,1.2vw,12px)', fontWeight:400, color:'#888' }}>
+            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(9px,1.1vw,11px)', fontWeight:400, color:'#888' }}>
               Selesai
             </div>
           </button>

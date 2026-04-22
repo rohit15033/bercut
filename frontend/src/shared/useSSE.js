@@ -13,6 +13,7 @@
 //   - Generic:       `data: {"type":"payment_trigger","data":{...}}\n\n`
 
 import { useEffect, useRef } from 'react'
+import { getKioskToken } from './tokens.js'
 
 const BASE               = import.meta.env.VITE_API_URL ?? '/api'
 const RECONNECT_DELAY_MS = 3000
@@ -33,7 +34,8 @@ export function useSSE(branchId, handlers) {
     function connect() {
       if (cancelled) return
 
-      const url = `${BASE}/events?branch_id=${encodeURIComponent(branchId)}`
+      const kioskToken = getKioskToken()
+      const url = `${BASE}/events?branch_id=${encodeURIComponent(branchId)}${kioskToken ? `&kiosk_token=${encodeURIComponent(kioskToken)}` : ''}`
       const es  = new EventSource(url)
       esRef.current = es
 

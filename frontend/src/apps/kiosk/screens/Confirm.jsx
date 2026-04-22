@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
+import OnScreenKeyboard from '../components/OnScreenKeyboard.jsx'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
@@ -86,9 +87,11 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
   const [pointsToggled, setPointsToggled] = useState(new Set())
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState('')
+  const [activeField,   setActiveField]   = useState(null)
   const nameRef = useRef(null)
+  const phoneRef = useRef(null)
 
-  useEffect(() => { nameRef.current?.focus() }, [])
+  useEffect(() => { setActiveField('name') }, [])
 
   const valid = name.trim().length >= 2
 
@@ -155,7 +158,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
         barber_id:      barber.source === 'any_available' ? null : barber.id,
         service_ids:    cart,
         extra_ids:      selectedExtras,
-        slot_time:      slot === 'Now' ? null : slot,
+        slot_time:      slot,
         date:           new Date().toISOString().slice(0, 10),
         source:         barber.source === 'any_available' ? 'any_available' : 'kiosk',
         use_points:     pointsUsed > 0,
@@ -169,10 +172,12 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
   }
 
   return (
-    <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(10px,1.6vw,18px) clamp(16px,2.4vw,28px)' }}>
+    <div style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', display:'flex', flexDirection:'column' }}>
       {showCP && <CountryPicker selected={country} onSelect={setCountry} onClose={() => setShowCP(false)} />}
 
-      <div className="step-header fu" style={{ marginBottom:'clamp(8px,1.2vw,14px)' }}>
+      <div className="scroll-y" style={{ flex:1, padding:'clamp(6px,1vw,12px) clamp(16px,2.4vw,28px)' }}>
+
+      <div className="step-header fu" style={{ marginBottom:'clamp(4px,0.8vw,8px)' }}>
         <div className="step-eyebrow">Step 4 of 4 · Confirm</div>
         <h2 className="step-title" style={{ fontSize:'clamp(20px,2.6vw,30px)' }}>Confirm Your Reservation</h2>
         <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginTop:2 }}>Confirm Reservation · Konfirmasi Reservasi</div>
@@ -181,29 +186,27 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
       <div className="confirm-layout">
         {/* LEFT — name + phone + loyalty + CTA */}
         <div>
-          <div className="fu" style={{ animationDelay:'0.05s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(12px,1.4vw,16px)', marginBottom:'clamp(8px,1vw,10px)' }}>
+          <div className="fu" style={{ animationDelay:'0.05s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(10px,1.2vw,14px)', marginBottom:'clamp(6px,0.8vw,8px)' }}>
 
             {/* Prominent name heading */}
-            <div style={{ marginBottom:'clamp(10px,1.2vw,14px)' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,1.8vw,19px)', fontWeight:800, color:C.text, marginBottom:2 }}>
+            <div style={{ marginBottom:'clamp(6px,0.8vw,10px)' }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,1.8vw,19px)', fontWeight:800, color:C.text, marginBottom:0 }}>
                 What's your name?
               </div>
               <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
-                Required for your reservation · Wajib diisi sebelum lanjut
+                Required for your reservation
               </div>
             </div>
 
             {/* Name — required */}
-            <div style={{ marginBottom:'clamp(10px,1.2vw,12px)' }}>
-              <label style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, display:'block', marginBottom:5, color:C.text }}>
+            <div style={{ marginBottom:'clamp(6px,0.8vw,10px)' }}>
+              <label style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, display:'block', marginBottom:4, color:C.text }}>
                 Name / Nama <span style={{ color:C.danger }}>*</span>
               </label>
-              <input ref={nameRef} value={name} type="text" autoComplete="given-name"
-                onChange={e => setName(e.target.value)}
+              <input ref={nameRef} value={name} type="text" autoComplete="off" readOnly
                 placeholder="Tap here and type your name"
-                style={{ width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:10, border:`2px solid ${name.trim().length > 0 ? C.topBg : C.accent}`, fontSize:'clamp(14px,1.6vw,16px)', background:C.white, fontFamily:"'DM Sans',sans-serif", animation:name.trim().length === 0 ? 'namePulse 1.4s ease 3' : 'none', transition:'border-color 0.15s' }}
-                onFocus={e => { e.target.style.borderColor = C.topBg; e.target.style.animation = 'none' }}
-                onBlur={e => { e.target.style.borderColor = name.trim().length > 0 ? C.topBg : C.accent }}
+                style={{ width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:10, border:`2px solid ${activeField === 'name' ? C.topBg : name.trim().length > 0 ? C.topBg : C.accent}`, fontSize:'clamp(14px,1.6vw,16px)', background:activeField === 'name' ? '#FFFDE7' : C.white, fontFamily:"'DM Sans',sans-serif", animation:name.trim().length === 0 && activeField !== 'name' ? 'namePulse 1.4s ease 3' : 'none', transition:'border-color 0.15s, background 0.15s', cursor:'pointer' }}
+                onClick={() => setActiveField('name')}
               />
               {name.trim().length > 0 && name.trim().length < 2 && (
                 <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:C.danger, marginTop:4 }}>
@@ -213,7 +216,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
             </div>
 
             {/* WhatsApp — optional */}
-            <div style={{ marginBottom:'clamp(8px,1vw,10px)' }}>
+            <div style={{ marginBottom:'clamp(6px,0.8vw,8px)' }}>
               <label style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, display:'block', marginBottom:5, color:C.text }}>
                 WhatsApp <span style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:400, color:C.muted }}>(Optional / Opsional)</span>
               </label>
@@ -226,18 +229,17 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:C.text }}>{country.code}</span>
                   <span style={{ fontSize:'clamp(9px,1vw,10px)', color:C.muted, marginLeft:1 }}>▾</span>
                 </button>
-                <input value={phone} type="tel" onChange={e => setPhone(e.target.value)}
+                <input ref={phoneRef} value={phone} type="tel" autoComplete="off" readOnly
                   placeholder="812 3456 7890"
-                  style={{ flex:1, minWidth:0, padding:'clamp(10px,1.3vh,13px) 14px', borderRadius:10, border:`1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, fontSize:'clamp(13px,1.5vw,15px)', background:C.white, fontFamily:"'DM Sans',sans-serif", transition:'border-color 0.15s' }}
-                  onFocus={e => e.target.style.borderColor = C.topBg}
-                  onBlur={e => e.target.style.borderColor = phone.trim().length > 0 ? C.topBg : C.border}
+                  style={{ flex:1, minWidth:0, padding:'clamp(10px,1.3vh,13px) 14px', borderRadius:10, border:`1.5px solid ${activeField === 'phone' ? C.topBg : phone.trim().length > 0 ? C.topBg : C.border}`, fontSize:'clamp(13px,1.5vw,15px)', background:activeField === 'phone' ? '#FFFDE7' : C.white, fontFamily:"'DM Sans',sans-serif", transition:'border-color 0.15s, background 0.15s', cursor:'pointer' }}
+                  onClick={() => setActiveField('phone')}
                 />
               </div>
             </div>
 
             {/* Loyalty states */}
             {customer && points > 0 && (
-              <div className="fi" style={{ background:'#f0faf0', border:'1.5px solid #a8d5a8', borderRadius:10, padding:'clamp(8px,1vw,11px)', display:'flex', alignItems:'center', gap:8 }}>
+              <div className="fi" style={{ background:'#f0faf0', border:'1.5px solid #a8d5a8', borderRadius:10, padding:'clamp(6px,0.8vw,9px)', display:'flex', alignItems:'center', gap:8 }}>
                 <span style={{ fontSize:18 }}>⭐</span>
                 <div>
                   <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>
@@ -250,12 +252,12 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
               </div>
             )}
             {customer && points === 0 && (
-              <div className="fi" style={{ background:C.surface, borderRadius:10, padding:'clamp(8px,1vw,11px)' }}>
+              <div className="fi" style={{ background:C.surface, borderRadius:10, padding:'clamp(6px,0.8vw,9px)' }}>
                 <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>⭐ Welcome back, {customer.name}! You have 0 points. Earn points today. · Kamu belum punya poin.</div>
               </div>
             )}
             {!customer && !phone.trim() && (
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(8px,1vw,11px) clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(6px,0.8vw,9px) clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:8 }}>
                 <span style={{ fontSize:14 }}>⭐</span>
                 <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.text2 }}>
                   Have points? Enter your WhatsApp number to redeem.
@@ -270,16 +272,16 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
           )}
 
           <button className="btnP" disabled={!valid || loading} onClick={handleConfirm}
-            style={{ fontSize:'clamp(14px,1.6vw,16px)', marginBottom:7, padding:'clamp(12px,1.6vh,15px)' }}>
+            style={{ fontSize:'clamp(14px,1.6vw,16px)', marginBottom:6, padding:'clamp(10px,1.4vh,13px)' }}>
             {loading ? 'Confirming…' : valid ? 'Confirm Reservation ✓' : 'Enter your name to continue'}
           </button>
-          <button className="btnG" onClick={onBack} style={{ width:'100%', minHeight:44, padding:'10px 20px' }}>← Back / Kembali</button>
+          <button className="btnG" onClick={onBack} style={{ width:'100%', minHeight:40, padding:'8px 20px' }}>← Back / Kembali</button>
         </div>
 
         {/* RIGHT — order summary */}
         <div>
-          <div className="fu" style={{ animationDelay:'0.08s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(10px,1.4vw,14px)' }}>
-            <div style={{ fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, letterSpacing:'0.12em', color:C.muted, textTransform:'uppercase', marginBottom:10 }}>Order Summary · Ringkasan Reservasi</div>
+          <div className="fu" style={{ animationDelay:'0.08s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(8px,1.2vw,12px)' }}>
+            <div style={{ fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, letterSpacing:'0.12em', color:C.muted, textTransform:'uppercase', marginBottom:6 }}>Order Summary · Ringkasan</div>
 
             {/* Services with per-service points toggle */}
             {selectedServices.map(svc => {
@@ -288,7 +290,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
               const canToggle = canRedeem && (isToggled || pointsRemaining >= cost)
               const price     = parseFloat(svc.price ?? svc.base_price ?? 0)
               return (
-                <div key={svc.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:`1px solid ${C.border}`, gap:8 }}>
+                <div key={svc.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(5px,0.8vh,8px) 0', borderBottom:`1px solid ${C.border}`, gap:8 }}>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{svc.name}</div>
                     <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted }}>
@@ -315,7 +317,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
 
             {/* Extras */}
             {selectedExtrasItems.map(item => (
-              <div key={item.stock_id || item.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(6px,0.9vh,9px) 0', borderBottom:`1px solid ${C.border}` }}>
+              <div key={item.stock_id || item.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(4px,0.7vh,7px) 0', borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.text2 }}>{item.name}</div>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{fmt(item.price)}</div>
               </div>
@@ -327,7 +329,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
               ['Time / Waktu', slot === 'Now' ? 'Now ⚡' : slot],
               ['Duration / Durasi', `${totalDur} min`],
             ].map(([k, v]) => (
-              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'clamp(6px,0.9vh,9px) 0', borderBottom:`1px solid ${C.border}` }}>
+              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'clamp(4px,0.7vh,7px) 0', borderBottom:`1px solid ${C.border}` }}>
                 <span style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>{k}</span>
                 <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:600 }}>{v}</span>
               </div>
@@ -374,6 +376,23 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
           </div>
         </div>
       </div>
+      </div>
+
+      {/* On-screen keyboard — docked to bottom */}
+      {activeField && (
+        <OnScreenKeyboard
+          value={activeField === 'name' ? name : phone}
+          onChange={v => activeField === 'name' ? setName(v) : setPhone(v)}
+          mode={activeField === 'phone' ? 'numeric' : 'alpha'}
+          onDone={() => {
+            if (activeField === 'name' && name.trim().length >= 2) {
+              setActiveField('phone')
+            } else {
+              setActiveField(null)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

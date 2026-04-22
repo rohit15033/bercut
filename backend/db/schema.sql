@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS barbers (
   specialty_id    VARCHAR(100),
   phone           VARCHAR(20),
   pin_hash        TEXT,
-  status          VARCHAR(20)  NOT NULL DEFAULT 'available'
+  status          VARCHAR(20)  NOT NULL DEFAULT 'clocked_out'
                     CHECK (status IN ('available','in_service','on_break','clocked_out','off')),
   commission_rate DECIMAL(5,2) NOT NULL DEFAULT 40.00,   -- fallback rate
   base_salary     INTEGER      NOT NULL DEFAULT 0,
@@ -204,7 +204,7 @@ CREATE TABLE IF NOT EXISTS bookings (
                            CHECK (status IN ('confirmed','in_progress','pending_payment','completed','no_show','cancelled')),
   payment_status         VARCHAR(10)  NOT NULL DEFAULT 'unpaid'
                            CHECK (payment_status IN ('unpaid','paid','refunded')),
-  payment_method         VARCHAR(10)  CHECK (payment_method IN ('qris','card')),
+  payment_method         VARCHAR(10)  CHECK (payment_method IN ('qris','card','cash','manual')),
   payment_trigger_source VARCHAR(20),  -- 'barber' | 'admin'
   payment_ref            VARCHAR(100),
   group_id               UUID,        -- FK set after booking_groups is created

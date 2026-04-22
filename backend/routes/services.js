@@ -14,16 +14,33 @@ router.get('/', async (req, res) => {
                s.description, s.is_active, s.sort_order, s.image_url, s.mutex_group,
                COALESCE(bs.price, s.base_price) AS price,
                COALESCE(bs.is_available, true)  AS is_available,
-               bs.commission_rate
+               bs.commission_rate,
+               COALESCE((SELECT json_agg(sub_s.name) 
+                FROM package_services ps 
+                JOIN services sub_s ON sub_s.id = ps.service_id 
+                WHERE ps.package_id = s.id), '[]'::json) as included_services,
+               COALESCE((SELECT json_agg(sub_s.image_url) 
+                FROM package_services ps 
+                JOIN services sub_s ON sub_s.id = ps.service_id 
+                WHERE ps.package_id = s.id AND sub_s.image_url IS NOT NULL), '[]'::json) as included_images
         FROM services s
         LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
         WHERE s.is_active = true AND COALESCE(bs.is_available, true) = true
         ORDER BY s.sort_order, s.name`
       params = [branchId]
     } else {
-      query = `SELECT id, name, name_id, category, base_price AS price, duration_minutes,
-                      badge, description, is_active, sort_order, image_url, mutex_group
-               FROM services ORDER BY sort_order, name`
+      query = `SELECT s.id, s.name, s.name_id, s.category, s.base_price AS price, s.duration_minutes,
+                      s.badge, s.description, s.is_active, s.sort_order, s.image_url, s.mutex_group,
+                      COALESCE((SELECT json_agg(sub_s.name) 
+                       FROM package_services ps 
+                       JOIN services sub_s ON sub_s.id = ps.service_id 
+                       WHERE ps.package_id = s.id), '[]'::json) as included_services,
+                      COALESCE((SELECT json_agg(sub_s.image_url) 
+                       FROM package_services ps 
+                       JOIN services sub_s ON sub_s.id = ps.service_id 
+                       WHERE ps.package_id = s.id AND sub_s.image_url IS NOT NULL), '[]'::json) as included_images
+               FROM services s 
+               ORDER BY s.sort_order, s.name`
       params = []
     }
     const { rows } = await pool.query(query, params)
@@ -137,6 +154,34 @@ router.put('/:id/consumables', requireAdmin, async (req, res) => {
     }
     res.status(204).end()
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// GET /api/services/:id/package-services
+router.get('/:id/package-services', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ps.service_id, s.name, s.name_id, s.image_url, s.category
+       FROM package_services ps
+       JOIN services s ON s.id = ps.service_id
+       WHERE ps.package_id = $1
+       ORDER BY s.sort_order, s.name`, [req.params.id])
+    res.json(rows)
+  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// PUT /api/services/:id/package-services
+router.put('/:id/package-services', requireAdmin, async (req, res) => {
+  try {
+    const { serviceIds } = req.body
+    await pool.query('DELETE FROM package_services WHERE package_id = $1', [req.params.id])
+    for (const sid of (serviceIds || [])) {
+      await pool.query('INSERT INTO package_services (package_id, service_id) VALUES ($1, $2)', [req.params.id, sid])
+    }
+    res.status(204).end()
+  } catch (err) { 
+    console.error('PUT package-services error:', err)
+    res.status(500).json({ message: 'Internal server error' }) 
+  }
 })
 
 module.exports = router

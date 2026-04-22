@@ -34,10 +34,13 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
     sort_order: service.sort_order || 0,
     mutex_group: service.mutex_group || null,
     consumables: [],
+    packageServices: [],
   } : {
     name: '', name_id: '', category: 'haircut', duration_minutes: 30, base_price: 0, badge: '', is_active: true, image_url: '',
     description: '', sort_order: 0, mutex_group: null, consumables: [],
+    packageServices: [],
   })
+  const [allServices, setAllServices] = useState([])
   const [addItem,    setAddItem]    = useState('')
   const [addQty,     setAddQty]     = useState(1)
   const [saving,     setSaving]     = useState(false)
@@ -47,14 +50,32 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
+    // 1. Fetch all services for package selection
+    api.get('/services').then(rows => {
+      if (Array.isArray(rows)) {
+        setAllServices(rows.filter(s => s.id !== service?.id && s.category !== 'package'))
+      }
+    }).catch(() => {})
+
+    // 2. If editing existing service, fetch its details
     if (service?.id) {
+      // Fetch consumables
       api.get(`/services/${service.id}/consumables`).then(rows => {
         if (Array.isArray(rows)) {
           setForm(f => ({ ...f, consumables: rows.map(r => ({ itemId: r.item_id, qty: r.qty_per_use, name: r.item_name, unit: r.unit })) }))
         }
       }).catch(() => {})
+
+      // If it's a package, fetch included services
+      if (service.category === 'package') {
+        api.get(`/services/${service.id}/package-services`).then(rows => {
+          if (Array.isArray(rows)) {
+            setForm(f => ({ ...f, packageServices: rows.map(r => r.service_id) }))
+          }
+        }).catch(() => {})
+      }
     }
-  }, [service?.id])
+  }, [service?.id, service?.category])
 
   function addConsumable() {
     if (!addItem) return
@@ -69,10 +90,48 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
     const file = e.target.files[0]
     if (!file) return
 
-    setPendingFile(file)
     const reader = new FileReader()
-    reader.onload = ev => setImgPreview(ev.target.result)
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        const MAX = 1200 
+        
+        if (width > height) {
+          if (width > MAX) {
+            height *= MAX / width
+            width = MAX
+          }
+        } else {
+          if (height > MAX) {
+            width *= MAX / height
+            height = MAX
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+
+        canvas.toBlob((blob) => {
+          const optimizedFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() })
+          setPendingFile(optimizedFile)
+          setImgPreview(canvas.toDataURL('image/jpeg', 0.9))
+        }, 'image/jpeg', 0.9)
+      }
+      img.src = ev.target.result
+    }
     reader.readAsDataURL(file)
+  }
+
+  function togglePackageService(id) {
+    const next = form.packageServices.includes(id)
+      ? form.packageServices.filter(x => x !== id)
+      : [...form.packageServices, id]
+    set('packageServices', next)
   }
 
   async function handleSave() {
@@ -112,6 +171,11 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
         svcId = r.id
       } else {
         await api.patch(`/services/${service.id}`, payload)
+      }
+
+      // 3b. Save Package Services if applicable
+      if (form.category === 'package') {
+        await api.put(`/services/${svcId}/package-services`, { serviceIds: form.packageServices })
       }
 
       if (svcId) {
@@ -174,71 +238,72 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* Image */}
-        <div style={{ marginTop: 14 }}>
-          <label style={lblStyle}>Service Photo</label>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            {/* Preview */}
-            <div style={{ width: 72, height: 72, borderRadius: 10, border: `2px dashed ${T.border}`, background: T.surface, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {imgPreview
-                ? <img src={imgPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <span style={{ fontSize: 22, color: T.muted }}>🖼</span>}
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <label style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'inline-block', transition: 'all 0.15s' }}>
-                  {imgPreview ? 'Change Photo' : 'Upload Photo'}
-                  <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
-                </label>
-                {imgPreview && (
-                  <button onClick={() => { set('image_url', ''); setImgPreview(''); setPendingFile(null) }}
-                    style={{ fontSize: 12, color: T.danger, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                    Remove
-                  </button>
-                )}
+        {/* Image — Hidden for Packages */}
+        {form.category !== 'package' ? (
+          <div style={{ marginTop: 14 }}>
+            <label style={lblStyle}>Service Photo</label>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ width: 72, height: 72, borderRadius: 10, border: `2px dashed ${T.border}`, background: T.surface, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {imgPreview
+                  ? <img src={imgPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 22, color: T.muted }}>🖼</span>}
               </div>
-              <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4 }}>
-                Images are automatically optimized for kiosks.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Consumables */}
-        <div style={{ marginTop: 14 }}>
-          <label style={lblStyle}>Consumables Used Per Service</label>
-          {form.consumables.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              {form.consumables.map(c => (
-                <div key={c.itemId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: T.bg, borderRadius: 7, border: `1px solid ${T.border}` }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: '#FFFBEB', color: '#D97706' }}>Consumable</span>
-                  <span style={{ flex: 1, fontSize: 13, color: T.text, fontWeight: 500 }}>{c.name || c.itemId}</span>
-                  <input type="number" value={c.qty} min="0.01" step="0.01"
-                    onChange={e => set('consumables', form.consumables.map(x => x.itemId === c.itemId ? { ...x, qty: parseFloat(e.target.value) || 0 } : x))}
-                    style={{ width: 64, padding: '4px 8px', borderRadius: 6, border: `1.5px solid ${T.border}`, fontSize: 13, color: T.text, textAlign: 'right' }} />
-                  <span style={{ fontSize: 12, color: T.muted, minWidth: 28 }}>{c.unit || ''}</span>
-                  <button onClick={() => removeConsumable(c.itemId)}
-                    style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: '#FEE2E2', color: '#DC2626', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'inline-block', transition: 'all 0.15s' }}>
+                    {imgPreview ? 'Change Photo' : 'Upload Photo'}
+                    <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
+                  </label>
+                  {imgPreview && (
+                    <button onClick={() => { set('image_url', ''); setImgPreview(''); setPendingFile(null) }}
+                      style={{ fontSize: 12, color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                      Remove
+                    </button>
+                  )}
                 </div>
-              ))}
+                <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4 }}>
+                  Images are automatically optimized for kiosks.
+                </div>
+              </div>
             </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={addItem} onChange={e => setAddItem(e.target.value)}
-              style={{ flex: 1, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${T.border}`, fontSize: 13, color: addItem ? T.text : T.muted, background: T.white }}>
-              <option value="">Select consumable item…</option>
-              {consumableItems.filter(i => !form.consumables.some(c => c.itemId === i.id)).map(i => (
-                <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
-              ))}
-            </select>
-            <input type="number" value={addQty} min="0.01" step="0.01" onChange={e => setAddQty(parseFloat(e.target.value) || 1)}
-              style={{ width: 72, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${T.border}`, fontSize: 13, color: T.text, textAlign: 'right', background: T.white }} />
-            <button onClick={addConsumable} disabled={!addItem}
-              style={{ padding: '8px 14px', borderRadius: 7, background: addItem ? T.topBg : T.surface2, color: addItem ? T.white : T.muted, border: 'none', fontWeight: 700, fontSize: 13, cursor: addItem ? 'pointer' : 'default' }}>
-              + Add
-            </button>
           </div>
-        </div>
+        ) : (
+          <div style={{ marginTop: 14, padding: '12px 14px', background: '#F0F9FF', borderRadius: 10, border: '1px solid #BAE6FD', display: 'flex', gap: 10 }}>
+            <span style={{ fontSize: 18 }}>ℹ️</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0369A1' }}>Package Visuals</div>
+              <div style={{ fontSize: 12, color: '#0EA5E9', marginTop: 2, lineHeight: 1.4 }}>
+                Packages don't need a photo. They will automatically display a beautiful mosaic of the services included in the bundle.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Package Service Selection */}
+        {form.category === 'package' && (
+          <div style={{ marginTop: 14 }}>
+            <label style={lblStyle}>Included Services</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', padding: '12px', background: T.bg, borderRadius: 10, border: `1px solid ${T.border}`, maxHeight: 200, overflowY: 'auto' }}>
+              {allServices
+                .filter(s => !s.name.toLowerCase().includes('highlight'))
+                .map(s => {
+                  const active = form.packageServices.includes(s.id)
+                  return (
+                    <div key={s.id} onClick={() => togglePackageService(s.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: active ? T.white : 'transparent', border: `1px solid ${active ? T.topBg : 'transparent'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `1.5px solid ${active ? T.topBg : T.border}`, background: active ? T.topBg : T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {active && <span style={{ color: T.white, fontSize: 12, fontWeight: 900 }}>✓</span>}
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: active ? 600 : 500, color: active ? T.text : T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                    </div>
+                  )
+                })}
+            </div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>
+              Select services to bundle into this package. Highlights are excluded.
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
           <button onClick={onClose} style={{ flex: 1, padding: 11, borderRadius: 9, background: T.surface, color: T.text2, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}>Cancel</button>
@@ -317,7 +382,7 @@ function BranchConfigRow({ service, branches, onClose, onSaved }) {
                 style={{ width: 34, height: 19, borderRadius: 10, background: available ? T.topBg : T.muted, position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s' }}>
                 <div style={{ position: 'absolute', top: 2, left: available ? 17 : 2, width: 15, height: 15, borderRadius: '50%', background: T.white, transition: 'left 0.15s' }} />
               </div>
-              <span style={{ fontSize: 13, fontWeight: 600, color: available ? T.text : T.muted, minWidth: 72, flexShrink: 0 }}>{b.city || b.name}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: available ? T.text : T.muted, minWidth: 72, flexShrink: 0 }}>{b.name}</span>
               {available ? (
                 <div style={{ display: 'flex', gap: 6, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', flex: 1, borderRadius: 7, border: `1.5px solid ${c.price ? T.topBg : T.border}`, overflow: 'hidden', background: T.white }}>

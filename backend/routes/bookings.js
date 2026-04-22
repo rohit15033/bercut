@@ -98,14 +98,21 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       barberId = await assignAnyAvailable(client, branchId, bookingDate)
       resolvedSource = 'any_available'
       if (!barberId) return res.status(409).json({ message: 'No available barbers' })
+    } else {
+      const barberCheck = await client.query(
+        `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])
+      if (!barberCheck.rows.length) return res.status(404).json({ message: 'Barber not found' })
+      if (['clocked_out', 'off'].includes(barberCheck.rows[0].status)) {
+        return res.status(409).json({ message: 'Barber is not available' })
+      }
     }
 
     // fetch branch services (validates + gets price)
     const svcRows = await client.query(
       `SELECT s.id, COALESCE(bs.price, s.base_price) AS price, s.duration_minutes
        FROM services s
-       JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
-       WHERE s.id = ANY($2::uuid[]) AND bs.is_available = true AND s.is_active = true`,
+       LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+       WHERE s.id = ANY($2::uuid[]) AND COALESCE(bs.is_available, true) = true AND s.is_active = true`,
       [branchId, service_ids]
     )
     if (svcRows.rows.length !== service_ids.length) {
@@ -237,12 +244,33 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
               COALESCE(s_total.total, 0) + COALESCE(e_total.total, 0) -
                 (bk.points_redeemed * COALESCE(gs.points_redemption_rate, 10000)) AS total_amount,
               (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::time::text AS slot_time,
-              (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::date AS date
+              (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::date AS date,
+              svc_names.booking_services,
+              COALESCE(t.amount, 0) AS tip
        FROM bookings bk
        LEFT JOIN barbers b ON b.id = bk.barber_id
        LEFT JOIN customers c ON c.id = bk.customer_id
+       LEFT JOIN tips t ON t.booking_id = bk.id
        LEFT JOIN (SELECT booking_id, SUM(price_charged) AS total FROM booking_services GROUP BY booking_id) s_total ON s_total.booking_id = bk.id
        LEFT JOIN (SELECT booking_id, SUM(price) AS total FROM booking_extras GROUP BY booking_id) e_total ON e_total.booking_id = bk.id
+       LEFT JOIN (
+          SELECT bs.booking_id, 
+                 json_agg(jsonb_build_object(
+                   'id', bs.id, 
+                   'service_id', bs.service_id, 
+                   'name', s.name, 
+                   'price', bs.price_charged, 
+                   'added_mid_cut', bs.added_mid_cut,
+                   'commission_rate', COALESCE(bar_svc.commission_rate, brs.commission_rate, b_inner.commission_rate, 35)
+                 )) AS booking_services 
+          FROM booking_services bs 
+          JOIN services s ON s.id = bs.service_id
+          JOIN bookings bk_inner ON bk_inner.id = bs.booking_id
+          JOIN barbers b_inner ON b_inner.id = bk_inner.barber_id
+          LEFT JOIN branch_services brs ON brs.service_id = bs.service_id AND brs.branch_id = bk_inner.branch_id
+          LEFT JOIN barber_services bar_svc ON bar_svc.barber_id = bk_inner.barber_id AND bar_svc.service_id = bs.service_id
+          GROUP BY bs.booking_id
+        ) svc_names ON svc_names.booking_id = bk.id
        CROSS JOIN LATERAL (SELECT points_redemption_rate FROM global_settings LIMIT 1) gs
        ${where}
        ORDER BY bk.scheduled_at ASC`,
@@ -265,13 +293,22 @@ router.get('/:id', requireKioskOrAdmin, async (req, res) => {
               COALESCE(e_total.total, 0) AS extras_total,
               COALESCE(s_total.total, 0) + COALESCE(e_total.total, 0) -
                 (bk.points_redeemed * COALESCE(gs.points_redemption_rate, 10000)) AS total_amount,
-              json_agg(DISTINCT jsonb_build_object('service_id', bs.service_id, 'name', s.name, 'price', bs.price_charged, 'duration_min', s.duration_minutes)) FILTER (WHERE bs.id IS NOT NULL) AS services,
+              json_agg(DISTINCT jsonb_build_object(
+                'service_id', bs.service_id, 
+                'name', s.name, 
+                'price', bs.price_charged, 
+                'duration_min', s.duration_minutes, 
+                'added_mid_cut', bs.added_mid_cut,
+                'commission_rate', COALESCE(bar_svc.commission_rate, brs.commission_rate, b.commission_rate, 35)
+              )) FILTER (WHERE bs.id IS NOT NULL) AS services,
               json_agg(DISTINCT jsonb_build_object('item_id', be.item_id, 'name', ii.name, 'price', be.price, 'qty', be.quantity)) FILTER (WHERE be.id IS NOT NULL) AS extras
        FROM bookings bk
        LEFT JOIN barbers b ON b.id = bk.barber_id
        LEFT JOIN customers c ON c.id = bk.customer_id
        LEFT JOIN booking_services bs ON bs.booking_id = bk.id
        LEFT JOIN services s ON s.id = bs.service_id
+       LEFT JOIN branch_services brs ON brs.service_id = bs.service_id AND brs.branch_id = bk.branch_id
+       LEFT JOIN barber_services bar_svc ON bar_svc.barber_id = bk.barber_id AND bar_svc.service_id = bs.service_id
        LEFT JOIN booking_extras be ON be.booking_id = bk.id
        LEFT JOIN inventory_items ii ON ii.id = be.item_id
        LEFT JOIN (SELECT booking_id, SUM(price_charged) AS total FROM booking_services GROUP BY booking_id) s_total ON s_total.booking_id = bk.id
@@ -295,6 +332,7 @@ router.patch('/:id/start', requireKiosk, async (req, res) => {
       [req.params.id])
     if (!rows.length) return res.status(409).json({ message: 'Cannot start booking' })
     await pool.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
+    emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'busy' })
     emitEvent(rows[0].branch_id, 'booking_started', rows[0])
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
@@ -310,11 +348,16 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
       `UPDATE bookings SET status = 'pending_payment', completed_at = NOW()
        WHERE id = $1 AND status = 'in_progress' RETURNING *`,
       [req.params.id])
-    if (!rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ message: 'Cannot complete' }) }
+    if (!rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'Booking not found or not in progress' })
+    }
     const booking = rows[0]
 
-    // barber back to available
-    await client.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [booking.barber_id])
+    // Auto-set barber back to available
+    await client.query("UPDATE barbers SET status = 'available' WHERE id = $1", [booking.barber_id])
+    const { emitEvent } = require('./events')
+    emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'available' })
 
     // earn points
     const gs = await client.query('SELECT points_earn_rate, points_redemption_rate FROM global_settings LIMIT 1')
@@ -358,8 +401,8 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
     const extrasResult = await pool.query(
       'SELECT COALESCE(SUM(price),0) AS total FROM booking_extras WHERE booking_id = $1', [booking.id])
     const totalAmount = parseFloat(totalResult.rows[0].total) + parseFloat(extrasResult.rows[0].total)
-    emitEvent(booking.branch_id, 'payment_trigger', { booking_id: booking.id, amount: totalAmount })
-    res.json({ ...booking, total_amount: totalAmount })
+    emitEvent(booking.branch_id, 'payment_trigger', { booking_id: booking.id, id: booking.id, amount: totalAmount })
+    res.json({ ...booking, booking_id: booking.id, total_amount: totalAmount })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error(err)
@@ -454,9 +497,9 @@ router.post('/:id/rate', requireKiosk, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-// ── POST /api/bookings/:id/add-services ───────────────────────────────────────
+// ── PATCH /api/bookings/:id/add-services ───────────────────────────────────────
 
-router.post('/:id/add-services', requireKiosk, async (req, res) => {
+router.patch('/:id/add-services', requireKiosk, async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -465,17 +508,23 @@ router.post('/:id/add-services', requireKiosk, async (req, res) => {
     if (!bk.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Not found' }) }
     const booking = bk.rows[0]
 
-    const svcRows = await client.query(
-      `SELECT s.id, COALESCE(bs.price, s.base_price) AS price
-       FROM services s
-       JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
-       WHERE s.id = ANY($2::uuid[]) AND bs.is_available = true`,
-      [booking.branch_id, service_ids])
+    const existingRes = await client.query('SELECT service_id FROM booking_services WHERE booking_id = $1', [booking.id])
+    const existingIds = existingRes.rows.map(r => r.service_id)
+    const newIds = service_ids.filter(id => !existingIds.includes(id))
 
-    for (const svc of svcRows.rows) {
-      await client.query(
-        'INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1,$2,$3,true) ON CONFLICT DO NOTHING',
-        [booking.id, svc.id, svc.price])
+    if (newIds.length) {
+      const svcRows = await client.query(
+        `SELECT s.id, COALESCE(bs.price, s.base_price) AS price
+         FROM services s
+         LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+         WHERE s.id = ANY($2::uuid[]) AND COALESCE(bs.is_available, true) = true AND s.is_active = true`,
+        [booking.branch_id, newIds])
+
+      for (const svc of svcRows.rows) {
+        await client.query(
+          'INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1,$2,$3,true)',
+          [booking.id, svc.id, svc.price])
+      }
     }
 
     await client.query('COMMIT')
@@ -487,6 +536,24 @@ router.post('/:id/add-services', requireKiosk, async (req, res) => {
   } finally {
     client.release()
   }
+})
+
+// ── DELETE /api/bookings/:id/services/:service_id ────────────────────────────
+router.delete('/:id/services/:service_id', requireKiosk, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM booking_services 
+       WHERE booking_id = $1 AND service_id = $2 AND added_mid_cut = true
+       RETURNING *`, [req.params.id, req.params.service_id])
+    
+    if (!rows.length) return res.status(404).json({ message: 'Service not found or cannot be deleted (original service)' })
+    
+    // Emit update so kiosk refreshes
+    const bk = await pool.query('SELECT branch_id FROM bookings WHERE id = $1', [req.params.id])
+    if (bk.rows.length) emitEvent(bk.rows[0].branch_id, 'booking_updated', { id: req.params.id })
+    
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
 module.exports = router

@@ -50,9 +50,13 @@ async function requireKiosk(req, res, next) {
 }
 
 // Accept either kiosk token OR admin JWT
+// Also checks req.query.kiosk_token for EventSource connections (can't send headers)
 async function requireKioskOrAdmin(req, res, next) {
-  const kioskToken = req.headers['x-kiosk-token']
-  if (kioskToken) return requireKiosk(req, res, next)
+  const kioskToken = req.headers['x-kiosk-token'] || req.query.kiosk_token
+  if (kioskToken) {
+    req.headers['x-kiosk-token'] = kioskToken
+    return requireKiosk(req, res, next)
+  }
   return requireAdmin(req, res, next)
 }
 

@@ -230,7 +230,7 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart }) {
         ···
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 50, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', overflow: 'hidden' }}
+        <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 9999, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden' }}
           onMouseLeave={() => setOpen(false)}>
           {!isInProg && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
           {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
@@ -240,7 +240,44 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart }) {
   )
 }
 
-// ── BookingRow ────────────────────────────────────────────────────────────────
+// ── BarberActionMenu ──────────────────────────────────────────────────────────
+function BarberActionMenu({ barber, onAction }) {
+  const [open, setOpen] = useState(false)
+  const status = barber.status || 'available'
+
+  function item(label, color, onClick, disabled = false) {
+    return (
+      <button key={label} onClick={disabled ? undefined : () => { onClick(); setOpen(false) }}
+        style={{ width: '100%', padding: '9px 13px', background: 'none', border: 'none', color: disabled ? T.muted : color, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 13, textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, opacity: disabled ? 0.45 : 1 }}
+        onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = T.bg }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none' }}>
+        {label}
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: 30, height: 30, borderRadius: 6, background: open ? T.surface : 'transparent', border: `1px solid ${open ? T.border : 'transparent'}`, color: T.muted, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        ⋮
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 9999, minWidth: 160, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden' }}
+          onMouseLeave={() => setOpen(false)}>
+          {status === 'clocked_out' ? (
+             item('⚡ Force Clock In', '#15803D', () => onAction(barber, 'clock-in'))
+          ) : (
+             item('🚪 Force Clock Out', '#DC2626', () => onAction(barber, 'clock-out'))
+          )}
+          
+          {status === 'available' && item('☕ Force Break', '#D97706', () => onAction(barber, 'break'))}
+          {status === 'on_break' && item('✅ End Break', '#15803D', () => onAction(barber, 'end-break'))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
   const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
@@ -287,26 +324,26 @@ function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
 
 // ── BarberQueueBlock ──────────────────────────────────────────────────────────
 
-function BarberQueueBlock({ barber, onCancel, onStart }) {
+function BarberQueueBlock({ barber, onCancel, onStart, onBarberAction }) {
   const [expanded, setExpanded] = useState(true)
   const cfg        = BARBER_STATUS[barber.status] || BARBER_STATUS.available
   const activeQ    = (barber.queue || []).filter(b => b.status === 'in_progress' || b.status === 'confirmed')
   const alertCount = (barber.queue || []).filter(b => b.client_not_arrived).length
 
   return (
-    <div style={{ border: `1px solid ${alertCount > 0 ? '#FDE68A' : T.border}`, borderRadius: 10, overflow: 'hidden', background: alertCount > 0 ? '#FEFCE8' : T.white, transition: 'all 0.15s' }}>
-      <button onClick={() => setExpanded(e => !e)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: expanded && activeQ.length > 0 ? `1px solid ${T.border}` : 'none' }}>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
+    <div style={{ border: `1px solid ${alertCount > 0 ? '#FDE68A' : T.border}`, borderRadius: 10, background: alertCount > 0 ? '#FEFCE8' : T.white, transition: 'all 0.15s', position: 'relative' }}>
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: expanded && activeQ.length > 0 ? `1px solid ${T.border}` : 'none' }}>
+        <div style={{ position: 'relative', flexShrink: 0 }} onClick={() => setExpanded(e => !e)}>
           <div style={{ width: 34, height: 34, borderRadius: '50%', background: T.surface, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 11, color: T.text }}>{barber.name?.slice(0, 2).toUpperCase()}</span>
           </div>
           <div style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderRadius: '50%', background: cfg.dot, border: '2px solid white' }} />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }} onClick={() => setExpanded(e => !e)}>
           <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{barber.name}</div>
           <div style={{ fontSize: 10, fontWeight: 600, color: cfg.dot, marginTop: 1 }}>{cfg.label}</div>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
           {activeQ.length > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: T.topBg, color: T.white }}>{activeQ.length} in queue</span>
           )}
@@ -314,9 +351,11 @@ function BarberQueueBlock({ barber, onCancel, onStart }) {
             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#F59E0B', color: '#FFFFFF' }}>⚠ {alertCount}</span>
           )}
           {activeQ.length === 0 && <span style={{ fontSize: 11, color: T.muted }}>No active queue</span>}
+          <div style={{ width: 1, height: 20, background: T.border, margin: '0 4px' }} />
+          <BarberActionMenu barber={barber} onAction={onBarberAction} />
         </div>
-        {activeQ.length > 0 && <span style={{ fontSize: 12, color: T.muted, marginLeft: 4 }}>{expanded ? '▲' : '▼'}</span>}
-      </button>
+        {activeQ.length > 0 && <span style={{ fontSize: 12, color: T.muted, marginLeft: 4 }} onClick={() => setExpanded(e => !e)}>{expanded ? '▲' : '▼'}</span>}
+      </div>
 
       {expanded && activeQ.length > 0 && (
         <div>
@@ -346,7 +385,7 @@ function BarberQueueBlock({ barber, onCancel, onStart }) {
 
 // ── BranchSection ─────────────────────────────────────────────────────────────
 
-function BranchSection({ branch, barbers, onCancel, onStart }) {
+function BranchSection({ branch, barbers, onCancel, onStart, onBarberAction }) {
   const inService    = barbers.filter(b => b.status === 'busy').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
@@ -367,7 +406,7 @@ function BranchSection({ branch, barbers, onCancel, onStart }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
-          <BarberQueueBlock key={b.id} barber={b} onCancel={onCancel} onStart={onStart} />
+          <BarberQueueBlock key={b.id} barber={b} onCancel={onCancel} onStart={onStart} onBarberAction={onBarberAction} />
         ))}
       </div>
     </div>
@@ -436,6 +475,32 @@ export default function LiveMonitor() {
     try { await api.post(`/bookings/${booking.id}/start`, {}) } catch (err) { alert(err.message) }
     setForceStartModal(null)
     loadData()
+  }
+
+  async function handleBarberAction(barber, action) {
+    try {
+      if (action === 'clock-in') {
+        await api.post('/attendance/clock-in', { barber_id: barber.id, branch_id: barber.branch_id, force: true })
+      } else if (action === 'clock-out') {
+        if (barber.status === 'busy') {
+          if (!window.confirm('Barber is currently in service. Clocking out will force complete the service. Continue?')) return
+        }
+        await api.post('/attendance/clock-out', { barber_id: barber.id })
+      } else if (action === 'break') {
+        await api.post('/barber-breaks', { barber_id: barber.id, duration_minutes: 30, note: 'Admin Force Break' })
+      } else if (action === 'end-break') {
+        // Need to find the active break ID
+        const breaks = await api.get(`/barber-breaks?barber_id=${barber.id}&active=true`)
+        const active = Array.isArray(breaks) ? breaks[0] : null
+        if (active) {
+          await api.patch(`/barber-breaks/${active.id}/end`)
+        } else {
+          // Fallback: just set status back to available if no break record found
+          await api.patch(`/barbers/${barber.id}`, { status: 'available' })
+        }
+      }
+      loadData()
+    } catch (err) { alert(err.message || 'Action failed') }
   }
 
   const totalInService = barberQueues.filter(b => b.status === 'busy').length
@@ -537,6 +602,7 @@ export default function LiveMonitor() {
           <BranchSection key={branch.id} branch={branch} barbers={branchBarbers}
             onCancel={bk => setCancelModal({ booking: bk })}
             onStart={bk => setForceStartModal({ booking: bk })}
+            onBarberAction={handleBarberAction}
           />
         )
       })}

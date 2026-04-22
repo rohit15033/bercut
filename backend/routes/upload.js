@@ -6,7 +6,10 @@ const fs = require('fs')
 const { requireAdmin } = require('../middleware/auth')
 
 const storage = multer.memoryStorage()
-const upload = multer({ storage: storage })
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+})
 
 router.post('/image', requireAdmin, upload.single('image'), async (req, res) => {
   try {
@@ -15,7 +18,13 @@ router.post('/image', requireAdmin, upload.single('image'), async (req, res) => 
     }
 
     const filename = `img_${Date.now()}_${Math.round(Math.random() * 1E9)}.webp`
-    const filepath = path.join(__dirname, '../public/uploads', filename)
+    const uploadDir = path.join(__dirname, '../public/uploads')
+    const filepath = path.join(uploadDir, filename)
+
+    // Ensure directory exists
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true })
+    }
 
     // Process image: resize to max 800px width/height, convert to webp, optimize
     await sharp(req.file.buffer)
@@ -23,7 +32,7 @@ router.post('/image', requireAdmin, upload.single('image'), async (req, res) => 
         fit: 'inside',
         withoutEnlargement: true
       })
-      .webp({ quality: 80 })
+      .webp({ quality: 85 })
       .toFile(filepath)
 
     const url = `/uploads/${filename}`

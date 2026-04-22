@@ -230,11 +230,18 @@ router.get('/kiosk/:branch_id', requireAdmin, async (req, res) => {
 
 router.patch('/kiosk/:branch_id', requireAdmin, async (req, res) => {
   try {
-    const allowed = ['idle_timeout_sec','idle_video_url','show_queue_number',
-      'payment_methods_enabled','receipt_footer','theme_accent_color']
+    const allowed = ['session_timeout_secs','show_queue_number',
+      'payment_methods_enabled','receipt_footer','theme_accent_color',
+      'welcome_cta','welcome_cta_id','welcome_subtitle','welcome_subtitle_id',
+      'upsell_enabled','upsell_rules','suggest_services',
+      'upsell_heading','upsell_heading_id','upsell_switch_cta','upsell_keep_cta']
+    const jsonCols = new Set(['upsell_rules','suggest_services'])
     const sets = ['updated_at = NOW()']; const vals = []; let idx = 1
     for (const key of allowed) {
-      if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
+      if (req.body[key] !== undefined) {
+        sets.push(`${key} = $${idx++}`)
+        vals.push(jsonCols.has(key) ? JSON.stringify(req.body[key]) : req.body[key])
+      }
     }
     vals.push(req.params.branch_id)
     const { rows } = await pool.query(

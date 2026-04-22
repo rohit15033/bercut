@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
+import { kioskApi } from '../../../shared/api.js'
 
 function pickAnyAvailable(barbers) {
   const active = barbers.filter(b => b.status === 'active')
@@ -8,9 +10,57 @@ function pickAnyAvailable(barbers) {
   })[0]
 }
 
-export default function BarberSelection({ barbers, serviceIds, barber, setBarber, onNext, onBack }) {
+export default function BarberSelection({ barbers, services, serviceIds, barber, setBarber, onNext, onBack }) {
+  const [nextSlots, setNextSlots] = useState({})
+  const [loadingSlots, setLoadingSlots] = useState(false)
+
+  const dateStr = new Date().toISOString().slice(0, 10)
+  const totalDur = serviceIds.reduce((s, id) => {
+    const svc = services.find(x => x.id === id)
+    return s + (svc?.duration_minutes || svc?.duration_min || 30)
+  }, 0)
+
+  useEffect(() => {
+    const fetchAllNext = async () => {
+      setLoadingSlots(true)
+      const results = {}
+      await Promise.all(barbers.map(async b => {
+        if (['clocked_out', 'off'].includes(b.status)) return
+        try {
+          const slots = await kioskApi.get(`/slots?barber_id=${b.id}&date=${dateStr}&duration_min=${totalDur}`)
+          if (slots && slots.length > 0) {
+            results[b.id] = slots[0]
+          }
+        } catch (e) { console.error(e) }
+      }))
+      setNextSlots(results)
+      setLoadingSlots(false)
+    }
+    fetchAllNext()
+  }, [barbers, dateStr, totalDur])
+
+  // Show all barbers, but we will visually disable those who are unavailable
   const isAnySelected = barber?.source === 'any_available'
-  const assignedPreview = pickAnyAvailable(barbers)
+  
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
+  const checkIsNow = (timeStr) => {
+    if (!timeStr) return false
+    const [h, m] = timeStr.split(':').map(Number)
+    return (h * 60 + m) <= nowMin + 30
+  }
+
+  // Find the earliest time among all barbers for "Any Available"
+  const allAvailableTimes = Object.values(nextSlots).sort()
+  const earliestAnyTime = allAvailableTimes[0] || null
+  const anyCanNow = barbers.some(b => b.status === 'active' && checkIsNow(nextSlots[b.id]))
+
+  const sortedBarbers = [...barbers].sort((a, b) => {
+    const aU = ['clocked_out', 'off', 'on_break'].includes(a.status)
+    const bU = ['clocked_out', 'off', 'on_break'].includes(b.status)
+    if (aU && !bU) return 1
+    if (!aU && bU) return -1
+    return 0
+  })
 
   return (
     <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(16px,2.4vw,28px)' }}>
@@ -21,17 +71,30 @@ export default function BarberSelection({ barbers, serviceIds, barber, setBarber
       </div>
 
       <div className="barber-grid-fluid" style={{ marginBottom:'clamp(12px,1.6vw,18px)' }}>
-        {[null, ...barbers].map((b, i) => {
+        {[null, ...sortedBarbers].map((b, i) => {
           const isAny = b === null
           const data  = isAny
             ? { id: 0, name: 'Any Available', spec: 'Fastest queue', spec_id: 'Antrean tercepat', status: 'active' }
             : b
+            
+          const isUnavailable = !isAny && ['clocked_out', 'off', 'on_break'].includes(data.status)
           const sel = isAny ? isAnySelected : (barber?.id === data.id && !isAnySelected)
 
           return (
             <div key={isAny ? 'any' : data.id} className={`fu card ${sel ? 'sel' : ''}`}
-              style={{ animationDelay:`${i * 0.05}s`, padding:'clamp(14px,1.8vw,20px)', cursor:'pointer', textAlign:'center' }}
+              style={{ 
+                animationDelay:`${i * 0.05}s`, 
+                padding:'clamp(14px,1.8vw,20px)', 
+                cursor: isUnavailable ? 'not-allowed' : 'pointer', 
+                textAlign:'center',
+                opacity: isUnavailable ? 0.7 : 1,
+                background: isUnavailable ? '#f5f5f5' : (sel ? C.accent : C.white),
+                border: isUnavailable ? '1.5px dashed #ccc' : `1.5px solid ${sel ? C.accent : C.border}`,
+                transform: isUnavailable ? 'scale(0.96)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
               onClick={() => {
+                if (isUnavailable) return;
                 if (isAny) {
                   const pick = pickAnyAvailable(barbers)
                   setBarber({ ...pick, source: 'any_available' })
@@ -39,9 +102,19 @@ export default function BarberSelection({ barbers, serviceIds, barber, setBarber
                   setBarber(b)
                 }
               }}>
+              {isUnavailable && (
+                <div style={{ 
+                  position: 'absolute', top: 8, right: 8, 
+                  background: '#666', color: '#fff', 
+                  fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                  textTransform: 'uppercase', letterSpacing: '0.05em', zIndex: 2
+                }}>
+                  Unavailable
+                </div>
+              )}
               {/* Avatar */}
               <div style={{ position:'relative', width:'clamp(64px,9vw,90px)', height:'clamp(64px,9vw,90px)', margin:`0 auto clamp(8px,1.2vw,12px)` }}>
-                <svg width="100%" height="100%" viewBox="0 0 68 68">
+                <svg width="100%" height="100%" viewBox="0 0 68 68" style={{ filter: isUnavailable ? 'grayscale(100%) opacity(0.6)' : 'none' }}>
                   <circle cx="34" cy="34" r="34" fill={sel ? C.accentText : C.surface2} />
                   {isAny
                     ? <text x="34" y="44" textAnchor="middle" fontSize="26" fill={sel ? C.accent : C.topBg}>🎲</text>
@@ -70,22 +143,37 @@ export default function BarberSelection({ barbers, serviceIds, barber, setBarber
               {isAny ? (
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                   <div style={{ background:sel ? '#1a1a1814' : C.surface, borderRadius:8, padding:'4px 10px' }}>
-                    <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:sel ? C.accentText : C.text }}>Now ⚡</span>
+                    <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:sel ? C.accentText : C.text }}>
+                      {anyCanNow ? 'Now ⚡' : (earliestAnyTime ? `Next: ${earliestAnyTime}` : 'Check for slots')}
+                    </span>
                   </div>
-                  {assignedPreview && (
-                    <div style={{ fontSize:'clamp(9px,1vw,10px)', padding:'2px 7px', borderRadius:4, background:sel ? '#1a1a1814' : '#EFF6FF', color:sel ? C.accentText : '#2563EB', fontWeight:700 }}>
-                      → {assignedPreview.name}
+                  <div style={{ fontSize:'clamp(9px,1vw,10px)', color:sel ? '#1a1a1877' : C.muted, fontWeight:500 }}>
+                    Auto-assign fastest queue
+                  </div>
+                </div>
+              ) : (() => {
+                const bSlot = nextSlots[data.id]
+                const bIsNow = data.status === 'active' && checkIsNow(bSlot)
+                return (
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                    <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>
+                      <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color: isUnavailable ? '#888' : (sel ? C.accentText : C.text) }}>
+                        {bIsNow ? 'Now ⚡' 
+                          : data.status === 'clocked_out' ? 'No shift today'
+                          : data.status === 'on_break' ? 'On Break'
+                          : data.status === 'off' ? 'Off'
+                          : bSlot ? `Next: ${bSlot}`
+                          : 'Busy'}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ background:sel ? '#1a1a1814' : C.surface, borderRadius:8, padding:'4px 10px', display:'inline-block' }}>
-                  <span style={{ fontSize:'clamp(10px,1.2vw,12px)', color:sel ? C.accentText : C.muted }}>Status: </span>
-                  <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:sel ? C.accentText : C.text }}>
-                    {data.status === 'active' ? 'Available ✓' : data.status}
-                  </span>
-                </div>
-              )}
+                    {!isUnavailable && !bIsNow && bSlot && (
+                      <div style={{ fontSize:'clamp(9px,1.1vw,10px)', color:sel ? C.accentText : C.muted, fontWeight:500 }}>
+                        Earliest available
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })}

@@ -44,15 +44,15 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose }) {
         <div style={{ padding:'clamp(20px,2.6vw,28px)' }}>
           {view === 'choose' ? (
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-              <button onClick={() => setView('barber')}
-                style={{ padding:'clamp(16px,2.2vw,22px)', borderRadius:14, background:C.surface, color:C.text, fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:'clamp(16px,2vw,20px)', border:`2px solid ${C.border}`, cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', gap:14 }}>
-                <span style={{ fontSize:28 }}>✂</span>
-                <div><div>Barber / Kapster</div><div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, fontWeight:400, marginTop:2 }}>Clock in · Breaks · Queue</div></div>
-              </button>
               <button onClick={() => setView('staff')}
                 style={{ padding:'clamp(16px,2.2vw,22px)', borderRadius:14, background:C.topBg, color:C.white, fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:'clamp(16px,2vw,20px)', border:'none', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', gap:14 }}>
                 <span style={{ fontSize:28 }}>🔑</span>
                 <div><div>Staff / Admin</div><div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#888', fontWeight:400, marginTop:2 }}>Dashboard &amp; settings</div></div>
+              </button>
+              <button onClick={() => setView('barber')}
+                style={{ padding:'clamp(16px,2.2vw,22px)', borderRadius:14, background:C.surface, color:C.text, fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:'clamp(16px,2vw,20px)', border:`2px solid ${C.border}`, cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', gap:14 }}>
+                <span style={{ fontSize:28 }}>✂</span>
+                <div><div>Barber / Kapster</div><div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, fontWeight:400, marginTop:2 }}>Clock in · Breaks · Queue</div></div>
               </button>
             </div>
           ) : (

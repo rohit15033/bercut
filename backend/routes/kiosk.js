@@ -34,15 +34,35 @@ router.post('/register', async (req, res) => {
                   ORDER BY ii.category, ii.name`, [row.branch_id]),
       pool.query(`SELECT s.id, s.name, s.name_id, s.category, s.duration_minutes, s.badge,
                          s.description, s.image_url, s.mutex_group,
-                         COALESCE(bs.price, s.base_price) AS price
+                         COALESCE(bs.price, s.base_price) AS price,
+                         COALESCE((SELECT json_agg(sub_s.name) 
+                          FROM package_services ps 
+                          JOIN services sub_s ON sub_s.id = ps.service_id 
+                          WHERE ps.package_id = s.id), '[]'::json) as included_services,
+                         COALESCE((SELECT json_agg(sub_s.image_url) 
+                          FROM package_services ps 
+                          JOIN services sub_s ON sub_s.id = ps.service_id 
+                          WHERE ps.package_id = s.id AND sub_s.image_url IS NOT NULL), '[]'::json) as included_images
                   FROM services s
                   LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
                   WHERE s.is_active = true AND COALESCE(bs.is_available, true) = true
                   ORDER BY s.sort_order, s.name`, [row.branch_id]),
-      pool.query(`SELECT id, name, specialty, specialty_id, avatar_url, status
-                  FROM barbers
-                  WHERE branch_id = $1 AND is_active = true
-                  ORDER BY name`, [row.branch_id])
+      pool.query(`SELECT b.id, b.name, b.specialty, b.specialty_id, b.avatar_url, b.status,
+                         (SELECT c.label FROM chairs c
+                          LEFT JOIN chair_overrides co ON co.chair_id = c.id
+                          WHERE (c.barber_id = b.id OR co.barber_id = b.id)
+                            AND c.branch_id = $1
+                            AND (co.id IS NULL OR (co.date_from <= CURRENT_DATE AND (co.date_to IS NULL OR co.date_to >= CURRENT_DATE)))
+                          ORDER BY co.id DESC NULLS LAST
+                          LIMIT 1) AS chair_label
+                  FROM barbers b
+                  WHERE (b.branch_id = $1 OR EXISTS (
+                    SELECT 1 FROM chair_overrides co2
+                    JOIN chairs c2 ON c2.id = co2.chair_id
+                    WHERE co2.barber_id = b.id AND c2.branch_id = $1
+                      AND co2.date_from <= CURRENT_DATE AND (co2.date_to IS NULL OR co2.date_to >= CURRENT_DATE)
+                  )) AND b.is_active = true
+                  ORDER BY b.name`, [row.branch_id])
     ])
 
     // Map service categories to match frontend expectation (Haircut vs haircut)
@@ -64,6 +84,7 @@ router.post('/register', async (req, res) => {
       spec: b.specialty,
       spec_id: b.specialty_id,
       image_url: b.avatar_url,
+      chair: b.chair_label,
       // Map 'available' to 'active' if that's what the frontend expects
       status: b.status === 'available' ? 'active' : b.status
     }))

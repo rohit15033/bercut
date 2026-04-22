@@ -1,6 +1,7 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
 const { requireAdmin, requireKioskOrAdmin } = require('../middleware/auth')
+const { emitEvent } = require('./events')
 
 // GET /api/attendance?branch_id=&barber_id=&month=&year=
 router.get('/', requireAdmin, async (req, res) => {
@@ -26,18 +27,20 @@ router.get('/', requireAdmin, async (req, res) => {
 // POST /api/attendance/clock-in
 router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
   try {
-    const { barber_id, branch_id } = req.body
+    const { barber_id, branch_id, force = false } = req.body
     if (!barber_id || !branch_id) return res.status(400).json({ message: 'barber_id and branch_id required' })
     const today = new Date().toISOString().slice(0, 10)
     // Check if already clocked in today (WITA)
     const existing = await pool.query(
       `SELECT id FROM attendance
-       WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2`,
+       WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2 AND clock_out_at IS NULL`,
       [barber_id, today])
-    if (existing.rows.length) return res.status(409).json({ message: 'Already clocked in today' })
+    if (existing.rows.length && !force) return res.status(409).json({ message: 'Already clocked in today' })
     const { rows } = await pool.query(
       'INSERT INTO attendance (barber_id, branch_id, clock_in_at) VALUES ($1,$2,NOW()) RETURNING *',
       [barber_id, branch_id])
+    await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [barber_id])
+    emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
     res.status(201).json(rows[0])
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
@@ -47,15 +50,18 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
   try {
     const { barber_id } = req.body
     if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
-    const today = new Date().toISOString().slice(0, 10)
     const { rows } = await pool.query(
       `UPDATE attendance SET clock_out_at = NOW()
-       WHERE barber_id = $1
-         AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2
-         AND clock_out_at IS NULL
+       WHERE id = (
+         SELECT id FROM attendance
+         WHERE barber_id = $1 AND clock_out_at IS NULL
+         ORDER BY clock_in_at DESC LIMIT 1
+       )
        RETURNING *`,
-      [barber_id, today])
+      [barber_id])
     if (!rows.length) return res.status(409).json({ message: 'No open clock-in found' })
+    await pool.query(`UPDATE barbers SET status = 'clocked_out' WHERE id = $1`, [barber_id])
+    emitEvent(rows[0].branch_id, 'barber_update', { barber_id, status: 'clocked_out' })
     res.json(rows[0])
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })

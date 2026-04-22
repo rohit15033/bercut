@@ -1,6 +1,6 @@
 const router  = require('express').Router()
 const pool    = require('../config/db')
-const { requireAdmin, requireKiosk } = require('../middleware/auth')
+const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
 
 const XENDIT_SECRET = process.env.XENDIT_SECRET_KEY || ''
@@ -106,6 +106,61 @@ router.post('/webhook', async (req, res) => {
 
     res.json({ received: true })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// POST /api/payments/manual-confirm — confirm manual payment (cash/external card)
+router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { booking_id, payment_method = 'cash', tip_amount = 0 } = req.body
+    if (!booking_id) return res.status(400).json({ message: 'booking_id required' })
+
+    await client.query('BEGIN')
+    
+    // 1. Get booking details
+    const bkRes = await client.query('SELECT barber_id, branch_id, status FROM bookings WHERE id = $1', [booking_id])
+    if (!bkRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'Booking not found' })
+    }
+    const booking = bkRes.rows[0]
+
+    // 2. Update booking status
+    const { rows } = await client.query(
+      `UPDATE bookings 
+       SET status = 'completed', 
+           payment_status = 'paid', 
+           paid_at = NOW(), 
+           payment_method = $1,
+           completed_at = COALESCE(completed_at, NOW())
+       WHERE id = $2
+       RETURNING *`,
+      [payment_method, booking_id]
+    )
+
+    // 3. Record tip if any
+    if (parseFloat(tip_amount) > 0) {
+      await client.query(
+        `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (booking_id) DO UPDATE SET amount = EXCLUDED.amount`,
+        [booking_id, booking.barber_id, booking.branch_id, tip_amount, payment_method]
+      )
+    }
+
+    await client.query('COMMIT')
+    
+    // 4. Notify kiosk
+    emitEvent(booking.branch_id, 'payment_complete', { booking_id, status: 'completed' })
+    
+    res.json(rows[0])
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
 })
 
 // POST /api/payments/tip — manual tip from kiosk tip screen

@@ -29,7 +29,18 @@ router.get('/', async (req, res) => {
                 AND bk.branch_id = $1
                 AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE),
                0
-             ) AS any_available_count
+             ) AS any_available_count,
+             (SELECT guest_name FROM bookings bk 
+              WHERE bk.barber_id = b.id AND bk.status = 'in_progress'
+              AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE LIMIT 1) AS serving_customer_name,
+             (SELECT guest_name FROM bookings bk 
+              WHERE bk.barber_id = b.id AND bk.status = 'confirmed'
+              AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE 
+              ORDER BY bk.scheduled_at ASC LIMIT 1) AS next_customer_name,
+             (SELECT TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') FROM bookings bk 
+              WHERE bk.barber_id = b.id AND bk.status = 'confirmed'
+              AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE 
+              ORDER BY bk.scheduled_at ASC LIMIT 1) AS next_slot_time
       FROM barbers b
       WHERE b.is_active = true
         AND (
@@ -99,8 +110,8 @@ router.post('/', requireAdmin, async (req, res) => {
     const { name, branch_id, specialty, specialty_id, phone, pin, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order } = req.body
     const pin_hash = pin ? await bcrypt.hash(String(pin), 10) : null
     const { rows } = await pool.query(
-      `INSERT INTO barbers (name, branch_id, specialty, specialty_id, phone, pin_hash, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      `INSERT INTO barbers (name, branch_id, specialty, specialty_id, phone, pin_hash, status, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,'clocked_out',$7,$8,$9,$10,$11,$12) RETURNING *`,
       [name, branch_id, specialty, specialty_id, phone, pin_hash, commission_rate || 40, base_salary || 0, pay_type || 'salary_plus_commission', daily_rate || 0, avatar_url, sort_order || 0])
     res.status(201).json(rows[0])
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
@@ -122,6 +133,16 @@ router.patch('/:id', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// PATCH /api/barbers/:id/status
+router.patch('/:id/status', requireKiosk, async (req, res) => {
+  try {
+    const { status } = req.body
+    const { rows } = await pool.query('UPDATE barbers SET status = $1 WHERE id = $2 RETURNING *', [status, req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Barber not found' })
+    res.json(rows[0])
+  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // POST /api/barbers/:id/verify-pin — kiosk PIN verification
 router.post('/:id/verify-pin', requireKiosk, async (req, res) => {
   try {
@@ -138,7 +159,9 @@ router.post('/:id/verify-pin', requireKiosk, async (req, res) => {
 router.get('/:id/services', requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT s.id, s.name, s.category, COALESCE(bs.is_enabled, true) AS is_enabled
+      `SELECT s.id, s.name, s.category, 
+              COALESCE(bs.is_enabled, true) AS is_enabled,
+              bs.commission_rate
        FROM services s
        LEFT JOIN barber_services bs ON bs.barber_id = $1 AND bs.service_id = s.id
        WHERE s.is_active = true ORDER BY s.sort_order`, [req.params.id])
@@ -149,11 +172,13 @@ router.get('/:id/services', requireAdmin, async (req, res) => {
 // PUT /api/barbers/:id/services/:svc_id
 router.put('/:id/services/:svc_id', requireAdmin, async (req, res) => {
   try {
-    const { is_enabled } = req.body
+    const { is_enabled, commission_rate } = req.body
     await pool.query(
-      `INSERT INTO barber_services (barber_id, service_id, is_enabled) VALUES ($1,$2,$3)
-       ON CONFLICT (barber_id, service_id) DO UPDATE SET is_enabled=$3`,
-      [req.params.id, req.params.svc_id, is_enabled !== false])
+      `INSERT INTO barber_services (barber_id, service_id, is_enabled, commission_rate) 
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (barber_id, service_id) 
+       DO UPDATE SET is_enabled=$3, commission_rate=COALESCE($4, barber_services.commission_rate)`,
+      [req.params.id, req.params.svc_id, is_enabled !== false, commission_rate || null])
     res.status(204).end()
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })

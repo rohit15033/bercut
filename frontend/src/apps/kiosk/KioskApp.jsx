@@ -146,9 +146,14 @@ function KioskContent({ config }) {
   const branchName = config.branch_name
   const settings   = config.settings || {}
   const services   = config.services   || []
-  const barbers    = config.barbers    || []
   const menuItems  = config.menu_items || []
+
   const feedbackTags = config.feedback_tags || []
+  const [barbers, setBarbers] = useState(config.barbers || [])
+
+  useEffect(() => {
+    if (config.barbers) setBarbers(config.barbers)
+  }, [config])
 
   const [step,             setStep]             = useState(0)
   const [cart,             setCart]             = useState([])
@@ -182,16 +187,22 @@ function KioskContent({ config }) {
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
   }, [])
 
-  // SSE — payment_trigger fires PaymentTakeover
+  // SSE — real-time updates
   useSSE(branchId, {
     payment_trigger: (data) => {
-      if (data?.booking_id) {
+      if (data?.booking_id || data?.id) {
         setPaymentBooking(data)
         setPaymentPending(true)
       }
     },
     kiosk_settings_update: () => {
       window.location.reload()
+    },
+    barber_update: (data) => {
+      if (!data?.barber_id) return
+      setBarbers(prev => prev.map(b =>
+        b.id == data.barber_id ? { ...b, status: data.status === 'available' ? 'active' : data.status } : b
+      ))
     }
   })
 
@@ -256,6 +267,7 @@ function KioskContent({ config }) {
           branchId={branchId}
           onClose={() => setBarberPanelOpen(false)}
           onHome={() => { setBarberPanelOpen(false); reset() }}
+          triggerPayment={(data) => { setPaymentBooking(data); setPaymentPending(true) }}
         />
       )}
       {staffPanelOpen && (
@@ -287,6 +299,7 @@ function KioskContent({ config }) {
           setCart={setCart}
           ownColorToggles={ownColorToggles}
           setOwnColorToggles={setOwnColorToggles}
+          settings={settings}
           onNext={() => setStep(2)}
           onBack={() => { if (group.length > 0) { setStep(5) } else { setStep(0) } }}
         />
@@ -294,6 +307,7 @@ function KioskContent({ config }) {
       {step === 2 && (
         <BarberSelection
           barbers={barbers}
+          services={services}
           serviceIds={cart}
           barber={barber}
           setBarber={setBarber}
@@ -342,6 +356,7 @@ function KioskContent({ config }) {
           cart={cart}
           services={services}
           barber={barber}
+          barbers={barbers}
           slot={slot}
           pointsUsed={pointsUsed}
           onAddAnother={addAnother}

@@ -17,23 +17,37 @@ router.post('/image', requireAdmin, upload.single('image'), async (req, res) => 
       return res.status(400).json({ message: 'No file uploaded' })
     }
 
-    const filename = `img_${Date.now()}_${Math.round(Math.random() * 1E9)}.webp`
     const uploadDir = path.join(__dirname, '../public/uploads')
-    const filepath = path.join(uploadDir, filename)
 
     // Ensure directory exists
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true })
     }
 
-    // Process image: resize to max 800px width/height, convert to webp, optimize
-    await sharp(req.file.buffer)
-      .resize(800, 800, {
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .webp({ quality: 85 })
-      .toFile(filepath)
+    // Try sharp processing first (webp conversion + resize)
+    try {
+      const filename = `img_${Date.now()}_${Math.round(Math.random() * 1E9)}.webp`
+      const filepath = path.join(uploadDir, filename)
+
+      await sharp(req.file.buffer)
+        .resize(800, 800, {
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .webp({ quality: 85 })
+        .toFile(filepath)
+
+      const url = `/uploads/${filename}`
+      return res.json({ url })
+    } catch (sharpErr) {
+      console.warn('Sharp processing failed, saving original file:', sharpErr.message)
+    }
+
+    // Fallback: save original file as-is
+    const ext = path.extname(req.file.originalname || '.jpg').toLowerCase() || '.jpg'
+    const filename = `img_${Date.now()}_${Math.round(Math.random() * 1E9)}${ext}`
+    const filepath = path.join(uploadDir, filename)
+    fs.writeFileSync(filepath, req.file.buffer)
 
     const url = `/uploads/${filename}`
     res.json({ url })

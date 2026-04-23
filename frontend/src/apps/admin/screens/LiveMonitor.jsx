@@ -259,7 +259,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
   }
 
   const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
-  const total = selectedSvcs.reduce((a, s) => a + Number(s.branch_price ?? s.base_price ?? 0), 0)
+  const total = selectedSvcs.reduce((a, s) => a + Number(s.price ?? 0), 0)
 
   async function handleSave() {
     if (!customerName.trim()) { alert('Customer name is required'); return }
@@ -372,7 +372,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
                       onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.white }}
                       onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: sel ? '#15803D' : T.text }}>{svc.name}{sel ? ' ✓' : ''}</span>
-                      <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.branch_price ?? svc.base_price)}</span>
+                      <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.price)}</span>
                     </button>
                   )
                 })}
@@ -386,7 +386,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
               <div key={sv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.name}</div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.branch_price ?? sv.base_price)}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.price)}</div>
                 </div>
                 <button onClick={() => toggleSvc(sv)}
                   style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
@@ -428,6 +428,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
   const [loadingDetail, setLoadingDetail] = useState(true)
   const [allServices,   setAllServices]   = useState([])
   const [currentSvcs,   setCurrentSvcs]   = useState([])
+  const [originalSvcIds, setOriginalSvcIds] = useState([])
   const [barberId,      setBarberId]      = useState(booking.barber_id || '')
   const [saving,        setSaving]        = useState(false)
   const [addOpen,       setAddOpen]       = useState(false)
@@ -445,7 +446,9 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
       api.get(`/bookings/${booking.id}`),
       api.get(`/services?branch_id=${booking.branch_id}`),
     ]).then(([bk, svcs]) => {
-      setCurrentSvcs(bk.booking_services || [])
+      const loaded = (bk.services || []).map(s => ({ service_id: s.service_id, service_name: s.name, price: s.price }))
+      setCurrentSvcs(loaded)
+      setOriginalSvcIds(loaded.map(s => s.service_id))
       setAllServices(Array.isArray(svcs) ? svcs.filter(s => s.is_active !== false) : [])
     }).catch(() => {}).finally(() => setLoadingDetail(false))
   }, [booking.id, booking.branch_id])
@@ -462,7 +465,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
     setCurrentSvcs(p => [...p, {
       service_id:    svc.id,
       service_name:  svc.name,
-      price_charged: svc.branch_price ?? svc.base_price ?? 0,
+      price_charged: svc.price ?? 0,
     }])
     setAddOpen(false)
   }
@@ -470,10 +473,9 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
   async function handleSave() {
     setSaving(true)
     try {
-      const originalIds = (booking.booking_services || []).map(s => s.service_id)
-      const nowIds      = currentSvcs.map(s => s.service_id)
-      const toRemove    = originalIds.filter(id => !nowIds.includes(id))
-      const toAdd       = nowIds.filter(id => !originalIds.includes(id))
+      const nowIds   = currentSvcs.map(s => s.service_id)
+      const toRemove = originalSvcIds.filter(id => !nowIds.includes(id))
+      const toAdd    = nowIds.filter(id => !originalSvcIds.includes(id))
 
       // Build scheduled_at ISO string from local date+time inputs
       const newISO    = new Date(`${schedDate}T${schedTime}:00`).toISOString()
@@ -561,7 +563,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                         onMouseEnter={e => e.currentTarget.style.background = T.white}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{svc.name}</span>
-                        <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.branch_price ?? svc.base_price)}</span>
+                        <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.price)}</span>
                       </button>
                     ))}
                   </div>

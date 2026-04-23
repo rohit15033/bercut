@@ -841,7 +841,7 @@ router.post('/admin-force', requireAdmin, async (req, res) => {
       `INSERT INTO bookings
          (booking_number, branch_id, customer_id, barber_id, scheduled_at, status, source,
           guest_name, guest_phone, notes)
-       VALUES ($1,$2,$3,$4,$5,'confirmed','admin_force',$6,$7,$8)
+       VALUES ($1,$2,$3,$4,$5,'confirmed','walk_in',$6,$7,$8)
        RETURNING *`,
       [bookingNumber, branch_id, customerId, barber_id, scheduledISO,
        customer_name || null, customer_phone || null, notes || null])

@@ -196,7 +196,6 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
     setBusyId(bookingId)
     try {
       const res = await kioskApi.patch(`/bookings/${bookingId}/complete`)
-      triggerPayment({ ...res, id: res.id || bookingId, booking_id: res.id || bookingId, amount: res.total_amount })
       onClose()
     } catch (err) { alert(err.message || 'Gagal menyelesaikan layanan') }
     finally { setBusyId(null) }

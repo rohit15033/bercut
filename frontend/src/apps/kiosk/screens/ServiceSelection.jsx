@@ -125,7 +125,6 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
               ? <button className="btnP" onClick={handleSuggestProceed}>Add {extras.length} service{extras.length > 1 ? 's' : ''} & continue →</button>
               : <button className="btnP" onClick={() => onConfirm(baseCart, null)}>Continue with selection →</button>
             }
-            <button className="btnG" onClick={() => onConfirm(baseCart, null)} style={{ width: '100%', fontSize: 'clamp(12px,1.4vw,14px)' }}>Skip · Lewati</button>
           </div>
         </div>
       </div>

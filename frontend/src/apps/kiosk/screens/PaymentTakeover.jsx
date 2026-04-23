@@ -277,17 +277,22 @@ function GroupTipRow({ bk, tipPresets, groupTips, setGroupTips }) {
     setCustomVal('')
   }
 
+  const customerName = bk.customer_name || bk.guest_name || 'Guest'
+  const serviceNames = Array.isArray(bk.booking_services)
+    ? bk.booking_services.map(s => s.name).join(', ')
+    : (bk.booking_services ? String(bk.booking_services) : '')
+  const rowTotal = parseFloat(bk.total_amount ?? (parseFloat(bk.subtotal || 0) + parseFloat(bk.extras_total || 0) - (bk.points_redeemed || 0) * 10000))
+
   return (
     <div style={{ background:'#1a1a18', borderRadius:10, padding:'clamp(10px,1.4vw,14px)', marginBottom:8 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:8, borderBottom:'1px solid #2a2a28', marginBottom:8 }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.5vw,14px)', fontWeight:700, color:C.accent }}>✂ {bk.barber_name}</div>
-          <div style={{ fontSize:'clamp(10px,1.1vw,11px)', color:'#555' }}>
-            {bk.booking_services?.map(s => s.name).join(', ') || ''}
-          </div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.accent, fontSize:'clamp(13px,1.6vw,16px)' }}>{customerName}</div>
+          {bk.barber_name && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginTop:1 }}>✂ {bk.barber_name}</div>}
+          {serviceNames && <div style={{ fontSize:'clamp(10px,1.1vw,11px)', color:'#555', marginTop:1 }}>{serviceNames}</div>}
         </div>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:C.white }}>
-          {fmt(parseFloat(bk.subtotal || 0) + parseFloat(bk.extras_total || 0) - (bk.points_redeemed || 0) * 10000)}
+          {fmt(rowTotal)}
         </div>
       </div>
       <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:'#555', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.1em' }}>Tip for {bk.barber_name}?</div>

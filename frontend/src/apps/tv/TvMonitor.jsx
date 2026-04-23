@@ -16,7 +16,7 @@ const T = {
 
 function formatTime(iso) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' })
 }
 
 function ChairCard({ barber, booking }) {
@@ -203,7 +203,7 @@ export default function TvMonitor() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '2.8vw', fontWeight: 900, color: '#FFFFFF', lineHeight: 1 }}>{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div style={{ fontSize: '2.8vw', fontWeight: 900, color: '#FFFFFF', lineHeight: 1 }}>{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' })}</div>
           <div style={{ fontSize: '1.1vw', color: T.accent, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.6vw', marginTop: '0.2vw' }}>
             <div style={{ width: '0.6vw', height: '0.6vw', borderRadius: '50%', background: T.accent, animation: 'pulse 2s infinite' }} />
             LIVE SYSTEM

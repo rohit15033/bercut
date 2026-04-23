@@ -8,7 +8,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   const [slots, setSlots] = useState([])
   const [loadingSlots, setLoadingSlots] = useState(true)
 
-  const today = new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long' })
+  const today = new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', timeZone:'Asia/Makassar' })
   const dateStr = new Date().toISOString().slice(0, 10)
 
   const totalDur = serviceIds.reduce((s, id) => {

@@ -161,7 +161,7 @@ export default function Topbar({ step, cartTotal, groupCount, branchName, onHome
                 {groupCount > 0 && <span style={{ color:'#888', fontSize:'clamp(10px,1.2vw,12px)', marginLeft:6 }}>{groupCount+1} people</span>}
               </div>
             )}
-            <span style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>{time.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' })}</span>
+            <span style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>{time.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', timeZone:'Asia/Makassar' })}</span>
             <button onClick={onQuickPanel}
               style={{ background:'#1a1a18', border:'1px solid #2a2a28', borderRadius:8, width:'clamp(32px,3.8vw,40px)', height:'clamp(32px,3.8vw,40px)', color:'#888', fontSize:'clamp(16px,2vw,20px)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', letterSpacing:'0.05em', flexShrink:0 }}>
               ···

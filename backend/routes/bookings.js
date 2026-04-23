@@ -533,6 +533,11 @@ router.patch('/:id/cancel', requireKioskOrAdmin, async (req, res) => {
        WHERE id = $1 AND status IN ('confirmed','in_progress') RETURNING *`,
       [req.params.id, reason || null])
     if (!rows.length) return res.status(409).json({ message: 'Cannot cancel' })
+    
+    // Auto-set barber back to available if it was in progress
+    await pool.query("UPDATE barbers SET status = 'available' WHERE id = $1", [rows[0].barber_id])
+    emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'available' })
+    
     emitEvent(rows[0].branch_id, 'booking_cancelled', rows[0])
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }

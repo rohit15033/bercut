@@ -167,8 +167,9 @@ function KioskContent({ config }) {
   const [selectedExtras,   setSelectedExtras]   = useState([])
   const [booking,      setBooking]      = useState(null)
   const [pointsUsed,   setPointsUsed]   = useState(0)
-  const [paymentPending,  setPaymentPending]  = useState(false)
-  const [paymentBooking,  setPaymentBooking]  = useState(null)
+  const [paymentPending,   setPaymentPending]   = useState(false)
+  const [paymentBooking,   setPaymentBooking]   = useState(null)
+  const [paymentRefreshKey, setPaymentRefreshKey] = useState(0)
   const [barberPanelOpen, setBarberPanelOpen] = useState(false)
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
   const [quickPanelOpen,  setQuickPanelOpen]  = useState(false)
@@ -226,7 +227,10 @@ function KioskContent({ config }) {
       setLastQueueUpdate(Date.now())
     },
     new_booking: () => setLastQueueUpdate(Date.now()),
-    booking_updated: () => setLastQueueUpdate(Date.now()),
+    booking_updated: () => {
+      setLastQueueUpdate(Date.now())
+      setPaymentRefreshKey(k => k + 1)
+    },
     booking_started: () => setLastQueueUpdate(Date.now()),
     booking_cancelled: () => setLastQueueUpdate(Date.now()),
     payment_complete: () => setLastQueueUpdate(Date.now()),
@@ -298,6 +302,7 @@ function KioskContent({ config }) {
           branchId={branchId}
           feedbackTags={feedbackTags}
           settings={settings}
+          refreshKey={paymentRefreshKey}
           onDone={() => { setPaymentPending(false); setPaymentBooking(null) }}
         />
       )}

@@ -18,9 +18,12 @@ function formatTime(iso) {
 }
 
 const BOOKING_STATUS = {
-  in_progress: { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0', label: 'In Service' },
-  confirmed:   { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', label: 'Waiting'    },
+  in_progress:     { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0', label: 'In Service'      },
+  confirmed:       { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', label: 'Waiting'         },
+  pending_payment: { bg: '#FDF4FF', color: '#7C3AED', border: '#E9D5FF', label: 'Pending Payment' },
 }
+
+const EDITABLE_STATUSES = new Set(['confirmed', 'in_progress', 'pending_payment'])
 
 const CANCEL_REASONS = [
   "Customer no-show — didn't arrive", 'Customer request', 'Barber unavailable',
@@ -213,11 +216,396 @@ function ElapsedBar({ startedAt, estDurationMin, nextSlot }) {
   )
 }
 
+// ── NewBookingModal ───────────────────────────────────────────────────────────
+
+function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClose }) {
+  const pad = n => String(n).padStart(2, '0')
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+  // Round time to nearest 30 min
+  const rMin = Math.round(now.getMinutes() / 30) * 30
+  const rH   = rMin === 60 ? now.getHours() + 1 : now.getHours()
+  const initTime = `${pad(rH % 24)}:${pad(rMin % 60)}`
+
+  const [branchId,     setBranchId]     = useState(defaultBranchId || branches[0]?.id || '')
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone,setCustomerPhone]= useState('')
+  const [barberId,     setBarberId]     = useState('')
+  const [date,         setDate]         = useState(todayStr)
+  const [time,         setTime]         = useState(initTime)
+  const [notes,        setNotes]        = useState('')
+  const [allServices,  setAllServices]  = useState([])
+  const [selectedSvcs, setSelectedSvcs] = useState([])
+  const [svcOpen,      setSvcOpen]      = useState(false)
+  const [saving,       setSaving]       = useState(false)
+
+  const branchBarbers = allBarbers.filter(b => b.branch_id === branchId)
+
+  // Reset barber and services when branch changes
+  useEffect(() => {
+    setBarberId(branchBarbers[0]?.id || '')
+    setSelectedSvcs([])
+    if (!branchId) return
+    api.get(`/services?branch_id=${branchId}`)
+      .then(d => setAllServices(Array.isArray(d) ? d.filter(s => s.is_active !== false) : []))
+      .catch(() => setAllServices([]))
+  }, [branchId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleSvc(svc) {
+    setSelectedSvcs(p =>
+      p.find(s => s.id === svc.id)
+        ? p.filter(s => s.id !== svc.id)
+        : [...p, svc])
+  }
+
+  const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
+  const total = selectedSvcs.reduce((a, s) => a + Number(s.branch_price ?? s.base_price ?? 0), 0)
+
+  async function handleSave() {
+    if (!customerName.trim()) { alert('Customer name is required'); return }
+    if (!barberId)            { alert('Please select a barber'); return }
+    if (!selectedSvcs.length) { alert('Please select at least one service'); return }
+    setSaving(true)
+    try {
+      await api.post('/bookings/admin-force', {
+        branch_id:       branchId,
+        customer_name:   customerName.trim(),
+        customer_phone:  customerPhone.trim() || undefined,
+        barber_id:       barberId,
+        service_ids:     selectedSvcs.map(s => s.id),
+        date,
+        time,
+        notes: notes.trim() || undefined,
+      })
+      onSave()
+      onClose()
+    } catch (err) { alert(err.message || 'Failed to create booking') }
+    finally { setSaving(false) }
+  }
+
+  const labelStyle = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6, display: 'block' }
+  const inputStyle = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, boxSizing: 'border-box' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="admin-card" style={{ width: 540, maxHeight: '88vh', display: 'flex', flexDirection: 'column', animation: 'scaleIn 0.18s ease both' }}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid ' + T.border, flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 16, color: T.text }}>New Booking</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Force-create — bypasses availability conflicts</div>
+          </div>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Branch */}
+          {branches.length > 1 && (
+            <div>
+              <label style={labelStyle}>Branch</label>
+              <select value={branchId} onChange={e => setBranchId(e.target.value)} style={inputStyle}>
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Customer */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Customer Name <span style={{ color: '#DC2626' }}>*</span></label>
+              <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g. John Doe"
+                style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Phone (optional)</label>
+              <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="08xx…"
+                style={inputStyle} />
+            </div>
+          </div>
+
+          {/* Date + Time */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Date</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Time</label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={inputStyle} />
+            </div>
+          </div>
+
+          {/* Barber */}
+          <div>
+            <label style={labelStyle}>Barber <span style={{ color: '#DC2626' }}>*</span></label>
+            <select value={barberId} onChange={e => setBarberId(e.target.value)} style={inputStyle}>
+              <option value="">— select barber —</option>
+              {branchBarbers.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}{b.status === 'clocked_out' ? ' (not clocked in)' : b.status === 'on_break' ? ' (on break)' : b.status === 'busy' ? ' (in service)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Services */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>Services <span style={{ color: '#DC2626' }}>*</span></label>
+              <button onClick={() => setSvcOpen(o => !o)}
+                style={{ padding: '4px 12px', borderRadius: 6, border: '1.5px solid ' + T.topBg, background: svcOpen ? T.topBg : 'transparent', color: svcOpen ? T.white : T.topBg, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                {svcOpen ? '▲ Close' : '+ Add'}
+              </button>
+            </div>
+
+            {svcOpen && (
+              <div style={{ background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
+                {allServices.length === 0 && <div style={{ padding: '12px 14px', fontSize: 12, color: T.muted }}>No services found for this branch</div>}
+                {allServices.map(svc => {
+                  const sel = selectedSvcs.find(s => s.id === svc.id)
+                  return (
+                    <button key={svc.id} onClick={() => toggleSvc(svc)}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '10px 14px', background: sel ? '#F0FDF4' : 'none', border: 'none', borderBottom: '1px solid ' + T.surface, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.white }}
+                      onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: sel ? '#15803D' : T.text }}>{svc.name}{sel ? ' ✓' : ''}</span>
+                      <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.branch_price ?? svc.base_price)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {selectedSvcs.length === 0 && !svcOpen && (
+              <div style={{ fontSize: 12, color: T.muted, padding: '8px 0' }}>No services selected</div>
+            )}
+            {selectedSvcs.map(sv => (
+              <div key={sv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.branch_price ?? sv.base_price)}</div>
+                </div>
+                <button onClick={() => toggleSvc(sv)}
+                  style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              </div>
+            ))}
+
+            {selectedSvcs.length > 0 && (
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.text2, textAlign: 'right', paddingTop: 4 }}>
+                Total: {fmt(total)}
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label style={labelStyle}>Notes (optional)</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any special instructions…" rows={2}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid ' + T.border, display: 'flex', gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 9, background: T.surface, color: T.text2, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ flex: 2, padding: 10, borderRadius: 9, background: T.topBg, color: T.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 14, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Creating…' : 'Create Booking'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── EditBookingModal ──────────────────────────────────────────────────────────
+
+function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
+  const [loadingDetail, setLoadingDetail] = useState(true)
+  const [allServices,   setAllServices]   = useState([])
+  const [currentSvcs,   setCurrentSvcs]   = useState([])
+  const [barberId,      setBarberId]      = useState(booking.barber_id || '')
+  const [saving,        setSaving]        = useState(false)
+  const [addOpen,       setAddOpen]       = useState(false)
+
+  // Parse booking's scheduled_at into local date + time strings for inputs
+  const initDT = booking.scheduled_at ? new Date(booking.scheduled_at) : new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const initDate = `${initDT.getFullYear()}-${pad(initDT.getMonth()+1)}-${pad(initDT.getDate())}`
+  const initTime = `${pad(initDT.getHours())}:${pad(initDT.getMinutes())}`
+  const [schedDate, setSchedDate] = useState(initDate)
+  const [schedTime, setSchedTime] = useState(initTime)
+
+  useEffect(() => {
+    Promise.all([
+      api.get(`/bookings/${booking.id}`),
+      api.get(`/services?branch_id=${booking.branch_id}`),
+    ]).then(([bk, svcs]) => {
+      setCurrentSvcs(bk.booking_services || [])
+      setAllServices(Array.isArray(svcs) ? svcs.filter(s => s.is_active !== false) : [])
+    }).catch(() => {}).finally(() => setLoadingDetail(false))
+  }, [booking.id, booking.branch_id])
+
+  const currentIds  = currentSvcs.map(s => s.service_id)
+  const addableSvcs = allServices.filter(s => !currentIds.includes(s.id))
+  const branchBarbers = allBarbers.filter(b => b.branch_id === booking.branch_id && b.status !== 'clocked_out')
+
+  function removeService(serviceId) {
+    setCurrentSvcs(p => p.filter(s => s.service_id !== serviceId))
+  }
+
+  function addService(svc) {
+    setCurrentSvcs(p => [...p, {
+      service_id:    svc.id,
+      service_name:  svc.name,
+      price_charged: svc.branch_price ?? svc.base_price ?? 0,
+    }])
+    setAddOpen(false)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const originalIds = (booking.booking_services || []).map(s => s.service_id)
+      const nowIds      = currentSvcs.map(s => s.service_id)
+      const toRemove    = originalIds.filter(id => !nowIds.includes(id))
+      const toAdd       = nowIds.filter(id => !originalIds.includes(id))
+
+      // Build scheduled_at ISO string from local date+time inputs
+      const newISO    = new Date(`${schedDate}T${schedTime}:00`).toISOString()
+      const origISO   = booking.scheduled_at ? new Date(booking.scheduled_at).toISOString() : null
+      const timeChanged = newISO !== origISO
+
+      await api.patch(`/bookings/${booking.id}/admin-update`, {
+        barber_id:          barberId !== booking.barber_id ? barberId : undefined,
+        add_service_ids:    toAdd,
+        remove_service_ids: toRemove,
+        scheduled_at:       timeChanged ? newISO : undefined,
+      })
+      onSave()
+      onClose()
+    } catch (err) { alert(err.message || 'Failed to save') }
+    finally { setSaving(false) }
+  }
+
+  const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="admin-card" style={{ width: 520, maxHeight: '85vh', display: 'flex', flexDirection: 'column', animation: 'scaleIn 0.18s ease both' }}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid ' + T.border, flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 16, color: T.text }}>Edit Booking</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
+                {booking.booking_number} · {booking.customer_name}
+              </div>
+            </div>
+            <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>✕</button>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 24px' }}>
+          {loadingDetail ? (
+            <div style={{ textAlign: 'center', color: T.muted, padding: '32px 0' }}>Loading…</div>
+          ) : (
+            <>
+              {/* Barber */}
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 8 }}>Barber</div>
+                <select value={barberId} onChange={e => setBarberId(e.target.value)}
+                  style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, cursor: 'pointer' }}>
+                  {branchBarbers.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}{b.status === 'busy' ? ' (In Service)' : b.status === 'on_break' ? ' (On Break)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Scheduled time */}
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 8 }}>Scheduled Time</div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <input type="date" value={schedDate} onChange={e => setSchedDate(e.target.value)}
+                    style={{ flex: 1, padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+                  <input type="time" value={schedTime} onChange={e => setSchedTime(e.target.value)}
+                    style={{ width: 110, padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+                </div>
+              </div>
+
+              {/* Services */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted }}>Services</div>
+                  <button onClick={() => setAddOpen(o => !o)}
+                    style={{ padding: '4px 12px', borderRadius: 6, border: '1.5px solid ' + T.topBg, background: addOpen ? T.topBg : 'transparent', color: addOpen ? T.white : T.topBg, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    + Add Service
+                  </button>
+                </div>
+
+                {/* Add service dropdown */}
+                {addOpen && (
+                  <div style={{ background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
+                    {addableSvcs.length === 0 && (
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: T.muted }}>All services already added</div>
+                    )}
+                    {addableSvcs.map(svc => (
+                      <button key={svc.id} onClick={() => addService(svc)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderBottom: '1px solid ' + T.surface, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = T.white}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{svc.name}</span>
+                        <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.branch_price ?? svc.base_price)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Current services */}
+                {currentSvcs.length === 0 && (
+                  <div style={{ padding: '12px 0', fontSize: 12, color: T.muted }}>No services — add at least one</div>
+                )}
+                {currentSvcs.map(sv => (
+                  <div key={sv.service_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 7, background: T.white }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.service_name || sv.name}</div>
+                      <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.price_charged)}</div>
+                    </div>
+                    <button onClick={() => removeService(sv.service_id)}
+                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid ' + T.border, display: 'flex', gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 9, background: T.surface, color: T.text2, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving || loadingDetail || currentSvcs.length === 0}
+            style={{ flex: 2, padding: 10, borderRadius: 9, background: T.topBg, color: T.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 14, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── ActionMenu ────────────────────────────────────────────────────────────────
 
-function ActionMenu({ booking, barberBusy, onCancel, onStart }) {
+function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit }) {
   const [open, setOpen] = useState(false)
-  const isInProg = booking.status === 'in_progress'
+  const isInProg    = booking.status === 'in_progress'
+  const isEditable  = EDITABLE_STATUSES.has(booking.status)
+  const isPendingPay = booking.status === 'pending_payment'
 
   function item(label, color, hoverBg, onClick, disabled = false) {
     return (
@@ -239,10 +627,11 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart }) {
         ···
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 9999, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden' }}
+        <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 9999, minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden' }}
           onMouseLeave={() => setOpen(false)}>
-          {!isInProg && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
-          {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
+          {isEditable && item('✏ Edit Barber / Services', T.text, T.bg, () => onEdit(booking))}
+          {!isInProg && !isPendingPay && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
+          {!isPendingPay && item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
         </div>
       )}
     </div>
@@ -288,7 +677,7 @@ function BarberActionMenu({ barber, onAction }) {
   )
 }
 
-function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
+function BookingRow({ booking, onCancel, onStart, onEdit, allBarbers, barberBusy, nextSlot }) {
   const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
   
@@ -321,7 +710,7 @@ function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <ActionMenu booking={booking} barberBusy={barberBusy} onCancel={onCancel} onStart={onStart} />
+          <ActionMenu booking={booking} barberBusy={barberBusy} onCancel={onCancel} onStart={onStart} onEdit={onEdit} allBarbers={allBarbers} />
         </div>
       </div>
 
@@ -336,10 +725,10 @@ function BookingRow({ booking, onCancel, onStart, barberBusy, nextSlot }) {
 
 // ── BarberQueueBlock ──────────────────────────────────────────────────────────
 
-function BarberQueueBlock({ barber, onCancel, onStart, onBarberAction }) {
+function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onBarberAction }) {
   const [expanded, setExpanded] = useState(true)
   const cfg        = BARBER_STATUS[barber.status] || BARBER_STATUS.available
-  const activeQ    = (barber.queue || []).filter(b => b.status === 'in_progress' || b.status === 'confirmed')
+  const activeQ    = (barber.queue || []).filter(b => EDITABLE_STATUSES.has(b.status))
   const alertCount = (barber.queue || []).filter(b => b.client_not_arrived).length
 
   return (
@@ -399,8 +788,8 @@ function BarberQueueBlock({ barber, onCancel, onStart, onBarberAction }) {
               
               return (
                 <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
-                  onCancel={onCancel} onStart={onStart}
-                  barberBusy={barber.status === 'busy'}
+                  onCancel={onCancel} onStart={onStart} onEdit={onEdit}
+                  allBarbers={allBarbers} barberBusy={barber.status === 'busy'}
                   nextSlot={nextSlotTime}
                 />
               )
@@ -414,7 +803,7 @@ function BarberQueueBlock({ barber, onCancel, onStart, onBarberAction }) {
 
 // ── BranchSection ─────────────────────────────────────────────────────────────
 
-function BranchSection({ branch, barbers, onCancel, onStart, onBarberAction }) {
+function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit, onBarberAction }) {
   const inService    = barbers.filter(b => b.status === 'busy').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
@@ -435,7 +824,7 @@ function BranchSection({ branch, barbers, onCancel, onStart, onBarberAction }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
-          <BarberQueueBlock key={b.id} barber={b} onCancel={onCancel} onStart={onStart} onBarberAction={onBarberAction} />
+          <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onBarberAction={onBarberAction} />
         ))}
       </div>
     </div>
@@ -450,7 +839,9 @@ export default function LiveMonitor() {
   const [branchFilter,    setBranchFilter]     = useState('all')
   const [cancelModal,     setCancelModal]      = useState(null)
   const [forceStartModal, setForceStartModal]  = useState(null)
+  const [editModal,       setEditModal]        = useState(null)
   const [showPaxModal,    setShowPaxModal]     = useState(false)
+  const [showNewBooking,  setShowNewBooking]   = useState(false)
   const [showPaxPanel,    setShowPaxPanel]     = useState(false)
   const [paxOutEvents,    setPaxOutEvents]     = useState([])
   const [lastRefresh,     setLastRefresh]      = useState(new Date())
@@ -466,7 +857,7 @@ export default function LiveMonitor() {
         api.get('/barbers/all'),
       ])
       const branchList = Array.isArray(brs) ? brs.filter(b => b.is_active !== false) : []
-      const bookings   = Array.isArray(bks) ? bks.filter(b => ['confirmed', 'in_progress'].includes(b.status)) : []
+      const bookings   = Array.isArray(bks) ? bks.filter(b => EDITABLE_STATUSES.has(b.status)) : []
       const barberList = Array.isArray(bars) ? bars : []
 
       const bkByBarber = {}
@@ -562,8 +953,25 @@ export default function LiveMonitor() {
         <ForceStartModal booking={forceStartModal.booking} barberName={fsBarberName}
           onConfirm={handleConfirmForceStart} onClose={() => setForceStartModal(null)} />
       )}
+      {editModal && (
+        <EditBookingModal
+          booking={editModal.booking}
+          allBarbers={barberQueues}
+          onSave={loadData}
+          onClose={() => setEditModal(null)}
+        />
+      )}
       {showPaxModal && (
         <LogPaxOutModal branches={branches} onLog={e => setPaxOutEvents(p => [e, ...p])} onClose={() => setShowPaxModal(false)} />
+      )}
+      {showNewBooking && (
+        <NewBookingModal
+          branches={branches}
+          allBarbers={barberQueues}
+          defaultBranchId={branchFilter !== 'all' ? branchFilter : (branches[0]?.id || '')}
+          onSave={loadData}
+          onClose={() => setShowNewBooking(false)}
+        />
       )}
 
       {/* Page header */}
@@ -578,10 +986,16 @@ export default function LiveMonitor() {
           </div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Admin queue control — all branches · Updated {refreshStr}</div>
         </div>
-        <button onClick={() => setShowPaxModal(true)}
-          style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-          + Log Pax Out
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowNewBooking(true)}
+            style={{ padding: '9px 16px', borderRadius: 8, background: '#16A34A', color: T.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            + New Booking
+          </button>
+          <button onClick={() => setShowPaxModal(true)}
+            style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            + Log Pax Out
+          </button>
+        </div>
       </div>
 
       {/* KPI strip */}
@@ -629,8 +1043,10 @@ export default function LiveMonitor() {
         const branchBarbers = barberQueues.filter(b => b.branch_id === branch.id)
         return (
           <BranchSection key={branch.id} branch={branch} barbers={branchBarbers}
+            allBarbers={barberQueues}
             onCancel={bk => setCancelModal({ booking: bk })}
             onStart={bk => setForceStartModal({ booking: bk })}
+            onEdit={bk => setEditModal({ booking: bk })}
             onBarberAction={handleBarberAction}
           />
         )

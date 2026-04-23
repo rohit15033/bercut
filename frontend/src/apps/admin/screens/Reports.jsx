@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { tokens as T } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
+import * as XLSX from 'xlsx'
 
 const fmt  = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const fmtM = n => {
@@ -233,6 +234,8 @@ export default function Reports() {
   const [branchId,     setBranchId]     = useState('')
   const [activeTab,    setActiveTab]    = useState('revenue')
   const [branches,     setBranches]     = useState([])
+  const [exportOpen,   setExportOpen]   = useState(false)
+  const exportRef                       = useRef(null)
 
   // Revenue
   const [revData,       setRevData]       = useState([])
@@ -255,6 +258,11 @@ export default function Reports() {
   const [delayData,     setDelayData]     = useState([])
   const [delayLoad,     setDelayLoad]     = useState(false)
   const [resolvedIds,   setResolvedIds]   = useState(new Set())
+
+  // Transactions
+  const [txData,        setTxData]        = useState([])
+  const [txLoad,        setTxLoad]        = useState(false)
+  const [expandedTx,    setExpandedTx]    = useState(new Set())
 
   const { from: dateFrom, to: dateTo } = getPeriodDates(filterPeriod, filterFrom, filterTo)
 
@@ -305,6 +313,15 @@ export default function Reports() {
       .then(d => setDelayData((d || []).filter(r => Number(r.delay_minutes || 0) > 5)))
       .catch(() => setDelayData([]))
       .finally(() => setDelayLoad(false))
+  }, [activeTab, branchId, dateFrom, dateTo])
+
+  useEffect(() => {
+    if (activeTab !== 'transactions') return
+    setTxLoad(true)
+    api.get('/reports/transactions?' + buildQs())
+      .then(d => setTxData(d || []))
+      .catch(() => setTxData([]))
+      .finally(() => setTxLoad(false))
   }, [activeTab, branchId, dateFrom, dateTo])
 
   useEffect(() => {
@@ -376,14 +393,75 @@ export default function Reports() {
     ? `${fmtDate(filterFrom)} – ${fmtDate(filterTo)}`
     : filterPeriod === 'today' ? 'Today' : filterPeriod === 'week' ? 'This Week' : 'This Month'
 
+  function buildTxRows() {
+    const headers = ['Booking','Date','Scheduled','Started','Ended','Client','Phone','Barber','Service','Rate%','Commission','Amount','Tip','Payment']
+    const rows = [headers]
+    txData.forEach(r => {
+      const svcs = Array.isArray(r.services) ? r.services : []
+      const base = [
+        r.booking_number || '', r.date || '', r.time_scheduled || '',
+        r.time_started || '', r.time_ended || '',
+        r.customer_name || '', r.customer_phone || '', r.barber_name || '',
+      ]
+      if (svcs.length === 0) {
+        rows.push([...base, '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
+      } else {
+        svcs.forEach(sv => {
+          rows.push([
+            ...base,
+            sv.service_name || '',
+            sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
+            sv.commission != null ? sv.commission : '',
+            r.total_amount || '', r.tip || '', r.payment_method || '',
+          ])
+        })
+      }
+    })
+    return rows
+  }
+
   function exportCSV() {
-    const rows = [['Period','Bookings','Revenue','Tips']]
-    revData.forEach(r => rows.push([r.period, r.booking_count, r.revenue, r.tips_total]))
-    const csv  = rows.map(r => r.join(',')).join('\n')
-    const a    = document.createElement('a')
-    a.href     = 'data:text/csv,' + encodeURIComponent(csv)
-    a.download = `bercut-revenue-${todayISO()}.csv`
+    setExportOpen(false)
+    let rows, filename
+    if (activeTab === 'transactions') {
+      rows = buildTxRows()
+      filename = `bercut-transactions-${todayISO()}.csv`
+    } else {
+      rows = [['Period','Bookings','Revenue','Tips']]
+      revData.forEach(r => rows.push([r.period, r.booking_count, r.revenue, r.tips_total]))
+      filename = `bercut-revenue-${todayISO()}.csv`
+    }
+    const escape = v => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s }
+    const csv = rows.map(r => r.map(escape).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
+    a.download = filename
     a.click()
+  }
+
+  function exportXLSX() {
+    setExportOpen(false)
+    let rows, filename, sheetName
+    if (activeTab === 'transactions') {
+      rows = buildTxRows()
+      filename  = `bercut-transactions-${todayISO()}.xlsx`
+      sheetName = 'Transactions'
+    } else {
+      rows = [['Period','Bookings','Revenue','Tips']]
+      revData.forEach(r => rows.push([r.period, r.booking_count, r.revenue, r.tips_total]))
+      filename  = `bercut-revenue-${todayISO()}.xlsx`
+      sheetName = 'Revenue'
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    // Bold header row
+    const range = XLSX.utils.decode_range(ws['!ref'])
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: 0, c })]
+      if (cell) cell.s = { font: { bold: true } }
+    }
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    XLSX.writeFile(wb, filename)
   }
 
   function SortHeader({ label, sortKey }) {
@@ -397,10 +475,11 @@ export default function Reports() {
   }
 
   const TABS = [
-    { key: 'revenue',     label: 'Revenue'           },
-    { key: 'demand',      label: 'Demand'             },
-    { key: 'delay',       label: 'Delay Report'       },
-    { key: 'performance', label: 'Barber Performance' },
+    { key: 'revenue',      label: 'Revenue'           },
+    { key: 'demand',       label: 'Demand'             },
+    { key: 'delay',        label: 'Delay Report'       },
+    { key: 'performance',  label: 'Barber Performance' },
+    { key: 'transactions', label: 'Transactions'       },
   ]
 
   return (
@@ -412,9 +491,31 @@ export default function Reports() {
           <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>Reports</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Revenue, pax out demand analysis, and delay incidents</div>
         </div>
-        <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-          ↓ Export CSV
-        </button>
+        <div ref={exportRef} style={{ position: 'relative' }}>
+          {exportOpen && <div onClick={() => setExportOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />}
+          <button onClick={() => setExportOpen(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            ↓ Export
+            <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>▾</span>
+          </button>
+          {exportOpen && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100, background: T.white, borderRadius: 10, border: '1px solid ' + T.border, boxShadow: '0 8px 24px rgba(0,0,0,0.10)', overflow: 'hidden', minWidth: 160 }}>
+              <button onClick={exportCSV}
+                style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '11px 16px', background: 'none', border: 'none', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, color: T.text, cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={e => e.currentTarget.style.background = T.bg}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 15 }}>📄</span> CSV
+              </button>
+              <div style={{ height: 1, background: T.surface }} />
+              <button onClick={exportXLSX}
+                style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '11px 16px', background: 'none', border: 'none', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, color: T.text, cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={e => e.currentTarget.style.background = T.bg}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 15 }}>📊</span> Excel (.xlsx)
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Global filters */}
@@ -688,6 +789,137 @@ export default function Reports() {
           Incidents auto-generated when actual start exceeds scheduled time by more than 5 minutes.
         </div>
       </>}
+
+      {/* ── TRANSACTIONS TAB ── */}
+      {activeTab === 'transactions' && (() => {
+        const txTotal     = txData.reduce((s, r) => s + Number(r.total_amount || 0), 0)
+        const txTipsTotal = txData.reduce((s, r) => s + Number(r.tip || 0), 0)
+        const txCommTotal = txData.reduce((s, r) => {
+          const svcs = Array.isArray(r.services) ? r.services : []
+          return s + svcs.reduce((a, sv) => a + Number(sv.commission || 0), 0)
+        }, 0)
+
+        // Booking | Scheduled | Started | Ended | Client | Phone | Barber | Service | Rate | Commission | Amount | Tip
+        const COL  = '0.8fr 0.5fr 0.5fr 0.5fr 0.9fr 0.85fr 0.9fr 1.1fr 0.4fr 0.7fr 0.7fr 0.45fr'
+        const HDRS = ['Booking', 'Scheduled', 'Started', 'Ended', 'Client', 'Phone', 'Barber', 'Service', 'Rate', 'Commission', 'Amount', 'Tip']
+
+        function toggleTx(id) {
+          setExpandedTx(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+        }
+
+        return (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+              {[
+                { label: 'Total Transactions', value: txData.length,      accent: T.text    },
+                { label: 'Total Revenue',       value: fmtM(txTotal),      accent: '#16A34A' },
+                { label: 'Total Commission',    value: fmtM(txCommTotal),  accent: '#D97706' },
+                { label: 'Tips Collected',      value: fmtM(txTipsTotal),  accent: '#9333EA' },
+              ].map((k, i) => (
+                <div key={k.label} className="admin-card" style={{ padding: '18px 20px', animation: `fadeUp 0.25s ease ${i * 0.05}s both` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted, marginBottom: 6 }}>{k.label}</div>
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 24, color: k.accent, lineHeight: 1 }}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="admin-card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + T.border, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: T.text }}>Transaction Detail</div>
+                <div style={{ fontSize: 12, color: T.muted }}>{txData.length} transactions · click multi-service rows to expand</div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                {/* Header row */}
+                <div style={{ display: 'grid', gridTemplateColumns: COL, padding: '9px 18px', borderBottom: '1px solid ' + T.surface, background: T.bg, minWidth: 900 }}>
+                  {HDRS.map((h, i) => (
+                    <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: i === 8 ? '#D97706' : T.muted }}>{h}</div>
+                  ))}
+                </div>
+
+                <div style={{ maxHeight: 'calc(100vh - 380px)', minHeight: 160, overflowY: 'auto', minWidth: 900 }}>
+                  {txLoad && <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 14 }}>Loading…</div>}
+                  {!txLoad && txData.length === 0 && (
+                    <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 14 }}>No completed transactions for this period</div>
+                  )}
+                  {txData.map(r => {
+                    const svcs       = Array.isArray(r.services) ? r.services : []
+                    const isExpanded = expandedTx.has(r.id)
+                    const multiSvc   = svcs.length > 1
+                    const sv0        = svcs[0]
+                    const svcLabel   = svcs.length === 0 ? '—'
+                      : svcs.length === 1 ? sv0.service_name
+                      : svcs.length === 2 ? `${svcs[0].service_name} · ${svcs[1].service_name}`
+                      : `${svcs[0].service_name} · ${svcs[1].service_name} +${svcs.length - 2}`
+                    const rowComm    = svcs.reduce((a, sv) => a + Number(sv.commission || 0), 0)
+                    const rowRate    = !multiSvc && sv0 ? sv0.commission_rate : null
+
+                    return (
+                      <div key={r.id}>
+                        {/* Main booking row */}
+                        <div
+                          onClick={() => multiSvc && toggleTx(r.id)}
+                          style={{ display: 'grid', gridTemplateColumns: COL, padding: '12px 18px', borderBottom: '1px solid ' + T.surface, alignItems: 'center', cursor: multiSvc ? 'pointer' : 'default', background: isExpanded ? T.surface : 'transparent', transition: 'background 0.1s' }}
+                          onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = T.bg }}
+                          onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            {multiSvc && <span style={{ fontSize: 10, color: T.muted, flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>}
+                            <span style={{ fontSize: 11, color: T.muted, fontFamily: 'monospace' }}>{r.booking_number || '—'}</span>
+                          </div>
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: T.muted }}>{r.time_scheduled || '—'}</div>
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: r.time_started ? T.text2 : T.muted }}>{r.time_started || '—'}</div>
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: r.time_ended ? T.text2 : T.muted }}>{r.time_ended || '—'}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{r.customer_name || '—'}</div>
+                          <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{r.customer_phone || '—'}</div>
+                          <div style={{ fontSize: 12, color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{r.barber_name || '—'}</div>
+                          <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{svcLabel}</div>
+
+                          {/* Rate — show for single-service; "mix" badge for multi */}
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
+                            {multiSvc
+                              ? <span style={{ fontSize: 9, padding: '2px 5px', borderRadius: 4, background: T.surface, color: T.muted }}>mix</span>
+                              : rowRate != null ? `${Number(rowRate).toFixed(0)}%` : '—'}
+                          </div>
+
+                          {/* Commission */}
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
+                            {rowComm > 0 ? fmtM(rowComm) : '—'}
+                          </div>
+
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: T.text }}>{fmtM(r.total_amount)}</div>
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: Number(r.tip) > 0 ? '#9333EA' : T.muted }}>{Number(r.tip) > 0 ? fmtM(r.tip) : '—'}</div>
+                        </div>
+
+                        {/* Expanded per-service rows */}
+                        {isExpanded && svcs.map((sv, si) => (
+                          <div key={si} style={{ display: 'grid', gridTemplateColumns: COL, padding: '8px 18px 8px 32px', borderBottom: si < svcs.length - 1 ? '1px dashed ' + T.surface : '2px solid ' + T.border, background: '#FAFAF9', alignItems: 'center' }}>
+                            <div /><div /><div /><div /><div /><div /><div />
+                            {/* Service name + price sub-label */}
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{sv.service_name}</div>
+                              <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{fmtM(sv.price)}</div>
+                            </div>
+                            {/* Rate */}
+                            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
+                              {sv.commission_rate != null ? `${Number(sv.commission_rate).toFixed(0)}%` : '—'}
+                            </div>
+                            {/* Commission */}
+                            <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
+                              {sv.commission != null ? fmtM(sv.commission) : '—'}
+                            </div>
+                            <div /><div />
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* ── BARBER PERFORMANCE TAB ── */}
       {activeTab === 'performance' && <>

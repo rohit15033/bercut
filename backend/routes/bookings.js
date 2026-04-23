@@ -711,6 +711,68 @@ router.patch('/:id/set-group', requireKiosk, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// ── PATCH /api/bookings/:id/admin-update ─────────────────────────────────────
+router.patch('/:id/admin-update', requireAdmin, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const bkRes = await client.query(
+      `SELECT * FROM bookings WHERE id = $1 AND status IN ('confirmed','in_progress','pending_payment')`,
+      [req.params.id])
+    if (!bkRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'Booking not found or not editable' })
+    }
+    const booking = bkRes.rows[0]
+    const { barber_id, add_service_ids = [], remove_service_ids = [], scheduled_at } = req.body
+
+    const updates = []
+    const uVals   = []
+    let   uIdx    = 1
+    if (barber_id && barber_id !== booking.barber_id) {
+      updates.push(`barber_id = $${uIdx++}`); uVals.push(barber_id)
+    }
+    if (scheduled_at) {
+      updates.push(`scheduled_at = $${uIdx++}`); uVals.push(scheduled_at)
+    }
+    if (updates.length) {
+      uVals.push(booking.id)
+      await client.query(`UPDATE bookings SET ${updates.join(', ')} WHERE id = $${uIdx}`, uVals)
+    }
+    if (remove_service_ids.length) {
+      await client.query(
+        'DELETE FROM booking_services WHERE booking_id = $1 AND service_id = ANY($2::uuid[])',
+        [booking.id, remove_service_ids])
+    }
+    if (add_service_ids.length) {
+      const existingRes = await client.query('SELECT service_id FROM booking_services WHERE booking_id = $1', [booking.id])
+      const existingIds = existingRes.rows.map(r => r.service_id)
+      const newIds = add_service_ids.filter(id => !existingIds.includes(id))
+      if (newIds.length) {
+        const svcRows = await client.query(
+          `SELECT s.id, COALESCE(bs.price, s.base_price) AS price
+           FROM services s
+           LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+           WHERE s.id = ANY($2::uuid[]) AND s.is_active = true`,
+          [booking.branch_id, newIds])
+        for (const svc of svcRows.rows) {
+          await client.query(
+            'INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1,$2,$3,true)',
+            [booking.id, svc.id, svc.price])
+        }
+      }
+    }
+    await client.query('COMMIT')
+    emitEvent(booking.branch_id, 'booking_updated', { id: booking.id })
+    const updated = await pool.query('SELECT * FROM bookings WHERE id = $1', [booking.id])
+    res.json(updated.rows[0])
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally { client.release() }
+})
+
 // ── DELETE /api/bookings/:id/services/:service_id ────────────────────────────
 router.delete('/:id/services/:service_id', requireKiosk, async (req, res) => {
   try {
@@ -727,6 +789,86 @@ router.delete('/:id/services/:service_id', requireKiosk, async (req, res) => {
     
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// ── POST /api/bookings/admin-force ───────────────────────────────────────────
+// Admin-only force create: bypasses barber availability + service branch checks
+router.post('/admin-force', requireAdmin, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const {
+      branch_id, customer_name, customer_phone,
+      barber_id, service_ids = [],
+      date, time, notes,
+    } = req.body
+
+    if (!branch_id)        return res.status(400).json({ message: 'branch_id required' })
+    if (!barber_id)        return res.status(400).json({ message: 'barber_id required' })
+    if (!service_ids.length) return res.status(400).json({ message: 'At least one service required' })
+
+    const bookingDate = date || new Date().toISOString().slice(0, 10)
+
+    // Resolve or create customer
+    let customerId = null
+    if (customer_phone) {
+      const phone = customer_phone.startsWith('+') ? customer_phone : '+62' + customer_phone.replace(/^0/, '')
+      const existing = await client.query('SELECT id FROM customers WHERE phone = $1', [phone])
+      if (existing.rows.length) {
+        customerId = existing.rows[0].id
+        if (customer_name) await client.query('UPDATE customers SET name = $1 WHERE id = $2', [customer_name, customerId])
+      } else {
+        const ins = await client.query('INSERT INTO customers (phone, name) VALUES ($1,$2) RETURNING id', [phone, customer_name || null])
+        customerId = ins.rows[0].id
+      }
+    }
+
+    // Services — use branch price if available, otherwise base_price (no availability gate)
+    const svcRows = await client.query(
+      `SELECT s.id, s.name, COALESCE(bs.price, s.base_price) AS price
+       FROM services s
+       LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+       WHERE s.id = ANY($2::uuid[]) AND s.is_active = true`,
+      [branch_id, service_ids])
+    if (!svcRows.rows.length) return res.status(400).json({ message: 'No valid services found' })
+
+    const subtotal = svcRows.rows.reduce((a, s) => a + parseInt(s.price), 0)
+
+    const bookingNumber = await nextBookingNumber(client, branch_id, bookingDate)
+    const scheduledISO  = scheduledAt(bookingDate, time || null)
+
+    const bkInsert = await client.query(
+      `INSERT INTO bookings
+         (booking_number, branch_id, customer_id, barber_id, scheduled_at, status, source,
+          guest_name, guest_phone, notes)
+       VALUES ($1,$2,$3,$4,$5,'confirmed','admin_force',$6,$7,$8)
+       RETURNING *`,
+      [bookingNumber, branch_id, customerId, barber_id, scheduledISO,
+       customer_name || null, customer_phone || null, notes || null])
+    const booking = bkInsert.rows[0]
+
+    for (const svc of svcRows.rows) {
+      await client.query(
+        'INSERT INTO booking_services (booking_id, service_id, price_charged) VALUES ($1,$2,$3)',
+        [booking.id, svc.id, svc.price])
+    }
+
+    await client.query('COMMIT')
+
+    const barberRow  = await pool.query('SELECT name FROM barbers WHERE id = $1', [barber_id])
+    const resp = {
+      ...booking,
+      total_amount:  subtotal,
+      barber_name:   barberRow.rows[0]?.name || '',
+      service_names: svcRows.rows.map(r => r.name).join(', '),
+    }
+    emitEvent(branch_id, 'new_booking', resp)
+    res.status(201).json(resp)
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally { client.release() }
 })
 
 module.exports = router

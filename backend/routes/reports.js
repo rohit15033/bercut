@@ -152,4 +152,53 @@ router.get('/delay', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// GET /api/reports/transactions?branch_id=&date_from=&date_to=&limit=&offset=
+router.get('/transactions', requireAdmin, async (req, res) => {
+  try {
+    const { branch_id, date_from, date_to, limit = 200, offset = 0 } = req.query
+    const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
+    if (branch_id) { conds.push(`bk.branch_id = $${idx++}`); vals.push(branch_id) }
+    if (date_from) { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') >= $${idx++}`); vals.push(date_from) }
+    if (date_to)   { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') <= $${idx++}`); vals.push(date_to) }
+    const where = 'WHERE ' + conds.join(' AND ')
+    const { rows } = await pool.query(
+      `SELECT bk.id, bk.booking_number,
+              DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar')              AS date,
+              TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS time_scheduled,
+              TO_CHAR(bk.started_at   AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS time_started,
+              TO_CHAR(bk.completed_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS time_ended,
+              COALESCE(bk.guest_name, c.name)  AS customer_name,
+              COALESCE(bk.guest_phone, c.phone) AS customer_phone,
+              b.name AS barber_name,
+              bk.payment_method,
+              COALESCE(t.amount, 0) AS tip,
+              ${totalAmt} AS total_amount,
+              (SELECT json_agg(
+                json_build_object(
+                  'service_name',    s.name,
+                  'price',           bsv.price_charged,
+                  'commission_rate', COALESCE(bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate),
+                  'commission',      ROUND(bsv.price_charged *
+                                       COALESCE(bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)
+                ) ORDER BY s.name
+              )
+              FROM booking_services bsv
+              JOIN services s ON s.id = bsv.service_id
+              LEFT JOIN barber_services bs_barber
+                ON bs_barber.barber_id = bk.barber_id AND bs_barber.service_id = bsv.service_id
+              LEFT JOIN branch_services bs_branch
+                ON bs_branch.service_id = bsv.service_id AND bs_branch.branch_id = bk.branch_id
+              WHERE bsv.booking_id = bk.id) AS services
+       FROM bookings bk
+       LEFT JOIN customers c ON c.id = bk.customer_id
+       LEFT JOIN barbers b ON b.id = bk.barber_id
+       LEFT JOIN tips t ON t.booking_id = bk.id
+       ${where}
+       ORDER BY bk.scheduled_at DESC
+       LIMIT $${idx++} OFFSET $${idx++}`,
+      [...vals, limit, offset])
+    res.json(rows)
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 module.exports = router

@@ -411,7 +411,7 @@ function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCove
 }
 
 // ── Main PaymentTakeover ───────────────────────────────────────────────────────
-export default function PaymentTakeover({ bookingData, branchId, feedbackTags = [], settings = {}, onDone }) {
+export default function PaymentTakeover({ bookingData, branchId, feedbackTags = [], settings = {}, refreshKey = 0, onDone }) {
   const isGroup   = !!(bookingData?.group_id)
   const groupId   = bookingData?.group_id
   const bookingId = bookingData?.booking_id || bookingData?.id
@@ -428,6 +428,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
   const tipPresets = settings.tipPresets || [10000, 20000, 50000, 100000]
 
   useEffect(() => {
+    if (phase === 'receipt' || phase === 'failed') return
     if (isGroup && groupId) {
       kioskApi.get(`/booking-groups/${groupId}`)
         .then(data => { setGroupBks(data); setPhase('payment') })
@@ -437,7 +438,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         .then(data => { setBooking(data); setPhase('payment') })
         .catch(() => setPhase('payment'))
     }
-  }, [isGroup, groupId, bookingId])
+  }, [isGroup, groupId, bookingId, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Single booking flow
   const amount    = parseFloat(booking?.total_amount ?? bookingData?.amount ?? 0)

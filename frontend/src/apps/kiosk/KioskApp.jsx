@@ -229,6 +229,7 @@ function KioskContent({ config }) {
     booking_updated: () => setLastQueueUpdate(Date.now()),
     booking_started: () => setLastQueueUpdate(Date.now()),
     booking_cancelled: () => setLastQueueUpdate(Date.now()),
+    payment_complete: () => setLastQueueUpdate(Date.now()),
   })
 
   // Idle timer

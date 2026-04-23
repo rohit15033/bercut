@@ -27,9 +27,13 @@ function ChairCard({ barber, booking }) {
 
   let elapsed = 0
   let pct = 0
+  let startedStr = '—'
+  let estDoneStr = '—'
   if (isInProg && booking.started_at) {
     elapsed = Math.floor((Date.now() - new Date(booking.started_at).getTime()) / 60000)
     pct = Math.min(100, Math.round((elapsed / duration) * 100))
+    startedStr = formatTime(booking.started_at)
+    estDoneStr = formatTime(new Date(new Date(booking.started_at).getTime() + duration * 60000).toISOString())
   }
 
   return (
@@ -86,6 +90,10 @@ function ChairCard({ barber, booking }) {
           </div>
           <div style={{ height: '0.8vw', background: T.border, borderRadius: '0.4vw', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: T.accent, transition: 'width 1s linear' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5vw', fontSize: '0.85vw', fontWeight: 600 }}>
+            <span style={{ color: T.muted }}>Started {startedStr}</span>
+            <span style={{ color: T.muted }}>Est. Done {estDoneStr}</span>
           </div>
         </div>
       )}

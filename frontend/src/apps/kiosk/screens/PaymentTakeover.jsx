@@ -1,9 +1,60 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
 
 const fmt  = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 const fmtK = n => n >= 1000 ? `${n / 1000}K` : String(n)
+
+const TIP_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
+const DEBOUNCE_MS = 150
+
+const TipNumpad = memo(function TipNumpad({ value, onChange }) {
+  const [pressedKey, setPressedKey] = useState(null)
+  const lastPressRef = useRef({})
+
+  const handleKey = (key) => {
+    if (!key) return
+    const now = Date.now()
+    if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
+    lastPressRef.current[key] = now
+    if (key === '⌫') { onChange(value.slice(0, -1)); return }
+    onChange(value + key)
+  }
+
+  const press = (key) => ({
+    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
+    onPointerUp:     ()  => setPressedKey(null),
+    onPointerLeave:  ()  => setPressedKey(null),
+    onPointerCancel: ()  => setPressedKey(null),
+  })
+
+  const displayVal = parseInt(value, 10) || 0
+
+  return (
+    <div style={{ background:'#1a1a18', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)', marginTop:10 }}>
+      {/* Display */}
+      <div style={{ background:'#111', borderRadius:8, padding:'clamp(8px,1vh,11px) clamp(12px,1.4vw,16px)', fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,26px)', fontWeight:700, color: displayVal > 0 ? C.accent : '#555', letterSpacing:'0.04em', textAlign:'right' }}>
+        {displayVal > 0 ? fmt(displayVal) : 'Enter amount…'}
+      </div>
+      {/* Numpad rows */}
+      {TIP_PAD.map((row, ri) => (
+        <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
+          {row.map((key, ki) => {
+            if (!key) return <div key={ki} style={{ flex:1 }} />
+            const isBs = key === '⌫'
+            const isP  = pressedKey === key
+            return (
+              <button key={ki} {...press(key)}
+                style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize: isBs ? 'clamp(16px,2vw,21px)' : 'clamp(18px,2.2vw,23px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: isP ? (isBs ? '#555' : C.accent) : (isBs ? '#333' : '#2a2a28'), color: isP ? (isBs ? '#FFF' : C.accentText) : '#FFF', boxShadow: isP ? 'inset 0 2px 4px rgba(0,0,0,0.4)' : '0 2px 3px rgba(0,0,0,0.3)', transform: isP ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+                {key}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+})
 
 // ── Receipt Screen ─────────────────────────────────────────────────────────────
 function ReceiptScreen({ booking, grand, onNext }) {
@@ -375,10 +426,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
                 </div>
 
                 {tip === 'custom' && (
-                  <input value={customTip} onChange={e => setCustomTip(e.target.value)}
-                    placeholder="Enter amount (Rp)…"
-                    inputMode="numeric"
-                    style={{ marginTop:10, width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:10, border:`2px solid ${C.accent}`, fontSize:'clamp(14px,1.6vw,16px)', background:'#111', color:C.white, fontFamily:"'Inter',sans-serif", fontWeight:700 }} />
+                  <TipNumpad value={customTip} onChange={setCustomTip} />
                 )}
 
                 <div style={{ display:'flex', justifyContent:'center', marginTop:10 }}>

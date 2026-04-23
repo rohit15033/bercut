@@ -169,7 +169,7 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
       kioskApi.get(`/inventory/kiosk-menu?branch_id=${branchId}`),
     ])
       .then(([b, bk, menu]) => {
-        setBarbers(Array.isArray(b)    ? b.filter(x => x.is_active !== false) : [])
+        setBarbers(Array.isArray(b)    ? b : [])
         setBookings(Array.isArray(bk)  ? bk : [])
         setMenuItems(Array.isArray(menu) ? menu : [])
       })

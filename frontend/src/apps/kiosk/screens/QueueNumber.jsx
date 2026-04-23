@@ -145,6 +145,17 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
                 <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.text2 }}>
                   <strong style={{ fontWeight:800 }}>{barberName}</strong> ✂ akan memanggil nama Anda · will call your name
                 </div>
+                <button
+                  onClick={callBarber}
+                  disabled={calling}
+                  style={{ marginTop:10, padding:'clamp(10px,1.4vh,13px) clamp(20px,3vw,32px)', borderRadius:10, border:`2px solid ${calling ? C.border : C.topBg}`, background:calling ? C.surface2 : C.topBg, color:calling ? C.muted : C.white, fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:800, cursor:calling ? 'not-allowed' : 'pointer', transition:'all 0.15s' }}>
+                  {calling ? 'Memanggil…' : '✂ Panggil Kapster'}
+                </button>
+                {escalateIn !== null && escalateIn > 0 && (
+                  <div style={{ fontSize:'clamp(9px,1.1vw,11px)', color:C.muted, marginTop:4 }}>
+                    Auto-call in {escalateIn}s
+                  </div>
+                )}
               </>
             )}
           </div>

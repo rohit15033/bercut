@@ -189,7 +189,7 @@ function BarberPicker({ branchId, onSelect, onClose, onHome, lastQueueUpdate }) 
 
   const loadBarbers = () => {
     kioskApi.get(`/barbers?branch_id=${branchId}`)
-      .then(data => setBarbers(Array.isArray(data) ? data.filter(b => b.is_active !== false) : []))
+      .then(data => setBarbers(Array.isArray(data) ? data : []))
       .catch(() => setBarbers([]))
       .finally(() => setLoading(false))
   }

@@ -259,6 +259,8 @@ router.patch('/kiosk/:branch_id', requireAdmin, async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO kiosk_settings (branch_id) VALUES ($${idx})
        ON CONFLICT (branch_id) DO UPDATE SET ${sets.join(', ')} RETURNING *`, vals)
+    const { emitEvent } = require('./events')
+    emitEvent(req.params.branch_id, 'kiosk_settings_update', {})
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

@@ -51,7 +51,7 @@ git bercut
 ```
 
 > If the repo is private, you'll need to either add a deploy key or use a personal access token:
-> `git clone https://YOUR_TOKEN@github.com/YOUR_GITHUB_USERNAME/bercut.git bercut`
+> `git clone https://YOUR_TOKEN@github.com/rohit15033/bercut.git bercut`
 
 ---
 
@@ -293,6 +293,8 @@ git pull
 cd backend && npm install --omit=dev  # only if package.json changed
 pm2 restart bercut-backend
 ```
+
+> ⚠️ **NEVER run `rm -rf public/*` or `rm -rf public/`** — this deletes all service images in `backend/public/uploads/`. You do NOT need to clean the public folder before deploying. `git pull` handles the build files, and the `uploads/` folder is not tracked by git so it stays untouched. If you accidentally wiped uploads, you'll need to re-upload all service images via the admin panel.
 
 If the DB schema changed, also run the migration:
 

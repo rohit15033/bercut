@@ -145,32 +145,31 @@ export default function TvMonitor() {
         await loadData(b.id)
         setLoading(false)
 
-        // Real-time updates via SSE
-        const url = `${BASE}/events?branch_id=${b.id}`
-        console.log('[TV] Connecting to SSE:', url)
-        es = new EventSource(url)
-
-        es.onopen = () => console.log('[TV] SSE Connected')
-        es.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data)
-            console.log('[TV] Event received:', msg.type)
-            // Reload on any relevant activity
-            loadData(b.id)
-          } catch (err) {
-            console.error('[TV] SSE Parse error:', err)
+        // Real-time updates via SSE with auto-reconnect
+        let reconnectDelay = 2000
+        const connectSSE = () => {
+          if (es) { try { es.close() } catch (_) {} }
+          const url = `${BASE}/events?branch_id=${b.id}`
+          es = new EventSource(url)
+          es.onopen = () => { reconnectDelay = 2000 }
+          es.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data)
+              if (msg.type !== 'ping') loadData(b.id)
+            } catch (err) {
+              console.error('[TV] SSE parse error:', err)
+            }
+          }
+          es.onerror = () => {
+            try { es.close() } catch (_) {}
+            reconnectDelay = Math.min(reconnectDelay * 2, 30000)
+            setTimeout(connectSSE, reconnectDelay)
           }
         }
-        es.onerror = (err) => {
-          console.error('[TV] SSE Connection error:', err)
-          es.close()
-        }
+        connectSSE()
 
-        // Fallback polling (every 30s) in case SSE drops
-        fallback = setInterval(() => {
-          console.log('[TV] Fallback sync...')
-          loadData(b.id)
-        }, 30000)
+        // Fallback polling every 15s in case SSE events are missed
+        fallback = setInterval(() => loadData(b.id), 15000)
 
       } catch (err) {
         console.error('[TV] Init error:', err)

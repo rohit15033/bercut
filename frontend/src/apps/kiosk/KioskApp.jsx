@@ -24,6 +24,7 @@ const GS = () => (
       min-height: 100vh;
       overscroll-behavior: none;
       -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
     }
     h1,h2,h3,h4 { font-family: 'Inter', sans-serif; font-weight: 800; }
     button { cursor: pointer; border: none; font-family: 'DM Sans', sans-serif; outline: none; -webkit-tap-highlight-color: transparent; }
@@ -172,13 +173,28 @@ function KioskContent({ config }) {
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
   const [quickPanelOpen,  setQuickPanelOpen]  = useState(false)
   const [group, setGroup] = useState([])
+  const [groupId, setGroupId] = useState(null)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [idleCountdown, setIdleCountdown] = useState(null)
 
   const idleTimer  = useRef(null)
   const countTimer = useRef(null)
-  const IDLE_SECS  = settings.idle_timeout_sec || 60
-  const COUNT_SECS = 15
+  const IDLE_SECS  = settings.idle_timeout_sec || 10
+  const COUNT_SECS = 5
+
+  // Disable pinch-zoom on touchscreen (iOS ignores user-scalable=no in viewport)
+  useEffect(() => {
+    const preventZoom = (e) => { if (e.scale !== undefined && e.scale !== 1) e.preventDefault() }
+    const preventGesture = (e) => e.preventDefault()
+    document.addEventListener('touchmove', preventZoom, { passive: false })
+    document.addEventListener('gesturestart', preventGesture, { passive: false })
+    document.addEventListener('gesturechange', preventGesture, { passive: false })
+    return () => {
+      document.removeEventListener('touchmove', preventZoom)
+      document.removeEventListener('gesturestart', preventGesture)
+      document.removeEventListener('gesturechange', preventGesture)
+    }
+  }, [])
 
   // Online detection
   useEffect(() => {
@@ -194,7 +210,7 @@ function KioskContent({ config }) {
   // SSE — real-time updates
   useSSE(branchId, {
     payment_trigger: (data) => {
-      if (data?.booking_id || data?.id) {
+      if (data?.group_id || data?.booking_id || data?.id) {
         setPaymentBooking(data)
         setPaymentPending(true)
       }
@@ -218,13 +234,13 @@ function KioskContent({ config }) {
   // Idle timer
   const resetIdleTimer = () => {
     clearTimeout(idleTimer.current)
-    if (step > 0 && !paymentPending) {
+    if ((step > 0 || barberPanelOpen || quickPanelOpen || staffPanelOpen) && !paymentPending) {
       idleTimer.current = setTimeout(() => setIdleCountdown(COUNT_SECS), IDLE_SECS * 1000)
     }
   }
   const dismissIdle = () => { setIdleCountdown(null); clearTimeout(countTimer.current); resetIdleTimer() }
 
-  useEffect(() => { resetIdleTimer(); return () => clearTimeout(idleTimer.current) }, [step, paymentPending]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { resetIdleTimer(); return () => clearTimeout(idleTimer.current) }, [step, paymentPending, barberPanelOpen, quickPanelOpen, staffPanelOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (idleCountdown === null) return
@@ -245,13 +261,27 @@ function KioskContent({ config }) {
 
   const reset = () => {
     setStep(0); setCart([]); setBarber(null); setSlot(null)
-    setName(''); setPhone(''); setGroup([]); setSelectedExtras([])
+    setName(''); setPhone(''); setGroup([]); setGroupId(null); setSelectedExtras([])
     setOwnColorToggles({}); setBooking(null); setPointsUsed(0); setIdleCountdown(null)
+    setBarberPanelOpen(false); setStaffPanelOpen(false); setQuickPanelOpen(false)
     clearTimeout(idleTimer.current); clearTimeout(countTimer.current)
   }
 
-  const addAnother = () => {
-    if (booking) setGroup(g => [...g, booking])
+  const addAnother = async () => {
+    if (booking) {
+      let gid = groupId
+      if (!gid) {
+        try {
+          const grp = await kioskApi.post('/booking-groups', { branch_id: branchId })
+          gid = grp.id
+          setGroupId(gid)
+          await kioskApi.patch(`/bookings/${booking.id}/set-group`, { group_id: gid })
+        } catch (e) { console.error('[Group] Failed to create group', e) }
+      } else {
+        await kioskApi.patch(`/bookings/${booking.id}/set-group`, { group_id: gid }).catch(() => {})
+      }
+      setGroup(g => [...g, booking])
+    }
     setStep(1); setCart([]); setBarber(null); setSlot(null)
     setName(''); setPhone(''); setSelectedExtras([]); setOwnColorToggles({}); setBooking(null); setPointsUsed(0)
   }
@@ -365,6 +395,7 @@ function KioskContent({ config }) {
           setPhone={setPhone}
           branchId={branchId}
           settings={settings}
+          groupId={groupId}
           onConfirm={(bk, pts) => { setBooking(bk); setPointsUsed(pts || 0); setStep(5) }}
           onBack={() => setStep(3)}
         />

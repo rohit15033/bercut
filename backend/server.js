@@ -35,6 +35,7 @@ app.use('/api/settings', require('./routes/settings'))
 app.use('/api/payroll', require('./routes/payroll'))
 app.use('/api/upload', require('./routes/upload'))
 app.use('/api/barber-breaks', require('./routes/barber-breaks'))
+app.use('/api/booking-groups', require('./routes/booking-groups'))
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 app.get('*', (req, res) => {

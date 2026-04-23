@@ -223,7 +223,7 @@ const InlineNumpad = memo(function InlineNumpad({ value, onChange, country, onDo
   )
 })
 
-export default function Confirm({ cart, services, barber, slot, selectedExtras, menuItems, name, setName, phone, setPhone, branchId, settings, onConfirm, onBack }) {
+export default function Confirm({ cart, services, barber, slot, selectedExtras, menuItems, name, setName, phone, setPhone, branchId, settings, groupId, onConfirm, onBack }) {
   const [country,       setCountry]       = useState(COUNTRIES[0])
   const [showCP,        setShowCP]        = useState(false)
   const [customer,      setCustomer]      = useState(null)
@@ -305,6 +305,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
         date:           new Date().toISOString().slice(0, 10),
         source:         barber.source === 'any_available' ? 'any_available' : 'kiosk',
         use_points:     pointsUsed > 0,
+        group_id:       groupId || undefined,
       })
       onConfirm(bk, pointsUsed)
     } catch (err) {

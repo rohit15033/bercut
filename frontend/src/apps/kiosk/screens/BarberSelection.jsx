@@ -168,7 +168,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                     </div>
                     {!isUnavailable && !bIsNow && bSlot && (
                       <div style={{ fontSize:'clamp(9px,1.1vw,10px)', color:sel ? C.accentText : C.muted, fontWeight:500 }}>
-                        Earliest available
+                        Next available slot
                       </div>
                     )}
                   </div>

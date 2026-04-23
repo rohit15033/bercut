@@ -260,33 +260,192 @@ function PaymentFailedScreen({ method, onRetry, onSwitchMethod }) {
   )
 }
 
+// ── Group Booking Tip Row ──────────────────────────────────────────────────────
+function GroupTipRow({ bk, tipPresets, groupTips, setGroupTips }) {
+  const [showNumpad, setShowNumpad] = useState(false)
+  const [customVal, setCustomVal] = useState('')
+  const currentTip = groupTips[bk.id] || null
+
+  const setTip = (val) => {
+    setGroupTips(prev => ({ ...prev, [bk.id]: val }))
+    setShowNumpad(false)
+    setCustomVal('')
+  }
+  const clearTip = () => {
+    setGroupTips(prev => { const n = { ...prev }; delete n[bk.id]; return n })
+    setShowNumpad(false)
+    setCustomVal('')
+  }
+
+  return (
+    <div style={{ background:'#1a1a18', borderRadius:10, padding:'clamp(10px,1.4vw,14px)', marginBottom:8 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+        <div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.5vw,14px)', fontWeight:700, color:C.accent }}>✂ {bk.barber_name}</div>
+          <div style={{ fontSize:'clamp(10px,1.1vw,11px)', color:'#555' }}>
+            {bk.booking_services?.map(s => s.name).join(', ') || ''}
+          </div>
+        </div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:C.white }}>
+          {fmt(parseFloat(bk.subtotal || 0) + parseFloat(bk.extras_total || 0) - (bk.points_redeemed || 0) * 10000)}
+        </div>
+      </div>
+      <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:'#555', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.1em' }}>Tip for {bk.barber_name}?</div>
+      <div style={{ display:'flex', gap:6, flexWrap:'nowrap' }}>
+        {tipPresets.map(t => (
+          <button key={t} onClick={() => currentTip === t ? clearTip() : setTip(t)}
+            style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(11px,1.4vw,13px)', fontFamily:"'Inter',sans-serif", fontWeight:800, background:currentTip === t ? C.accent : '#2a2a28', color:currentTip === t ? C.accentText : C.white, border:`2px solid ${currentTip === t ? C.accent : '#3a3a38'}`, transition:'all 0.15s', cursor:'pointer' }}>
+            {fmtK(t)}
+          </button>
+        ))}
+        <button onClick={() => setShowNumpad(p => !p)}
+          style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(10px,1.2vw,12px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:showNumpad ? C.accent : '#2a2a28', color:showNumpad ? C.accentText : C.white, border:`2px solid ${showNumpad ? C.accent : '#3a3a38'}`, cursor:'pointer' }}>
+          {currentTip && !tipPresets.includes(currentTip) ? fmt(currentTip) : 'Custom'}
+        </button>
+      </div>
+      {showNumpad && (
+        <TipNumpad value={customVal} onChange={setCustomVal} />
+      )}
+      {showNumpad && (
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={() => { const v = parseInt(customVal.replace(/\D/g,''),10); if (v > 0) setTip(v) }}
+            style={{ flex:1, padding:'8px', borderRadius:8, background:C.accent, color:C.accentText, fontWeight:700, fontSize:'clamp(12px,1.4vw,13px)', border:'none', cursor:'pointer' }}>
+            Set Tip ✓
+          </button>
+          <button onClick={clearTip}
+            style={{ padding:'8px 14px', borderRadius:8, background:'transparent', color:'#555', fontSize:'clamp(11px,1.3vw,12px)', border:'none', cursor:'pointer', textDecoration:'underline' }}>
+            No tip
+          </button>
+        </div>
+      )}
+      {!showNumpad && (
+        <button onClick={clearTip}
+          style={{ background:'none', border:'none', color:'#555', fontSize:'clamp(9px,1.1vw,10px)', fontFamily:"'DM Sans',sans-serif", textDecoration:'underline', cursor:'pointer', marginTop:4, padding:'2px 0' }}>
+          No tip, maybe next time
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Payment Method Panel (shared) ─────────────────────────────────────────────
+function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCovered, onConfirm, confirmLabel }) {
+  return (
+    <div style={{ width:'clamp(260px,30vw,370px)', borderLeft:'1px solid #1a1a18', background:'#0d0d0b', padding:'clamp(18px,2.6vw,28px)', display:'flex', flexDirection:'column', flexShrink:0 }}>
+      {isPointsCovered ? (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', gap:14 }}>
+          <div style={{ fontSize:44 }}>⭐</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:800, color:'#6fcf6f' }}>Fully Covered by Points!</div>
+          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>No payment needed · Tidak perlu bayar</div>
+        </div>
+      ) : (
+        <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', marginBottom:14 }}>
+          <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:'#555', textTransform:'uppercase', marginBottom:14 }}>Payment Method</div>
+          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555', marginBottom:14 }}>Barber selects method, customer pays.</div>
+
+          {/* QRIS */}
+          <div onClick={() => setMethod('qris')} style={{ background:method === 'qris' ? '#1a1a18' : '#111110', border:`2px solid ${method === 'qris' ? C.accent : '#222'}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', marginBottom:10, transition:'all 0.18s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:method === 'qris' ? 14 : 0 }}>
+              <div style={{ width:42, height:42, background:method === 'qris' ? C.accent : '#1a1a18', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⬛</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.white }}>QRIS</div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>GoPay · OVO · Dana · Bank</div>
+              </div>
+              {method === 'qris' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
+            </div>
+            {method === 'qris' && (
+              <div style={{ background:'#0d0d0b', borderRadius:10, padding:14, textAlign:'center' }}>
+                <div style={{ width:110, height:110, background:C.white, borderRadius:8, margin:'0 auto 10px', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <svg width="90" height="90" viewBox="0 0 100 100">
+                    <rect x="5" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
+                    <rect x="13" y="13" width="19" height="19" rx="2" fill="#111" />
+                    <rect x="60" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
+                    <rect x="68" y="13" width="19" height="19" rx="2" fill="#111" />
+                    <rect x="5" y="60" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
+                    <rect x="13" y="68" width="19" height="19" rx="2" fill="#111" />
+                    <rect x="60" y="60" width="8" height="8" fill="#111" /><rect x="72" y="60" width="8" height="8" fill="#111" />
+                    <rect x="84" y="60" width="11" height="8" fill="#111" /><rect x="60" y="72" width="11" height="8" fill="#111" />
+                    <rect x="76" y="72" width="8" height="8" fill="#111" /><rect x="60" y="84" width="8" height="11" fill="#111" />
+                    <rect x="72" y="84" width="23" height="11" fill="#111" />
+                  </svg>
+                </div>
+                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#666' }}>Scan QR code to pay</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.accent, marginTop:6 }}>{fmt(grand)}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Card */}
+          <div onClick={() => setMethod('card')} style={{ background:method === 'card' ? '#1a1a18' : '#111110', border:`2px solid ${method === 'card' ? C.accent : '#222'}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', transition:'all 0.18s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:method === 'card' ? 14 : 0 }}>
+              <div style={{ width:42, height:42, background:method === 'card' ? C.accent : '#1a1a18', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>💳</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.white }}>Card</div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>Tap, Insert, or Swipe</div>
+              </div>
+              {method === 'card' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
+            </div>
+            {method === 'card' && (
+              <div style={{ background:'#0d0d0b', borderRadius:10, padding:14, textAlign:'center' }}>
+                <div style={{ fontSize:36, marginBottom:6 }}>🏦</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.7vw,16px)', fontWeight:700, color:C.white, marginBottom:3 }}>Tap or insert card</div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginBottom:6 }}>Use the terminal on the counter</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.accent }}>{fmt(grand)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <button onClick={onConfirm} disabled={(!method && !isPointsCovered) || confirming}
+        style={{ width:'100%', background:(!method && !isPointsCovered) || confirming ? '#2a2a28' : C.accent, color:(!method && !isPointsCovered) || confirming ? '#555' : C.accentText, padding:'clamp(15px,2.2vh,19px)', borderRadius:14, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, border:'none', cursor:(!method && !isPointsCovered) || confirming ? 'not-allowed' : 'pointer', flexShrink:0, transition:'all 0.2s' }}>
+        {confirming ? 'Processing…' : confirmLabel || (isPointsCovered ? 'Confirm & Complete ✓' : method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : 'Select Payment Method')}
+      </button>
+    </div>
+  )
+}
+
 // ── Main PaymentTakeover ───────────────────────────────────────────────────────
 export default function PaymentTakeover({ bookingData, branchId, feedbackTags = [], settings = {}, onDone }) {
-  const [booking,    setBooking]    = useState(null)
-  const [phase,      setPhase]      = useState('loading') // loading | payment | failed | receipt | review
-  const [method,     setMethod]     = useState(null)      // 'qris' | 'card'
-  const [tip,        setTip]        = useState(null)      // preset amount or 'custom'
-  const [customTip,  setCustomTip]  = useState('')
-  const [confirming, setConfirming] = useState(false)
-
+  const isGroup   = !!(bookingData?.group_id)
+  const groupId   = bookingData?.group_id
   const bookingId = bookingData?.booking_id || bookingData?.id
 
-  useEffect(() => {
-    if (!bookingId) return
-    kioskApi.get(`/bookings/${bookingId}`)
-      .then(data => { setBooking(data); setPhase('payment') })
-      .catch(() => setPhase('payment'))
-  }, [bookingId])
-
-  const amount    = parseFloat(booking?.total_amount ?? bookingData?.amount ?? 0)
-  const tipAmount = tip === 'custom' ? (parseInt(customTip.replace(/\D/g, ''), 10) || 0) : (tip || 0)
-  const grand     = amount + tipAmount
-
-  const isPointsCovered = amount <= 0 && booking
+  const [booking,    setBooking]    = useState(null)
+  const [groupBks,   setGroupBks]   = useState([])
+  const [phase,      setPhase]      = useState('loading')
+  const [method,     setMethod]     = useState(null)
+  const [tip,        setTip]        = useState(null)
+  const [customTip,  setCustomTip]  = useState('')
+  const [groupTips,  setGroupTips]  = useState({})
+  const [confirming, setConfirming] = useState(false)
 
   const tipPresets = settings.tipPresets || [10000, 20000, 50000, 100000]
 
-  const handleConfirm = async () => {
+  useEffect(() => {
+    if (isGroup && groupId) {
+      kioskApi.get(`/booking-groups/${groupId}`)
+        .then(data => { setGroupBks(data); setPhase('payment') })
+        .catch(() => setPhase('payment'))
+    } else if (bookingId) {
+      kioskApi.get(`/bookings/${bookingId}`)
+        .then(data => { setBooking(data); setPhase('payment') })
+        .catch(() => setPhase('payment'))
+    }
+  }, [isGroup, groupId, bookingId])
+
+  // Single booking flow
+  const amount    = parseFloat(booking?.total_amount ?? bookingData?.amount ?? 0)
+  const tipAmount = tip === 'custom' ? (parseInt(customTip.replace(/\D/g, ''), 10) || 0) : (tip || 0)
+  const grand     = amount + tipAmount
+  const isPointsCovered = amount <= 0 && booking
+
+  // Group flow
+  const groupSubtotal = groupBks.reduce((s, bk) => s + parseFloat(bk.total_amount || 0), 0)
+  const groupTipsTotal = Object.values(groupTips).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+  const groupGrand = groupSubtotal + groupTipsTotal
+
+  const handleConfirmSingle = async () => {
     if (!method && !isPointsCovered) return
     setConfirming(true)
     try {
@@ -296,17 +455,31 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         tip_amount:     tipAmount || undefined
       })
       setPhase('receipt')
-    } catch (err) {
-      setPhase('failed')
-    } finally { setConfirming(false) }
+    } catch { setPhase('failed') }
+    finally { setConfirming(false) }
   }
 
-  const services = booking?.services || []
-  const extras   = booking?.extras   || []
-  const name     = booking?.customer_name || booking?.guest_name || 'Guest'
+  const handleConfirmGroup = async () => {
+    if (!method) return
+    setConfirming(true)
+    try {
+      await kioskApi.post('/payments/group-confirm', {
+        group_id:       groupId,
+        payment_method: method,
+        tip_amounts:    groupTips,
+      })
+      setPhase('receipt')
+    } catch { setPhase('failed') }
+    finally { setConfirming(false) }
+  }
 
-  if (phase === 'receipt') return <ReceiptScreen booking={booking} grand={grand} onNext={() => setPhase('review')} />
-  if (phase === 'review')  return <ReviewScreen  booking={booking} grand={grand} feedbackTags={feedbackTags} onDone={onDone} />
+  const firstBk  = isGroup ? groupBks[0] : booking
+  const headerName = isGroup
+    ? `Group · ${groupBks.length} people`
+    : (booking?.customer_name || booking?.guest_name || 'Guest')
+
+  if (phase === 'receipt') return <ReceiptScreen booking={firstBk} grand={isGroup ? groupGrand : grand} onNext={() => setPhase('review')} />
+  if (phase === 'review')  return <ReviewScreen  booking={firstBk} grand={isGroup ? groupGrand : grand} feedbackTags={feedbackTags} onDone={onDone} />
   if (phase === 'failed')  return (
     <PaymentFailedScreen
       method={method}
@@ -325,7 +498,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
           <span style={{ color:'#555', fontSize:'clamp(11px,1.3vw,13px)' }}>Payment</span>
         </div>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:700, color:C.accent }}>
-          {phase !== 'loading' ? name : ''}
+          {phase !== 'loading' ? headerName : ''}
         </div>
       </div>
 
@@ -336,8 +509,53 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         </div>
       )}
 
-      {/* Payment Phase */}
-      {phase === 'payment' && (
+      {/* Payment Phase — Group */}
+      {phase === 'payment' && isGroup && (
+        <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+          <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'clamp(18px,2.6vw,28px)' }}>
+            <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:'#555', textTransform:'uppercase', marginBottom:14 }}>
+              Group Order — {groupBks.length} Bookings
+            </div>
+
+            {groupBks.map(bk => (
+              <GroupTipRow
+                key={bk.id}
+                bk={bk}
+                tipPresets={tipPresets}
+                groupTips={groupTips}
+                setGroupTips={setGroupTips}
+              />
+            ))}
+
+            {/* Grand total */}
+            <div style={{ background:'#1a1a18', borderRadius:12, padding:'clamp(12px,1.6vw,18px)', marginTop:10 }}>
+              {groupTipsTotal > 0 && (
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                  <span style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#888' }}>Tips Total 🙌</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.accent }}>{fmt(groupTipsTotal)}</span>
+                </div>
+              )}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:800, color:C.white }}>TOTAL</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(26px,3.8vw,36px)', fontWeight:800, color:C.accent }}>{fmt(groupGrand)}</span>
+              </div>
+            </div>
+          </div>
+
+          <PaymentMethodPanel
+            method={method}
+            setMethod={setMethod}
+            grand={groupGrand}
+            confirming={confirming}
+            isPointsCovered={false}
+            onConfirm={handleConfirmGroup}
+            confirmLabel={method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : 'Select Payment Method'}
+          />
+        </div>
+      )}
+
+      {/* Payment Phase — Single */}
+      {phase === 'payment' && !isGroup && (
         <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
           {/* Left — order summary + tip */}
@@ -349,14 +567,14 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
               {/* Customer + barber */}
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:'clamp(10px,1.4vh,14px)', borderBottom:'1px solid #2a2a28', marginBottom:'clamp(10px,1.4vh,14px)' }}>
                 <div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.accent, fontSize:'clamp(14px,1.8vw,17px)' }}>{name}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.accent, fontSize:'clamp(14px,1.8vw,17px)' }}>{booking?.customer_name || booking?.guest_name || 'Guest'}</div>
                   {booking?.barber_name && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginTop:2 }}>✂ {booking.barber_name}</div>}
                 </div>
                 {booking?.slot_time && <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>{booking.slot_time}</div>}
               </div>
 
               {/* Services */}
-              {services.map((s, i) => (
+              {(booking?.services || []).map((s, i) => (
                 <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:'1px solid #1a1a18' }}>
                   <div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -370,7 +588,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
               ))}
 
               {/* Extras */}
-              {extras.map((e, i) => (
+              {(booking?.extras || []).map((e, i) => (
                 <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:'1px solid #1a1a18' }}>
                   <div style={{ fontSize:'clamp(13px,1.6vw,15px)', fontWeight:600, color:'#aaa' }}>{e.name}{e.qty > 1 ? ` ×${e.qty}` : ''}</div>
                   <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:'#aaa' }}>{fmt(e.price)}</div>
@@ -445,79 +663,14 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             )}
           </div>
 
-          {/* Right — payment method */}
-          <div style={{ width:'clamp(260px,30vw,370px)', borderLeft:'1px solid #1a1a18', background:'#0d0d0b', padding:'clamp(18px,2.6vw,28px)', display:'flex', flexDirection:'column', flexShrink:0 }}>
-
-            {isPointsCovered ? (
-              <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', gap:14 }}>
-                <div style={{ fontSize:44 }}>⭐</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:800, color:'#6fcf6f' }}>Fully Covered by Points!</div>
-                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>No payment needed · Tidak perlu bayar</div>
-              </div>
-            ) : (
-              <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', marginBottom:14 }}>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:'#555', textTransform:'uppercase', marginBottom:14 }}>Payment Method</div>
-                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555', marginBottom:14 }}>Barber selects method, customer pays.</div>
-
-                {/* QRIS */}
-                <div onClick={() => setMethod('qris')} style={{ background:method === 'qris' ? '#1a1a18' : '#111110', border:`2px solid ${method === 'qris' ? C.accent : '#222'}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', marginBottom:10, transition:'all 0.18s' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:method === 'qris' ? 14 : 0 }}>
-                    <div style={{ width:42, height:42, background:method === 'qris' ? C.accent : '#1a1a18', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⬛</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.white }}>QRIS</div>
-                      <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>GoPay · OVO · Dana · Bank</div>
-                    </div>
-                    {method === 'qris' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
-                  </div>
-                  {method === 'qris' && (
-                    <div style={{ background:'#0d0d0b', borderRadius:10, padding:14, textAlign:'center' }}>
-                      <div style={{ width:110, height:110, background:C.white, borderRadius:8, margin:'0 auto 10px', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        <svg width="90" height="90" viewBox="0 0 100 100">
-                          <rect x="5" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                          <rect x="13" y="13" width="19" height="19" rx="2" fill="#111" />
-                          <rect x="60" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                          <rect x="68" y="13" width="19" height="19" rx="2" fill="#111" />
-                          <rect x="5" y="60" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                          <rect x="13" y="68" width="19" height="19" rx="2" fill="#111" />
-                          <rect x="60" y="60" width="8" height="8" fill="#111" /><rect x="72" y="60" width="8" height="8" fill="#111" />
-                          <rect x="84" y="60" width="11" height="8" fill="#111" /><rect x="60" y="72" width="11" height="8" fill="#111" />
-                          <rect x="76" y="72" width="8" height="8" fill="#111" /><rect x="60" y="84" width="8" height="11" fill="#111" />
-                          <rect x="72" y="84" width="23" height="11" fill="#111" />
-                        </svg>
-                      </div>
-                      <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#666' }}>Scan QR code to pay</div>
-                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.accent, marginTop:6 }}>{fmt(grand)}</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Card */}
-                <div onClick={() => setMethod('card')} style={{ background:method === 'card' ? '#1a1a18' : '#111110', border:`2px solid ${method === 'card' ? C.accent : '#222'}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', transition:'all 0.18s' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:method === 'card' ? 14 : 0 }}>
-                    <div style={{ width:42, height:42, background:method === 'card' ? C.accent : '#1a1a18', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>💳</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.white }}>Card</div>
-                      <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>Tap, Insert, or Swipe</div>
-                    </div>
-                    {method === 'card' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
-                  </div>
-                  {method === 'card' && (
-                    <div style={{ background:'#0d0d0b', borderRadius:10, padding:14, textAlign:'center' }}>
-                      <div style={{ fontSize:36, marginBottom:6 }}>🏦</div>
-                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.7vw,16px)', fontWeight:700, color:C.white, marginBottom:3 }}>Tap or insert card</div>
-                      <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginBottom:6 }}>Use the terminal on the counter</div>
-                      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.accent }}>{fmt(grand)}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <button onClick={handleConfirm} disabled={(!method && !isPointsCovered) || confirming}
-              style={{ width:'100%', background:(!method && !isPointsCovered) || confirming ? C.surface2 : C.accent, color:(!method && !isPointsCovered) || confirming ? C.muted : C.accentText, padding:'clamp(15px,2.2vh,19px)', borderRadius:14, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, border:'none', cursor:(!method && !isPointsCovered) || confirming ? 'not-allowed' : 'pointer', flexShrink:0, transition:'all 0.2s' }}>
-              {confirming ? 'Processing…' : isPointsCovered ? 'Confirm & Complete ✓' : method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : 'Select Payment Method'}
-            </button>
-          </div>
+          <PaymentMethodPanel
+            method={method}
+            setMethod={setMethod}
+            grand={grand}
+            confirming={confirming}
+            isPointsCovered={isPointsCovered}
+            onConfirm={handleConfirmSingle}
+          />
         </div>
       )}
     </div>

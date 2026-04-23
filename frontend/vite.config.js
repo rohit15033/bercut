@@ -34,6 +34,6 @@ export default defineConfig({
   build: {
     // Nginx serves the SPA from backend/public in production
     outDir: '../backend/public',
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
 })

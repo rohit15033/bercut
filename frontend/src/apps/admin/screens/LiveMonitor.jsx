@@ -495,13 +495,13 @@ export default function LiveMonitor() {
   }, [loadData])
 
   async function handleConfirmCancel(bookingId, reason) {
-    try { await api.post(`/bookings/${bookingId}/cancel`, { reason }) } catch (err) { alert(err.message) }
+    try { await api.patch(`/bookings/${bookingId}/cancel`, { reason }) } catch (err) { alert(err.message) }
     setCancelModal(null)
     loadData()
   }
 
   async function handleConfirmForceStart(booking) {
-    try { await api.post(`/bookings/${booking.id}/start`, {}) } catch (err) { alert(err.message) }
+    try { await api.patch(`/bookings/${booking.id}/start`, {}) } catch (err) { alert(err.message) }
     setForceStartModal(null)
     loadData()
   }

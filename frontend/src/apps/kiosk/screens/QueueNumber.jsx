@@ -37,8 +37,7 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
   }, [escalateIn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const secs = (settings?.queue_redirect_secs || 300) * 1000
-    const t = setTimeout(() => onReset(), secs)
+    const t = setTimeout(() => onReset(), 15000)
     return () => clearTimeout(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -203,7 +202,7 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
         </div>
 
         <div style={{ color:C.muted, fontSize:'clamp(10px,1.2vw,12px)', textAlign:'center' }}>
-          Layar kembali otomatis dalam 5 menit · Screen returns in 5 min
+          Layar kembali otomatis dalam 15 detik · Screen returns in 15 sec
         </div>
       </div>
     </div>

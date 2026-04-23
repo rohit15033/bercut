@@ -63,7 +63,8 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       date,
       notes,
       use_points = false,
-      source = 'walk_in'
+      source = 'walk_in',
+      group_id = null
     } = req.body
 
     if (!service_ids.length) return res.status(400).json({ message: 'At least one service required' })
@@ -169,11 +170,12 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     const bkInsert = await client.query(
       `INSERT INTO bookings
          (booking_number, branch_id, customer_id, barber_id, scheduled_at, status, source,
-          guest_name, guest_phone, points_redeemed, notes, auto_cancel_at)
+          guest_name, guest_phone, points_redeemed, notes, auto_cancel_at, group_id)
        VALUES ($1,$2,$3,$4,$5,'confirmed',$6,$7,$8,$9,$10,
          CASE WHEN $11::int IS NOT NULL AND NOT $12::boolean
-              THEN NOW() + ($11::int || ' minutes')::interval
-              ELSE NULL END)
+              THEN $5::timestamptz + ($11::int || ' minutes')::interval
+              ELSE NULL END,
+         $13)
        RETURNING *`,
       [bookingNumber, branchId, customerId, barberId,
        scheduledAt(bookingDate, slot_time),
@@ -181,7 +183,8 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
        customer_name || null,
        customer_phone || null,
        pointsRedeemed, notes || null,
-       autoCancelMin, isNow]
+       autoCancelMin, isNow,
+       group_id || null]
     )
     const booking = bkInsert.rows[0]
 
@@ -291,7 +294,7 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT bk.*,
               b.name AS barber_name,
-              c.name AS customer_name, c.phone AS customer_phone,
+              COALESCE(c.name, bk.guest_name) AS customer_name, c.phone AS customer_phone,
               COALESCE(s_total.total, 0) AS subtotal,
               COALESCE(e_total.total, 0) AS extras_total,
               COALESCE(s_total.total, 0) + COALESCE(e_total.total, 0) -
@@ -358,7 +361,7 @@ router.get('/:id', requireKioskOrAdmin, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT bk.*,
               b.name AS barber_name,
-              c.name AS customer_name, c.phone AS customer_phone, c.points_balance,
+              COALESCE(c.name, bk.guest_name) AS customer_name, c.phone AS customer_phone, c.points_balance,
               (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::time::text AS slot_time,
               (bk.scheduled_at AT TIME ZONE 'Asia/Makassar')::date AS date,
               COALESCE(s_total.total, 0) AS subtotal,
@@ -396,7 +399,7 @@ router.get('/:id', requireKioskOrAdmin, async (req, res) => {
 
 // ── PATCH /api/bookings/:id/start ─────────────────────────────────────────────
 
-router.patch('/:id/start', requireKiosk, async (req, res) => {
+router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE bookings SET status = 'in_progress', started_at = NOW()
@@ -485,7 +488,31 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
     const extrasResult = await pool.query(
       'SELECT COALESCE(SUM(price),0) AS total FROM booking_extras WHERE booking_id = $1', [booking.id])
     const totalAmount = parseFloat(totalResult.rows[0].total) + parseFloat(extrasResult.rows[0].total)
-    emitEvent(booking.branch_id, 'payment_trigger', { booking_id: booking.id, id: booking.id, amount: totalAmount })
+
+    if (booking.group_id) {
+      const { rows: gStats } = await pool.query(
+        `SELECT COUNT(*) FILTER (WHERE status NOT IN ('pending_payment','completed','cancelled','no_show')) AS still_active
+         FROM bookings WHERE group_id = $1`, [booking.group_id])
+      if (parseInt(gStats[0].still_active) === 0) {
+        const { rows: gbs } = await pool.query(
+          `SELECT b.id,
+                  COALESCE(s.total,0) + COALESCE(e.total,0) - (b.points_redeemed * COALESCE(gs.points_redemption_rate,10000)) AS amt
+           FROM bookings b
+           LEFT JOIN (SELECT booking_id, SUM(price_charged) AS total FROM booking_services GROUP BY booking_id) s ON s.booking_id = b.id
+           LEFT JOIN (SELECT booking_id, SUM(price*quantity) AS total FROM booking_extras GROUP BY booking_id) e ON e.booking_id = b.id
+           CROSS JOIN LATERAL (SELECT points_redemption_rate FROM global_settings LIMIT 1) gs
+           WHERE b.group_id = $1`, [booking.group_id])
+        const groupTotal = gbs.reduce((s, r) => s + parseFloat(r.amt), 0)
+        emitEvent(booking.branch_id, 'payment_trigger', {
+          group_id: booking.group_id,
+          booking_ids: gbs.map(r => r.id),
+          amount: groupTotal
+        })
+      }
+    } else {
+      emitEvent(booking.branch_id, 'payment_trigger', { booking_id: booking.id, id: booking.id, amount: totalAmount })
+    }
+
     res.json({ ...booking, booking_id: booking.id, total_amount: totalAmount })
   } catch (err) {
     await client.query('ROLLBACK')
@@ -663,6 +690,19 @@ router.delete('/:id/extras/:extra_id', requireKiosk, async (req, res) => {
     const bk = await pool.query('SELECT branch_id FROM bookings WHERE id = $1', [req.params.id])
     if (bk.rows.length) emitEvent(bk.rows[0].branch_id, 'booking_updated', { id: req.params.id })
     res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// ── PATCH /api/bookings/:id/set-group ────────────────────────────────────────
+router.patch('/:id/set-group', requireKiosk, async (req, res) => {
+  try {
+    const { group_id } = req.body
+    if (!group_id) return res.status(400).json({ message: 'group_id required' })
+    const { rows } = await pool.query(
+      'UPDATE bookings SET group_id = $1 WHERE id = $2 RETURNING id, group_id',
+      [group_id, req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Booking not found' })
+    res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 

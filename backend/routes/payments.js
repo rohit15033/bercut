@@ -202,6 +202,53 @@ router.post('/tip', requireKiosk, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// POST /api/payments/group-confirm — confirm payment for an entire booking group
+router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { group_id, payment_method = 'cash', tip_amounts = {} } = req.body
+    if (!group_id) return res.status(400).json({ message: 'group_id required' })
+
+    await client.query('BEGIN')
+    const { rows: bookings } = await client.query(
+      `SELECT id, barber_id, branch_id FROM bookings WHERE group_id = $1 AND status = 'pending_payment'`,
+      [group_id])
+    if (!bookings.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'No pending_payment bookings in group' })
+    }
+
+    const branchId = bookings[0].branch_id
+    for (const bk of bookings) {
+      await client.query(
+        `UPDATE bookings SET status='completed', payment_status='paid', paid_at=NOW(),
+           payment_method=$1, completed_at=COALESCE(completed_at,NOW()) WHERE id=$2`,
+        [payment_method, bk.id])
+      const tip = parseFloat(tip_amounts[bk.id] || 0)
+      if (tip > 0) {
+        await client.query(
+          `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
+           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (booking_id) DO UPDATE SET amount=EXCLUDED.amount`,
+          [bk.id, bk.barber_id, branchId, tip, payment_method])
+      }
+    }
+
+    await client.query('COMMIT')
+    emitEvent(branchId, 'payment_complete', { group_id, status: 'completed' })
+    for (const bk of bookings) {
+      awardPoints(bk.id).catch(e => console.error('[Loyalty] Award failed:', e))
+    }
+
+    res.json({ ok: true })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
+})
+
 // GET /api/payments — admin list
 router.get('/', requireAdmin, async (req, res) => {
   try {

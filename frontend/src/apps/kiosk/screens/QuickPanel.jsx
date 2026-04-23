@@ -283,7 +283,7 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
               const sm        = STATUS_META[rawStatus] || STATUS_META.clocked_out
               const active    = getActive(b.id)
               const next      = getNext(b.id)
-              const canStart  = !active && (rawStatus === 'available' || rawStatus === 'busy')
+              const canStart  = !active && rawStatus !== 'clocked_out' && rawStatus !== 'on_break'
               const isCalling = calling[b.id]
               const sent      = alertSent[b.id]
 

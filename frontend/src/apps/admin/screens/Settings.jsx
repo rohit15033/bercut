@@ -75,7 +75,7 @@ function CatalogTab() {
     if (!newName.trim() || busy) return
     setBusy(true)
     try {
-      await api.post('/settings/expense-categories', { name: newName.trim(), description: newDesc.trim() || null })
+      await api.post('/settings/expense-categories', { label: newName.trim() })
       setNewName(''); setNewDesc(''); setAdding(false)
       load()
     } catch { /* ignore */ } finally { setBusy(false) }
@@ -106,8 +106,8 @@ function CatalogTab() {
                 style={{ width: '100%', padding: '8px 11px', borderRadius: 7, border: '1px solid ' + T.border, fontSize: 13, color: T.text, boxSizing: 'border-box' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 4 }}>Description</label>
-              <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Optional description"
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 4 }}>Key (Identifier)</label>
+              <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="e.g. cleaning_supplies"
                 style={{ width: '100%', padding: '8px 11px', borderRadius: 7, border: '1px solid ' + T.border, fontSize: 13, color: T.text, boxSizing: 'border-box' }} />
             </div>
           </div>
@@ -123,7 +123,7 @@ function CatalogTab() {
         {!loading && (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>{['Name', 'Description'].map((h, i) => <th key={i} style={{ ...thStyle, textAlign: 'left' }}>{h}</th>)}</tr>
+              <tr>{['Label', 'Key'].map((h, i) => <th key={i} style={{ ...thStyle, textAlign: 'left' }}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {cats.length === 0 && (
@@ -134,8 +134,8 @@ function CatalogTab() {
                   onMouseEnter={e => e.currentTarget.style.background = T.bg}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   style={{ transition: 'background 0.1s' }}>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{cat.name}</td>
-                  <td style={{ ...tdStyle, color: T.muted }}>{cat.description || '—'}</td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{cat.label}</td>
+                  <td style={{ ...tdStyle, color: T.muted }}>{cat.key || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -348,13 +348,23 @@ function PayrollTab() {
 
 // ── WhatsApp tab ──────────────────────────────────────────────────────────────
 const WA_TEMPLATES = [
-  { key: 'tpl_booking_confirmed', label: 'Booking Confirmation', icon: '✅', trigger: 'Auto — on booking confirmed (if customer provided phone number)' },
-  { key: 'tpl_booking_reminder',  label: 'Late Customer Reminder', icon: '⏰', trigger: 'Auto — sent once when customer hasn\'t arrived by scheduled time' },
-  { key: 'tpl_payment_receipt',   label: 'Payment Receipt', icon: '🧾', trigger: 'Auto — on payment confirmed' },
-  { key: 'tpl_feedback_request',  label: 'Feedback Request', icon: '⭐', trigger: 'Auto — sent after service completion' },
-  { key: 'tpl_points_earned',     label: 'Points Earned', icon: '🎁', trigger: 'Auto — when customer earns loyalty points' },
-  { key: 'tpl_kasbon_deducted',   label: 'Kasbon Deducted', icon: '💸', trigger: 'Auto — when kasbon is deducted from barber payroll' },
+  { key: 'tpl_booking_confirmed', label: 'Booking Confirmation', icon: '✅', trigger: 'Auto — on booking confirmed (if customer provided phone number)', vars: 'name, barber, date, time, queue_no' },
+  { key: 'tpl_payment_receipt',   label: 'Payment Receipt', icon: '🧾', trigger: 'Auto — on payment confirmed', vars: 'name, total, tip' },
+  { key: 'tpl_points_earned',     label: 'Points Earned', icon: '🎁', trigger: 'Auto — when customer earns loyalty points', vars: 'name, points, total' },
+  { key: 'tpl_barber_new_booking', label: 'Kapster: New Booking', icon: '💇', trigger: 'Auto — sent to barber when a customer books them', vars: 'barber, customer, time, date, queue_no, service' },
+  { key: 'tpl_barber_escalation',  label: 'Kapster: Mulai Layanan', icon: '🔔', trigger: 'Auto — repeated reminder to barber to start service (every few minutes)', vars: 'barber, customer, queue_no, time, count' },
+  { key: 'tpl_booking_reminder',  label: 'Late Customer Reminder', icon: '⏰', trigger: 'Auto — sent once when customer hasn\'t arrived by scheduled time', vars: 'name, barber, time' },
+  { key: 'tpl_feedback_request',  label: 'Feedback Request', icon: '⭐', trigger: 'Auto — sent after service completion', vars: 'name, barber' },
+  { key: 'tpl_kasbon_deducted',   label: 'Kasbon Deducted', icon: '💸', trigger: 'Auto — when kasbon is deducted from barber payroll', vars: 'name, amount' },
 ]
+
+const DEFAULT_TEMPLATES = {
+  tpl_booking_confirmed: 'Halo {{name}}! ✅\n\nBooking Anda sudah dikonfirmasi:\n🪑 Kapster: {{barber}}\n📅 Tanggal: {{date}}\n⏰ Jam: {{time}}\n🎫 No. Antrian: {{queue_no}}\n\nSampai jumpa di Bercut! 💈',
+  tpl_payment_receipt: 'Terima kasih {{name}}! 🧾\n\nPembayaran berhasil:\n💰 Total: {{total}}\n💝 Tip: {{tip}}\n\nTerima kasih sudah berkunjung ke Bercut! See you again ✨',
+  tpl_points_earned: 'Hai {{name}}! 🎁\n\nAnda mendapat {{points}} poin dari kunjungan hari ini!\n⭐ Total poin: {{total}}\n\nKumpulkan poin dan tukarkan di kunjungan berikutnya!',
+  tpl_barber_new_booking: 'Hai {{barber}}! 💇\n\nBooking baru masuk:\n👤 Customer: {{customer}}\n⏰ Jam: {{time}}\n📅 Tanggal: {{date}}\n🎫 No: {{queue_no}}\n✂️ Layanan: {{service}}\n\nSiap-siap ya! 💪',
+  tpl_barber_escalation: '⚠️ {{barber}}, customer {{customer}} ({{queue_no}}) sudah menunggu sejak jam {{time}}.\n\nSegera mulai layanan! (Pengingat ke-{{count}})',
+}
 
 function WhatsAppTab() {
   const [cfg,       setCfg]       = useState({ enabled: false, fonnte_token: '' })
@@ -386,7 +396,10 @@ function WhatsAppTab() {
     if (!testPhone.trim()) return
     setTestState('sending')
     try {
-      await api.post('/settings/whatsapp/test', { phone: testPhone })
+      await api.post('/settings/whatsapp/test', { 
+        phone: testPhone,
+        token: cfg.fonnte_token 
+      })
       setTestState('ok'); setTimeout(() => setTestState('idle'), 4000)
     } catch {
       setTestState('error'); setTimeout(() => setTestState('idle'), 4000)
@@ -446,12 +459,27 @@ function WhatsAppTab() {
 
         {tpl && (
           <div style={{ background: T.white, border: '1px solid ' + T.border, borderRadius: 12, padding: '16px 18px' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: '#EFF6FF', color: '#2563EB', display: 'inline-block', marginBottom: 10 }}>
-              {tpl.trigger}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: '#EFF6FF', color: '#2563EB', display: 'inline-block', marginBottom: 6 }}>
+                  {tpl.trigger}
+                </div>
+                {tpl.vars && (
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>
+                    Variables: {tpl.vars.split(', ').map(v => <code key={v} style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 3, fontSize: 10, marginRight: 4, fontFamily: 'monospace' }}>{`{{${v}}}`}</code>)}
+                  </div>
+                )}
+              </div>
+              {DEFAULT_TEMPLATES[tpl.key] && !cfg[tpl.key] && (
+                <button onClick={() => set(tpl.key, DEFAULT_TEMPLATES[tpl.key])}
+                  style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid ' + T.border, background: T.bg, color: T.text2, fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" }}>
+                  Load Default
+                </button>
+              )}
             </div>
             <textarea value={cfg[tpl.key] || ''}
               onChange={e => set(tpl.key, e.target.value)}
-              rows={6}
+              rows={8}
               placeholder="Enter message template…"
               style={{ width: '100%', padding: '11px 13px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, lineHeight: 1.7, resize: 'vertical', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" }} />
           </div>

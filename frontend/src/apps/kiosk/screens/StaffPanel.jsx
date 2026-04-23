@@ -4,7 +4,7 @@ import { kioskApi } from '../../../shared/api.js'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
-export default function StaffPanel({ branchId, onClose }) {
+export default function StaffPanel({ branchId, onClose, onHome }) {
   const [bookings, setBookings] = useState([])
   const [loading,  setLoading]  = useState(true)
   const today = new Date().toISOString().slice(0, 10)
@@ -31,10 +31,14 @@ export default function StaffPanel({ branchId, onClose }) {
   return (
     <div style={{ position:'fixed', inset:0, zIndex:7000, background:C.topBg, display:'flex', flexDirection:'column' }}>
       {/* Header */}
-      <div style={{ background:'#1a1a18', padding:'clamp(12px,1.6vw,18px) clamp(16px,2.2vw,24px)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
-        <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:'clamp(16px,2vw,20px)', color:C.white }}>All Bookings Today</div>
-          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>{today} · {bookings.length} total</div>
+      <div style={{ background:'#0a0a08', padding:'0 clamp(16px,2.4vw,28px)', height: 'clamp(52px,6.5vh,64px)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0, borderBottom:'1px solid #1a1a18' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" onClick={onHome} style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain', cursor: 'pointer' }} />
+          <div style={{ width: 1, height: 24, background: '#2a2a28' }} />
+          <div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:'clamp(14px,1.8vw,18px)', color:C.white }}>All Bookings Today</div>
+            <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:'#555' }}>{today} · {bookings.length} total</div>
+          </div>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={load} style={{ background:'#2a2a28', border:'none', borderRadius:8, padding:'8px 14px', color:'#888', fontSize:'clamp(12px,1.4vw,14px)', cursor:'pointer' }}>↻</button>

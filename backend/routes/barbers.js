@@ -90,7 +90,7 @@ router.get('/', async (req, res) => {
 router.get('/all', requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT b.id, b.name, b.branch_id, b.specialty, b.status, b.is_active, b.sort_order, b.pay_type, b.base_salary, b.daily_rate,
+      `SELECT b.id, b.name, b.branch_id, b.specialty, b.phone, b.status, b.is_active, b.sort_order, b.pay_type, b.base_salary, b.daily_rate,
               c.label AS chair_label
        FROM barbers b
        LEFT JOIN chairs c ON c.barber_id = b.id

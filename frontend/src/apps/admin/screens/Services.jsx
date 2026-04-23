@@ -41,6 +41,7 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
     packageServices: [],
   })
   const [allServices, setAllServices] = useState([])
+  const [orPairs,    setOrPairs]    = useState([]) // [{ a: serviceId, b: serviceId }, ...]
   const [addItem,    setAddItem]    = useState('')
   const [addQty,     setAddQty]     = useState(1)
   const [saving,     setSaving]     = useState(false)
@@ -50,27 +51,27 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
-    // 1. Fetch all services for package selection
     api.get('/services').then(rows => {
       if (Array.isArray(rows)) {
         setAllServices(rows.filter(s => s.id !== service?.id && s.category !== 'package'))
       }
     }).catch(() => {})
 
-    // 2. If editing existing service, fetch its details
     if (service?.id) {
-      // Fetch consumables
       api.get(`/services/${service.id}/consumables`).then(rows => {
         if (Array.isArray(rows)) {
           setForm(f => ({ ...f, consumables: rows.map(r => ({ itemId: r.item_id, qty: r.qty_per_use, name: r.item_name, unit: r.unit })) }))
         }
       }).catch(() => {})
 
-      // If it's a package, fetch included services
       if (service.category === 'package') {
         api.get(`/services/${service.id}/package-services`).then(rows => {
           if (Array.isArray(rows)) {
             setForm(f => ({ ...f, packageServices: rows.map(r => r.service_id) }))
+            // Rebuild orPairs from or_group values
+            const grouped = {}
+            rows.forEach(r => { if (r.or_group) { (grouped[r.or_group] = grouped[r.or_group] || []).push(r.service_id) } })
+            setOrPairs(Object.values(grouped).filter(g => g.length === 2).map(([a, b]) => ({ a, b })))
           }
         }).catch(() => {})
       }
@@ -128,10 +129,18 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
   }
 
   function togglePackageService(id) {
-    const next = form.packageServices.includes(id)
-      ? form.packageServices.filter(x => x !== id)
-      : [...form.packageServices, id]
-    set('packageServices', next)
+    if (form.packageServices.includes(id)) {
+      set('packageServices', form.packageServices.filter(x => x !== id))
+      setOrPairs(p => p.filter(pair => pair.a !== id && pair.b !== id))
+    } else {
+      set('packageServices', [...form.packageServices, id])
+    }
+  }
+
+  function addOrPair()              { setOrPairs(p => [...p, { a: '', b: '' }]) }
+  function removeOrPair(idx)        { setOrPairs(p => p.filter((_, i) => i !== idx)) }
+  function updateOrPair(idx, side, val) {
+    setOrPairs(p => p.map((pair, i) => i === idx ? { ...pair, [side]: val } : pair))
   }
 
   async function handleSave() {
@@ -161,7 +170,7 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
         image_url: finalImageUrl || null,
         description: form.description || null,
         sort_order: form.sort_order || 0,
-        mutex_group: form.mutex_group || null
+        mutex_group: form.mutex_group || null,
       }
 
       // 3. Save Service
@@ -173,9 +182,15 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
         await api.patch(`/services/${service.id}`, payload)
       }
 
-      // 3b. Save Package Services if applicable
+      // 3b. Save Package Services with or_group assignments
       if (form.category === 'package') {
-        await api.put(`/services/${svcId}/package-services`, { serviceIds: form.packageServices })
+        const orGroupMap = {}
+        orPairs.forEach((pair, idx) => {
+          if (pair.a && pair.b) { orGroupMap[pair.a] = idx + 1; orGroupMap[pair.b] = idx + 1 }
+        })
+        await api.put(`/services/${svcId}/package-services`, {
+          services: form.packageServices.map(id => ({ service_id: id, or_group: orGroupMap[id] || null }))
+        })
       }
 
       if (svcId) {
@@ -232,9 +247,13 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
             <label style={lblStyle}>Base Price (IDR)</label>
             <input type="number" value={form.base_price} onChange={e => set('base_price', parseInt(e.target.value) || 0)} style={fldStyle} />
           </div>
-          <div>
+           <div>
             <label style={lblStyle}>Badge (optional)</label>
             <input value={form.badge} onChange={e => set('badge', e.target.value)} placeholder="e.g. Popular" style={fldStyle} />
+          </div>
+          <div>
+            <label style={lblStyle}>Mutex Group (optional)</label>
+            <input value={form.mutex_group || ''} onChange={e => set('mutex_group', e.target.value || null)} placeholder="e.g. haircut_type" style={fldStyle} />
           </div>
         </div>
 
@@ -279,18 +298,19 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
           </div>
         )}
 
-        {/* Package Service Selection */}
+
+        {/* Package: Included Services + OR Pairs */}
         {form.category === 'package' && (
-          <div style={{ marginTop: 14 }}>
-            <label style={lblStyle}>Included Services</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', padding: '12px', background: T.bg, borderRadius: 10, border: `1px solid ${T.border}`, maxHeight: 200, overflowY: 'auto' }}>
-              {allServices
-                .filter(s => !s.name.toLowerCase().includes('highlight'))
-                .map(s => {
+          <>
+            {/* 1. Service checklist */}
+            <div style={{ marginTop: 14 }}>
+              <label style={lblStyle}>Included Services</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px', padding: 12, background: T.bg, borderRadius: 10, border: `1px solid ${T.border}`, maxHeight: 200, overflowY: 'auto' }}>
+                {allServices.filter(s => !s.name.toLowerCase().includes('highlight')).map(s => {
                   const active = form.packageServices.includes(s.id)
                   return (
                     <div key={s.id} onClick={() => togglePackageService(s.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: active ? T.white : 'transparent', border: `1px solid ${active ? T.topBg : 'transparent'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: active ? T.white : 'transparent', border: `1px solid ${active ? T.topBg : 'transparent'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
                       <div style={{ width: 18, height: 18, borderRadius: 4, border: `1.5px solid ${active ? T.topBg : T.border}`, background: active ? T.topBg : T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {active && <span style={{ color: T.white, fontSize: 12, fontWeight: 900 }}>✓</span>}
                       </div>
@@ -298,11 +318,60 @@ function ServiceModal({ service, consumableItems, onClose, onSaved }) {
                     </div>
                   )
                 })}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>
-              Select services to bundle into this package. Highlights are excluded.
-            </div>
-          </div>
+
+            {/* 2. OR Pairs — only shown when 2+ services selected */}
+            {form.packageServices.length >= 2 && (
+              <div style={{ marginTop: 12 }}>
+                <label style={lblStyle}>OR Pairs <span style={{ fontWeight: 400, textTransform: 'none', color: T.muted }}>(optional)</span></label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {orPairs.map((pair, idx) => {
+                    const available = (side) => allServices
+                      .filter(s => form.packageServices.includes(s.id))
+                      .filter(s => {
+                        const other = side === 'a' ? pair.b : pair.a
+                        if (s.id === other) return false
+                        // Not already used in another pair
+                        return !orPairs.some((p, i) => i !== idx && (p.a === s.id || p.b === s.id))
+                      })
+                    return (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <select value={pair.a} onChange={e => updateOrPair(idx, 'a', e.target.value)}
+                          style={{ ...fldStyle, flex: 1, padding: '7px 9px', fontSize: 13 }}>
+                          <option value="">Select service…</option>
+                          {available('a').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          {pair.a && allServices.find(s => s.id === pair.a) && (
+                            <option value={pair.a}>{allServices.find(s => s.id === pair.a).name}</option>
+                          )}
+                        </select>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#7C3AED', flexShrink: 0 }}>or</span>
+                        <select value={pair.b} onChange={e => updateOrPair(idx, 'b', e.target.value)}
+                          style={{ ...fldStyle, flex: 1, padding: '7px 9px', fontSize: 13 }}>
+                          <option value="">Select service…</option>
+                          {available('b').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          {pair.b && allServices.find(s => s.id === pair.b) && (
+                            <option value={pair.b}>{allServices.find(s => s.id === pair.b).name}</option>
+                          )}
+                        </select>
+                        <button onClick={() => removeOrPair(idx)}
+                          style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <button onClick={addOrPair}
+                    style={{ alignSelf: 'flex-start', padding: '6px 14px', borderRadius: 7, border: `1.5px dashed ${T.border}`, background: 'transparent', color: T.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    + Add OR Pair
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>
+                  Paired services show as <strong>A / B</strong> on the kiosk — barber asks the customer which they prefer.
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>

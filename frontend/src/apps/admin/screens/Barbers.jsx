@@ -81,7 +81,7 @@ function BarberModal({ barber, branches, onClose, onSaved }) {
             { label: 'Full Name',       key: 'name',      full: true  },
             { label: 'Specialty',       key: 'specialty', full: false },
             { label: 'WhatsApp Number', key: 'phone',     full: false },
-            { label: 'PIN (4–6 digits)', key: 'pin',      full: false, type: 'password', placeholder: isNew ? 'Set PIN' : 'Leave blank to keep' },
+            { label: 'PIN (4 digits)', key: 'pin',      full: false, type: 'password', placeholder: isNew ? 'Set PIN' : 'Leave blank to keep' },
           ].map(({ label, key, full, type, placeholder }) => (
             <div key={key} style={{ gridColumn: full ? '1 / -1' : undefined }}>
               <label style={lblStyle}>{label}</label>

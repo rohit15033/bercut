@@ -462,6 +462,7 @@ CREATE TABLE IF NOT EXISTS barber_breaks (
 CREATE TABLE IF NOT EXISTS package_services (
   package_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
   service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  or_group   SMALLINT DEFAULT NULL,
   PRIMARY KEY (package_id, service_id)
 );
 

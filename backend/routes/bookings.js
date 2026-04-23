@@ -3,6 +3,7 @@ const pool   = require('../config/db')
 const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 const { branchScope, requireBranch } = require('../middleware/branchScope')
 const { emitEvent } = require('./events')
+const { notifyBookingConfirmed, notifyBarberNewBooking } = require('../services/notifications')
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -200,6 +201,13 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     await client.query('COMMIT')
 
+    // Fetch barber name and build service names for the response + notifications
+    const barberRow = await pool.query('SELECT name FROM barbers WHERE id = $1', [barberId])
+    const barberName = barberRow.rows[0]?.name || ''
+    const svcNameRows = await pool.query(
+      'SELECT name FROM services WHERE id = ANY($1::uuid[])', [service_ids])
+    const serviceNames = svcNameRows.rows.map(r => r.name).join(', ')
+
     const total = subtotal + extrasTotal - pointsDiscount
     const resp = {
       ...booking,
@@ -208,10 +216,17 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       extras_total: extrasTotal,
       points_discount: pointsDiscount,
       slot_time: isNow ? null : slot_time,
-      date: bookingDate
+      date: bookingDate,
+      barber_name: barberName,
+      service_names: serviceNames
     }
 
     emitEvent(branchId, 'new_booking', resp)
+    
+    // Async notification
+    notifyBookingConfirmed(resp).catch(e => console.error('[Notification] Confirmed failed:', e))
+    notifyBarberNewBooking(resp).catch(e => console.error('[Notification] Barber alert failed:', e))
+
     res.status(201).json(resp)
   } catch (err) {
     await client.query('ROLLBACK')
@@ -287,7 +302,8 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
               svc_names.booking_services,
               svc_names.service_names,
               COALESCE(svc_names.est_duration_min, 30) AS est_duration_min,
-              COALESCE(t.amount, 0) AS tip
+              COALESCE(t.amount, 0) AS tip,
+              ext_agg.booking_extras
        FROM bookings bk
        LEFT JOIN barbers b ON b.id = bk.barber_id
        LEFT JOIN customers c ON c.id = bk.customer_id
@@ -295,18 +311,18 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
        LEFT JOIN (SELECT booking_id, SUM(price_charged) AS total FROM booking_services GROUP BY booking_id) s_total ON s_total.booking_id = bk.id
        LEFT JOIN (SELECT booking_id, SUM(price) AS total FROM booking_extras GROUP BY booking_id) e_total ON e_total.booking_id = bk.id
        LEFT JOIN (
-          SELECT bs.booking_id, 
+          SELECT bs.booking_id,
                  json_agg(jsonb_build_object(
-                   'id', bs.id, 
-                   'service_id', bs.service_id, 
-                   'name', s.name, 
-                   'price', bs.price_charged, 
+                   'id', bs.id,
+                   'service_id', bs.service_id,
+                   'name', s.name,
+                   'price', bs.price_charged,
                    'added_mid_cut', bs.added_mid_cut,
                    'commission_rate', COALESCE(bar_svc.commission_rate, brs.commission_rate, b_inner.commission_rate, 35)
                  )) AS booking_services,
                  STRING_AGG(s.name, ', ') AS service_names,
                  SUM(s.duration_minutes) AS est_duration_min
-          FROM booking_services bs 
+          FROM booking_services bs
           JOIN services s ON s.id = bs.service_id
           JOIN bookings bk_inner ON bk_inner.id = bs.booking_id
           JOIN barbers b_inner ON b_inner.id = bk_inner.barber_id
@@ -314,6 +330,19 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
           LEFT JOIN barber_services bar_svc ON bar_svc.barber_id = bk_inner.barber_id AND bar_svc.service_id = bs.service_id
           GROUP BY bs.booking_id
         ) svc_names ON svc_names.booking_id = bk.id
+       LEFT JOIN (
+          SELECT be.booking_id,
+                 json_agg(jsonb_build_object(
+                   'id', be.id,
+                   'item_id', be.item_id,
+                   'name', ii.name,
+                   'price', be.price,
+                   'quantity', be.quantity
+                 )) AS booking_extras
+          FROM booking_extras be
+          JOIN inventory_items ii ON ii.id = be.item_id
+          GROUP BY be.booking_id
+        ) ext_agg ON ext_agg.booking_id = bk.id
        CROSS JOIN LATERAL (SELECT points_redemption_rate FROM global_settings LIMIT 1) gs
        ${where}
        ORDER BY bk.scheduled_at ASC`,
@@ -429,13 +458,25 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
         'SELECT item_id, qty_per_use FROM service_consumables WHERE service_id = $1', [svc.service_id])
       for (const c of consumables.rows) {
         await client.query(
-          'UPDATE inventory_stock SET current_stock = GREATEST(current_stock - $1, 0) WHERE item_id = $2 AND branch_id = $3',
+          'UPDATE inventory_stock SET current_stock = GREATEST(current_stock - $1, 0), updated_at = NOW() WHERE item_id = $2 AND branch_id = $3',
           [c.qty_per_use, c.item_id, booking.branch_id])
         await client.query(
           `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, note)
            VALUES ($1,$2,'out',$3,'service_use')`,
           [c.item_id, booking.branch_id, c.qty_per_use])
       }
+    }
+
+    // deduct inventory extras (products/beverages sold)
+    const extras = await client.query('SELECT item_id, quantity FROM booking_extras WHERE booking_id = $1', [booking.id])
+    for (const ex of extras.rows) {
+      await client.query(
+        'UPDATE inventory_stock SET current_stock = GREATEST(current_stock - $1, 0), updated_at = NOW() WHERE item_id = $2 AND branch_id = $3',
+        [ex.quantity, ex.item_id, booking.branch_id])
+      await client.query(
+        `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, note)
+         VALUES ($1,$2,'out',$3,'sale')`,
+        [ex.item_id, booking.branch_id, ex.quantity])
     }
 
     await client.query('COMMIT')
@@ -579,6 +620,50 @@ router.patch('/:id/add-services', requireKiosk, async (req, res) => {
   } finally {
     client.release()
   }
+})
+
+// ── PATCH /api/bookings/:id/add-extras ───────────────────────────────────────
+router.patch('/:id/add-extras', requireKiosk, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const { item_ids = [] } = req.body
+    const bk = await client.query('SELECT * FROM bookings WHERE id = $1', [req.params.id])
+    if (!bk.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Not found' }) }
+    const booking = bk.rows[0]
+
+    const itemRows = await client.query(
+      `SELECT ii.id, ist.price FROM inventory_items ii
+       JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
+       WHERE ii.id = ANY($2::uuid[]) AND ist.current_stock > 0 AND ist.price IS NOT NULL`,
+      [booking.branch_id, item_ids])
+
+    for (const item of itemRows.rows) {
+      await client.query(
+        'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
+        [booking.id, item.id, item.price])
+    }
+
+    await client.query('COMMIT')
+    res.json({ ok: true })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally { client.release() }
+})
+
+// ── DELETE /api/bookings/:id/extras/:extra_id ────────────────────────────────
+router.delete('/:id/extras/:extra_id', requireKiosk, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM booking_extras WHERE id = $1 AND booking_id = $2 RETURNING *`,
+      [req.params.extra_id, req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Extra not found' })
+    const bk = await pool.query('SELECT branch_id FROM bookings WHERE id = $1', [req.params.id])
+    if (bk.rows.length) emitEvent(bk.rows[0].branch_id, 'booking_updated', { id: req.params.id })
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
 // ── DELETE /api/bookings/:id/services/:service_id ────────────────────────────

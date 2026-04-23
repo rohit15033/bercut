@@ -15,13 +15,13 @@ router.get('/', async (req, res) => {
                COALESCE(bs.price, s.base_price) AS price,
                COALESCE(bs.is_available, true)  AS is_available,
                bs.commission_rate,
-               COALESCE((SELECT json_agg(sub_s.name) 
-                FROM package_services ps 
-                JOIN services sub_s ON sub_s.id = ps.service_id 
+               COALESCE((SELECT json_agg(json_build_object('name', sub_s.name, 'or_group', ps.or_group) ORDER BY ps.or_group NULLS LAST, sub_s.sort_order, sub_s.name)
+                FROM package_services ps
+                JOIN services sub_s ON sub_s.id = ps.service_id
                 WHERE ps.package_id = s.id), '[]'::json) as included_services,
-               COALESCE((SELECT json_agg(sub_s.image_url) 
-                FROM package_services ps 
-                JOIN services sub_s ON sub_s.id = ps.service_id 
+               COALESCE((SELECT json_agg(sub_s.image_url)
+                FROM package_services ps
+                JOIN services sub_s ON sub_s.id = ps.service_id
                 WHERE ps.package_id = s.id AND sub_s.image_url IS NOT NULL), '[]'::json) as included_images
         FROM services s
         LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
@@ -31,13 +31,13 @@ router.get('/', async (req, res) => {
     } else {
       query = `SELECT s.id, s.name, s.name_id, s.category, s.base_price AS price, s.duration_minutes,
                       s.badge, s.description, s.is_active, s.sort_order, s.image_url, s.mutex_group,
-                      COALESCE((SELECT json_agg(sub_s.name) 
-                       FROM package_services ps 
-                       JOIN services sub_s ON sub_s.id = ps.service_id 
+                      COALESCE((SELECT json_agg(json_build_object('name', sub_s.name, 'or_group', ps.or_group) ORDER BY ps.or_group NULLS LAST, sub_s.sort_order, sub_s.name)
+                       FROM package_services ps
+                       JOIN services sub_s ON sub_s.id = ps.service_id
                        WHERE ps.package_id = s.id), '[]'::json) as included_services,
-                      COALESCE((SELECT json_agg(sub_s.image_url) 
-                       FROM package_services ps 
-                       JOIN services sub_s ON sub_s.id = ps.service_id 
+                      COALESCE((SELECT json_agg(sub_s.image_url)
+                       FROM package_services ps
+                       JOIN services sub_s ON sub_s.id = ps.service_id
                        WHERE ps.package_id = s.id AND sub_s.image_url IS NOT NULL), '[]'::json) as included_images
                FROM services s 
                ORDER BY s.sort_order, s.name`
@@ -160,7 +160,7 @@ router.put('/:id/consumables', requireAdmin, async (req, res) => {
 router.get('/:id/package-services', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT ps.service_id, s.name, s.name_id, s.image_url, s.category
+      `SELECT ps.service_id, ps.or_group, s.name, s.name_id, s.image_url, s.category
        FROM package_services ps
        JOIN services s ON s.id = ps.service_id
        WHERE ps.package_id = $1
@@ -172,15 +172,18 @@ router.get('/:id/package-services', async (req, res) => {
 // PUT /api/services/:id/package-services
 router.put('/:id/package-services', requireAdmin, async (req, res) => {
   try {
-    const { serviceIds } = req.body
+    const { services } = req.body  // [{ service_id, or_group }]
     await pool.query('DELETE FROM package_services WHERE package_id = $1', [req.params.id])
-    for (const sid of (serviceIds || [])) {
-      await pool.query('INSERT INTO package_services (package_id, service_id) VALUES ($1, $2)', [req.params.id, sid])
+    for (const svc of (services || [])) {
+      await pool.query(
+        'INSERT INTO package_services (package_id, service_id, or_group) VALUES ($1, $2, $3)',
+        [req.params.id, svc.service_id, svc.or_group || null]
+      )
     }
     res.status(204).end()
-  } catch (err) { 
+  } catch (err) {
     console.error('PUT package-services error:', err)
-    res.status(500).json({ message: 'Internal server error' }) 
+    res.status(500).json({ message: 'Internal server error' })
   }
 })
 

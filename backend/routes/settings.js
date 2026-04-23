@@ -2,6 +2,7 @@ const router = require('express').Router()
 const pool   = require('../config/db')
 const bcrypt = require('bcrypt')
 const { requireAdmin, requireOwner, checkPermission } = require('../middleware/auth')
+const { sendWhatsApp } = require('../services/notifications')
 
 // ── Global Settings ────────────────────────────────────────────────────────────
 router.get('/global', requireAdmin, async (req, res) => {
@@ -61,11 +62,21 @@ router.get('/whatsapp', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+router.post('/whatsapp/test', requireAdmin, async (req, res) => {
+  try {
+    const { phone, message, token } = req.body
+    const msg = message || "Halo! Ini adalah pesan uji coba dari sistem Bercut Barbershop. WhatsApp Anda sudah terhubung dengan Fonnte."
+    await sendWhatsApp(phone, msg, token)
+    res.json({ success: true })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Failed to send test message' }) }
+})
+
 router.patch('/whatsapp', requireAdmin, requireOwner, async (req, res) => {
   try {
     const allowed = ['enabled','fonnte_token',
       'tpl_booking_confirmed','tpl_booking_reminder','tpl_payment_receipt',
-      'tpl_feedback_request','tpl_points_earned','tpl_kasbon_deducted']
+      'tpl_feedback_request','tpl_points_earned','tpl_kasbon_deducted',
+      'tpl_barber_new_booking','tpl_barber_escalation']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
@@ -187,17 +198,17 @@ router.delete('/feedback-tags/:id', requireAdmin, async (req, res) => {
 // ── Expense Categories ─────────────────────────────────────────────────────────
 router.get('/expense-categories', requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY name')
+    const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY label')
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
 router.post('/expense-categories', requireAdmin, async (req, res) => {
   try {
-    const { name, description } = req.body
+    const { label, key } = req.body
     const { rows } = await pool.query(
-      'INSERT INTO expense_categories (name, description) VALUES ($1,$2) RETURNING *',
-      [name, description||null])
+      'INSERT INTO expense_categories (label, key) VALUES ($1,$2) RETURNING *',
+      [label, key || label.toLowerCase().replace(/\s+/g, '_')])
     res.status(201).json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

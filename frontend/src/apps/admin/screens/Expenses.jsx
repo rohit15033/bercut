@@ -52,7 +52,7 @@ function CategoryModal({ onConfirm, onClose }) {
     if (!label.trim()) return
     setSaving(true)
     try {
-      const cat = await api.post('/expense-categories', { name: label.trim(), color })
+      const cat = await api.post('/expense-categories', { label: label.trim() })
       onConfirm(cat)
     } catch { setSaving(false) }
   }
@@ -369,7 +369,7 @@ export default function Expenses() {
                   <label style={{ ...LS, color: T.muted }}>Category</label>
                   <select value={fCatId} onChange={e => { if (e.target.value === '__create__') setShowCreateCat(true); else setFCatId(e.target.value) }} style={selectStyle}>
                     <option value=''>— None —</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                     <option disabled>──────</option>
                     <option value='__create__'>＋ Create Category...</option>
                   </select>

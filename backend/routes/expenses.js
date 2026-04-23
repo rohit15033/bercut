@@ -13,7 +13,7 @@ router.get('/', requireAdmin, async (req, res) => {
     if (type)      { conds.push(`e.type = $${idx++}`);        vals.push(type) }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
     const { rows } = await pool.query(
-      `SELECT e.*, ec.name AS category_name, u.name AS created_by_name
+      `SELECT e.*, ec.label AS category_name, u.name AS created_by_name
        FROM expenses e
        LEFT JOIN expense_categories ec ON ec.id = e.category_id
        LEFT JOIN users u ON u.id = e.created_by
@@ -26,12 +26,12 @@ router.get('/', requireAdmin, async (req, res) => {
 router.get('/:id', requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT e.*, ec.name AS category_name,
+      `SELECT e.*, ec.label AS category_name,
               json_agg(esi ORDER BY esi.id) FILTER (WHERE esi.id IS NOT NULL) AS stock_items
        FROM expenses e
        LEFT JOIN expense_categories ec ON ec.id = e.category_id
        LEFT JOIN expense_stock_items esi ON esi.expense_id = e.id
-       WHERE e.id = $1 GROUP BY e.id, ec.name`, [req.params.id])
+       WHERE e.id = $1 GROUP BY e.id, ec.label`, [req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
@@ -145,7 +145,7 @@ router.post('/purchase-orders', requireAdmin, async (req, res) => {
 
 router.get('/categories', requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY name')
+    const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY label')
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

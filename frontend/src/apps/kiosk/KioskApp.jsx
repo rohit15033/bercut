@@ -12,6 +12,7 @@ import QueueNumber from './screens/QueueNumber.jsx'
 import PaymentTakeover from './screens/PaymentTakeover.jsx'
 import BarberPanel from './screens/BarberPanel.jsx'
 import StaffPanel from './screens/StaffPanel.jsx'
+import QuickPanel from './screens/QuickPanel.jsx'
 
 const GS = () => (
   <style>{`
@@ -169,6 +170,7 @@ function KioskContent({ config }) {
   const [paymentBooking,  setPaymentBooking]  = useState(null)
   const [barberPanelOpen, setBarberPanelOpen] = useState(false)
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
+  const [quickPanelOpen,  setQuickPanelOpen]  = useState(false)
   const [group, setGroup] = useState([])
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [idleCountdown, setIdleCountdown] = useState(null)
@@ -270,18 +272,27 @@ function KioskContent({ config }) {
       )}
       {barberPanelOpen && (
         <BarberPanel
-          barbers={barbers}
           branchId={branchId}
           lastQueueUpdate={lastQueueUpdate}
           onClose={() => setBarberPanelOpen(false)}
           onHome={() => { setBarberPanelOpen(false); reset() }}
-          triggerPayment={(data) => { setPaymentBooking(data); setPaymentPending(true) }}
         />
       )}
       {staffPanelOpen && (
         <StaffPanel
           branchId={branchId}
           onClose={() => setStaffPanelOpen(false)}
+          onHome={() => { setStaffPanelOpen(false); reset() }}
+        />
+      )}
+      {quickPanelOpen && (
+        <QuickPanel
+          branchId={branchId}
+          services={services}
+          triggerPayment={(data) => { setPaymentBooking(data); setPaymentPending(true) }}
+          onHome={() => { setQuickPanelOpen(false); reset() }}
+          onClose={() => setQuickPanelOpen(false)}
+          lastQueueUpdate={lastQueueUpdate}
         />
       )}
       <Topbar
@@ -292,6 +303,7 @@ function KioskContent({ config }) {
         onHome={reset}
         onBarberAccess={() => setBarberPanelOpen(true)}
         onStaffAccess={() => setStaffPanelOpen(true)}
+        onQuickPanel={() => setQuickPanelOpen(true)}
         settings={settings}
       />
       {step === 0 && (

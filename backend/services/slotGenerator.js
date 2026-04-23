@@ -1,7 +1,7 @@
 const pool = require('../config/db')
 
 const SLOT_DURATION = 30 // minutes between slot start times
-const BUFFER_MIN    = 10 // grace buffer after each booking
+const BUFFER_MIN    = 0 // grace buffer after each booking
 
 function minutesFromMidnight(timeStr) {
   const [h, m] = timeStr.split(':').map(Number)
@@ -23,6 +23,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
 
   const openTime  = minutesFromMidnight('09:00')
   const closeTime = minutesFromMidnight('21:00')
+  const lastOrderStart = minutesFromMidnight('19:30')
 
   // Existing bookings — extract HH:MM from scheduled_at in WITA (UTC+8)
   const bookings = await pool.query(
@@ -63,12 +64,16 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
   const { rows: timeRows } = await pool.query("SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d")
   const nowMin = minutesFromMidnight(timeRows[0].t)
   const isToday = timeRows[0].d === date
-  const actualStart = isToday ? Math.max(openTime, Math.ceil(nowMin / SLOT_DURATION) * SLOT_DURATION) : openTime
+  // Fixed 10am bug: use floor instead of ceil to allow current slot if not elapsed
+  const actualStart = isToday ? Math.max(openTime, Math.floor(nowMin / SLOT_DURATION) * SLOT_DURATION) : openTime
 
   const slots = []
-  for (let t = actualStart; t + durationMin <= closeTime; t += SLOT_DURATION) {
+  // Fixed last order start time constraint
+  for (let t = actualStart; t <= lastOrderStart && t + durationMin <= closeTime; t += SLOT_DURATION) {
     const slotEnd = t + durationMin
-    const overlaps = blocked.some(b => t < b.end && slotEnd > b.start)
+    const overlaps = blocked.some(b => {
+      return t < b.end && slotEnd > b.start
+    })
     if (!overlaps) slots.push(minutesToTime(t))
   }
   return slots

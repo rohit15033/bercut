@@ -1,6 +1,24 @@
 import { useRef, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 
+// Converts included_services array [{name, or_group}] into display strings.
+// OR-paired services merge into "A / B"; singles stay as-is.
+// Handles legacy string arrays for backwards compatibility.
+function groupIncluded(included = []) {
+  if (!included.length) return []
+  if (typeof included[0] === 'string') return included
+  const groups = {}
+  const singles = []
+  included.forEach(item => {
+    if (item.or_group != null) {
+      ;(groups[item.or_group] = groups[item.or_group] || []).push(item.name)
+    } else {
+      singles.push(item.name)
+    }
+  })
+  return [...Object.values(groups).map(names => names.join(' / ')), ...singles]
+}
+
 // ── Upsell Modal — two-phase: suggest add-ons → optionally upgrade to package ──
 function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart, onConfirm, onClose }) {
   const initRule = findRuleForCart(cart)
@@ -158,7 +176,7 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
                 </span>
               )
             })}
-            {pkg.desc && pkg.desc.split('  ·  ').map((d, i) => (
+            {(pkg.included?.length > 0 ? groupIncluded(pkg.included) : pkg.desc.split('  ·  ')).map((d, i) => (
               <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px clamp(8px,1.1vw,10px)', borderRadius: 999, fontSize: 'clamp(11px,1.3vw,12px)', fontWeight: 600, background: C.accent, color: C.accentText, border: `1px solid ${C.accent}` }}>
                 + {d}
               </span>
@@ -447,7 +465,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
             {s.nameId && <div style={{ fontSize: 'clamp(10px,1.2vw,13px)', color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{s.nameId}</div>}
             {(s.included?.length > 0 || s.desc) && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'clamp(4px,0.5vw,6px)', marginTop: 'clamp(8px,1.1vw,12px)' }}>
-                {(s.included?.length > 0 ? s.included : s.desc.split('  ·  ')).slice(0, 6).map((d, di) => (
+                {(s.included?.length > 0 ? groupIncluded(s.included) : s.desc.split('  ·  ')).slice(0, 6).map((d, di) => (
                   <span key={di} style={{ fontSize: 'clamp(10px,1.2vw,12px)', fontWeight: 600, background: sel ? 'rgba(245,226,0,0.12)' : 'rgba(245,226,0,0.09)', color: sel ? C.accent : 'rgba(255,255,255,0.82)', padding: '4px 10px', borderRadius: 5, border: `1px solid ${sel ? 'rgba(245,226,0,0.28)' : 'rgba(255,255,255,0.13)'}` }}>{d}</span>
                 ))}
               </div>

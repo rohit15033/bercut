@@ -213,7 +213,7 @@ function ItemModal({ item, onSave, onClose }) {
   const [form, setForm] = useState(
     item
       ? { name: item.name, category: item.category, unit: item.unit }
-      : { name: '', category: 'beverage', unit: 'pcs' }
+      : { name: '', category: 'beverage', unit: 'pcs', initial_stock: '' }
   )
   const [busy, setBusy]   = useState(false)
   const [err,  setErr]    = useState('')
@@ -271,12 +271,24 @@ function ItemModal({ item, onSave, onClose }) {
             )}
           </div>
 
-          <div>
-            <label style={LS}>Unit</label>
-            <input value={form.unit} onChange={e => set('unit', e.target.value)}
-              placeholder="pcs / box / roll / ml"
-              style={{ ...INP, border: '1.5px solid ' + (form.unit.trim() ? T.border : '#FECACA') }} />
-            <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>How stock is counted</div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={LS}>Unit</label>
+              <input value={form.unit} onChange={e => set('unit', e.target.value)}
+                placeholder="pcs / box / ml"
+                style={{ ...INP, border: '1.5px solid ' + (form.unit.trim() ? T.border : '#FECACA') }} />
+            </div>
+            {isNew && (
+              <div style={{ flex: 1 }}>
+                <label style={LS}>Initial Stock (HO)</label>
+                <input type="number" value={form.initial_stock} onChange={e => set('initial_stock', e.target.value)}
+                  placeholder="0"
+                  style={INP} />
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: -8 }}>
+            {isNew ? 'How stock is counted and starting qty in Head Office' : 'How stock is counted'}
           </div>
         </div>
 
@@ -581,6 +593,22 @@ export default function Inventory() {
                       <button onClick={() => setItemModal(item)}
                         style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid ' + T.border, background: 'transparent', color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
                         Edit
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const s = stockMap[item.id] || {}
+                          const total = Object.values(s).reduce((a, b) => a + (b.current_stock || 0), 0)
+                          if (total > 0) return alert('Cannot delete item with remaining stock.')
+                          if (!window.confirm(`Delete "${item.name}"? This cannot be undone.`)) return
+                          try {
+                            await api.delete('/inventory/items/' + item.id)
+                            loadAll()
+                          } catch (err) {
+                            alert(err?.message || 'Delete failed')
+                          }
+                        }}
+                        style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #FEE2E2', background: 'transparent', color: '#DC2626', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                        Delete
                       </button>
                     </div>
                   </div>

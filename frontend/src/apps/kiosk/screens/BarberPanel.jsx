@@ -72,80 +72,15 @@ function BreakSelector({ onStart, onCancel, availableUntil, nextTime }) {
   )
 }
 
-// ── Add Service Modal ─────────────────────────────────────────────────────────
-
-function AddServiceModal({ booking, services, onConfirm, onClose }) {
-  const cats = [...new Set(services.map(s => s.category || 'Layanan'))]
-  const [cat, setCat] = useState(cats[0] || '')
-  const [added, setAdded] = useState([])
-  const existing = (booking.booking_services || []).map(s => s.service_id || s.id)
-  const filtered = services.filter(s => (s.category || 'Layanan') === cat && !existing.includes(s.id))
-  const toggle = id => setAdded(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
-  const total = services.filter(s => added.includes(s.id)).reduce((a, s) => a + parseFloat(s.price || s.base_price || 0), 0)
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 600, display: 'flex', alignItems: 'flex-end' }} onClick={onClose}>
-      <div style={{ background: C.bg, borderRadius: '20px 20px 0 0', width: '100%', maxHeight: '72vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: 'clamp(14px,1.8vw,20px) clamp(20px,2.6vw,28px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1.5px solid ${C.border}`, flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 'clamp(10px,1.2vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: C.muted, textTransform: 'uppercase', marginBottom: 3 }}>Tambah Layanan · Add Service</div>
-            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(15px,1.9vw,18px)', color: C.text }}>untuk {booking.customer_name || 'Guest'}</div>
-          </div>
-          <button onClick={onClose} style={{ background: C.surface, border: 'none', borderRadius: 8, width: 36, height: 36, fontSize: 18, cursor: 'pointer', color: C.text2 }}>×</button>
-        </div>
-        {cats.length > 1 && (
-          <div style={{ display: 'flex', gap: 8, padding: '10px clamp(20px,2.6vw,28px)', borderBottom: `1px solid ${C.border}`, flexShrink: 0, overflowX: 'auto' }}>
-            {cats.map(c => (
-              <button key={c} onClick={() => setCat(c)}
-                style={{ padding: '6px 14px', borderRadius: 20, border: `1.5px solid ${cat === c ? C.text : C.border}`, background: cat === c ? C.text : C.white, color: cat === c ? C.white : C.text2, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {c}
-              </button>
-            ))}
-          </div>
-        )}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 'clamp(12px,1.6vw,16px) clamp(20px,2.6vw,28px)', WebkitOverflowScrolling: 'touch' }}>
-          {filtered.map(s => {
-            const sel = added.includes(s.id)
-            const dur = s.duration_minutes || 0
-            return (
-              <div key={s.id} onClick={() => toggle(s.id)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(12px,1.6vw,14px)', marginBottom: 8, borderRadius: 12, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : C.white, cursor: 'pointer', minHeight: 60 }}>
-                <div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', color: sel ? C.accentText : C.text }}>{s.name}</div>
-                  <div style={{ fontSize: 'clamp(11px,1.3vw,12px)', color: sel ? C.accentText : C.muted, marginTop: 2 }}>⏱ {dur} min</div>
-                </div>
-                <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.7vw,16px)', color: sel ? C.accentText : C.text }}>{fmt(parseFloat(s.price || s.base_price || 0))}</div>
-              </div>
-            )
-          })}
-          {filtered.length === 0 && <div style={{ textAlign: 'center', color: C.muted, padding: '24px 0', fontSize: 'clamp(13px,1.5vw,14px)' }}>Tidak ada layanan tersedia</div>}
-        </div>
-        {added.length > 0 && (
-          <div style={{ padding: 'clamp(12px,1.6vw,16px) clamp(20px,2.6vw,28px)', borderTop: `1.5px solid ${C.border}`, display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: C.muted }}>Tambahan total</div>
-              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(16px,2vw,20px)', color: C.text }}>+{fmt(total)}</div>
-            </div>
-            <button onClick={() => onConfirm(added)}
-              style={{ padding: 'clamp(13px,1.7vw,15px) clamp(20px,2.6vw,26px)', borderRadius: 12, background: C.topBg, color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', border: 'none', cursor: 'pointer', minHeight: 52 }}>
-              Konfirmasi ({added.length}) →
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── PIN Screen ────────────────────────────────────────────────────────────────
 
-function PinScreen({ barber, onUnlock, onBack }) {
-  const [pin, setPin] = useState('')
+function PinScreen({ barber, onUnlock, onBack, onHome }) {
+  const [pin,   setPin]   = useState('')
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy,  setBusy]  = useState(false)
 
   const tryPin = async () => {
-    if (pin.length < 4) return
+    if (pin.length < 4 || busy) return
     setBusy(true); setError('')
     try {
       await kioskApi.post(`/barbers/${barber.id}/verify-pin`, { pin })
@@ -156,15 +91,29 @@ function PinScreen({ barber, onUnlock, onBack }) {
     } finally { setBusy(false) }
   }
 
+  useEffect(() => {
+    if (pin.length === 4) {
+      tryPin()
+    }
+  }, [pin])
+
+  const pressKey = (key) => {
+    setError('')
+    if (key === 'C')  { setPin(''); return }
+    if (key === '⌫')  { setPin(p => p.slice(0, -1)); return }
+    if (pin.length < 4) setPin(p => p + key)
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: C.topBg, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+      {/* Header */}
       <div style={{ background: '#0a0a08', padding: '0 clamp(16px,2.4vw,28px)', height: 'clamp(52px,6.5vh,64px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, borderBottom: '1px solid #1a1a18' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain' }} />
+          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" onClick={onHome} style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain', cursor: 'pointer' }} />
           <div style={{ width: 1, height: 24, background: '#2a2a28' }} />
           <div>
-            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.8vw,18px)', color: C.white }}>Masukkan PIN</div>
-            <div style={{ fontSize: 'clamp(10px,1.2vw,11px)', color: '#555' }}>Enter your PIN to continue</div>
+            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.8vw,18px)', color: C.white }}>Masukkan PIN (4 digits)</div>
           </div>
         </div>
         <button onClick={onBack}
@@ -172,32 +121,58 @@ function PinScreen({ barber, onUnlock, onBack }) {
           ← Kembali
         </button>
       </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'clamp(24px,4vw,48px)' }}>
-        <div style={{ width: 'clamp(64px,8vw,80px)', height: 'clamp(64px,8vw,80px)', borderRadius: '50%', background: '#111110', border: `2px solid ${C.accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+
+      {/* Content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'clamp(16px,3vw,36px)' }}>
+
+        {/* Avatar + name */}
+        <div style={{ width: 'clamp(64px,8vw,84px)', height: 'clamp(64px,8vw,84px)', borderRadius: '50%', background: '#111110', border: `2px solid ${C.accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
           <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(20px,2.6vw,28px)', color: C.accent }}>{barber.name.slice(0, 2).toUpperCase()}</span>
         </div>
         <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(20px,2.6vw,26px)', color: C.white, marginBottom: 4 }}>{barber.name}</div>
         {(barber.specialization || barber.spec) && (
-          <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: '#555', marginBottom: 24 }}>{barber.specialization || barber.spec}</div>
+          <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: '#555', marginBottom: 20 }}>{barber.specialization || barber.spec}</div>
         )}
-        <div style={{ background: '#1a1a18', borderRadius: 16, padding: 'clamp(24px,3vw,36px)', width: '100%', maxWidth: 360 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginBottom: 8 }}>PIN Kapster</label>
-          <input type="password" inputMode="numeric" maxLength={6} value={pin}
-            onChange={e => { setPin(e.target.value); setError('') }}
-            onKeyDown={e => e.key === 'Enter' && tryPin()}
-            placeholder="● ● ● ●"
-            autoFocus
-            style={{ width: '100%', padding: 'clamp(14px,1.8vw,18px) 16px', borderRadius: 12, border: `2px solid ${error ? C.danger : '#2a2a28'}`, fontSize: 'clamp(20px,2.6vw,26px)', fontFamily: 'monospace', letterSpacing: '0.3em', textAlign: 'center', background: '#111', color: C.white, marginBottom: 8 }} />
-          {error && <div style={{ color: C.danger, fontSize: 'clamp(12px,1.4vw,14px)', marginBottom: 12 }}>{error}</div>}
-          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-            <button onClick={onBack}
-              style={{ flex: 1, padding: 'clamp(12px,1.6vw,16px)', borderRadius: 10, background: '#2a2a28', color: '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(14px,1.6vw,16px)', border: 'none', cursor: 'pointer' }}>
-              Batal
-            </button>
-            <button onClick={tryPin} disabled={pin.length < 4 || busy}
-              style={{ flex: 2, padding: 'clamp(12px,1.6vw,16px)', borderRadius: 10, background: pin.length >= 4 ? C.accent : '#2a2a28', color: pin.length >= 4 ? C.accentText : '#555', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(14px,1.6vw,16px)', border: 'none', cursor: pin.length >= 4 ? 'pointer' : 'not-allowed' }}>
-              {busy ? 'Memeriksa…' : 'Masuk →'}
-            </button>
+
+        {/* Boxed PIN Display */}
+        <div style={{ width: '100%', maxWidth: 'clamp(260px,32vw,320px)', padding: 'clamp(14px,1.8vw,18px) 16px', borderRadius: 16, border: `2px solid ${error ? C.danger : '#2a2a28'}`, fontSize: 'clamp(20px,2.6vw,26px)', fontFamily: 'monospace', letterSpacing: '0.3em', textAlign: 'center', background: '#111110', marginBottom: error ? 12 : 28, minHeight: 68, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.white }}>
+          {pin ? pin.split('').map(() => '●').join('') : <span style={{ color: '#888', letterSpacing: 0 }}>● ● ● ●</span>}
+        </div>
+        
+        {error && <div style={{ color: C.danger, fontSize: 'clamp(13px,1.6vw,15px)', marginBottom: 16, fontWeight: 600 }}>{error}</div>}
+
+        {/* Keypad */}
+        <div style={{ width: '100%', maxWidth: 'clamp(300px,38vw,420px)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(10px,1.4vw,14px)' }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(key => {
+              const isAction = typeof key === 'string'
+              return (
+                <button key={key} onClick={() => pressKey(String(key))}
+                  style={{
+                    padding: 'clamp(18px,2.4vw,24px) 0',
+                    borderRadius: 14,
+                    background: key === 'C' ? '#2a0a0a' : isAction ? '#1e1e1c' : C.white,
+                    border: `1.5px solid ${key === 'C' ? '#5a1a1a' : '#2a2a28'}`,
+                    color: key === 'C' ? C.danger : isAction ? '#888' : C.text,
+                    fontFamily: "'Inter',sans-serif",
+                    fontSize: 'clamp(20px,2.6vw,28px)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    minHeight: 'clamp(64px,8vh,80px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'transform 0.1s, background 0.1s',
+                    transform: 'scale(1)',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                  onMouseDown={e => e.currentTarget.style.transform = 'scale(0.95)'}
+                  onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                  onTouchStart={e => e.currentTarget.style.transform = 'scale(0.95)'}
+                  onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}>
+                  {key}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -207,7 +182,7 @@ function PinScreen({ barber, onUnlock, onBack }) {
 
 // ── Barber Picker ─────────────────────────────────────────────────────────────
 
-function BarberPicker({ branchId, onSelect, onClose, lastQueueUpdate }) {
+function BarberPicker({ branchId, onSelect, onClose, onHome, lastQueueUpdate }) {
   const [barbers, setBarbers] = useState([])
   const [loading, setLoading] = useState(true)
   const [calling, setCalling] = useState(null)
@@ -233,7 +208,7 @@ function BarberPicker({ branchId, onSelect, onClose, lastQueueUpdate }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: C.topBg, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ background: '#0a0a08', padding: '0 clamp(16px,2.4vw,28px)', height: 'clamp(52px,6.5vh,64px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, borderBottom: '1px solid #1a1a18' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain' }} />
+          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" onClick={onHome} style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain', cursor: 'pointer' }} />
           <div style={{ width: 1, height: 24, background: '#2a2a28' }} />
           <div>
             <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.8vw,18px)', color: C.white }}>Pilih Kapster</div>
@@ -331,35 +306,26 @@ function BarberPicker({ branchId, onSelect, onClose, lastQueueUpdate }) {
 
 // ── Barber Detail ─────────────────────────────────────────────────────────────
 
-function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQueueUpdate }) {
+function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
   const today = new Date().toISOString().slice(0, 10)
 
-  const [queue, setQueue] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [services, setServices] = useState([])
-  const [status, setStatus] = useState(barber.current_status || barber.status || 'clocked_out')
+  const [queue,        setQueue]        = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [status,       setStatus]       = useState(barber.current_status || barber.status || 'clocked_out')
   const [attendanceId, setAttendanceId] = useState(null)
-  const [breakId, setBreakId] = useState(null)
-  const [breakEnd, setBreakEnd] = useState(null)
-  const [breakLeft, setBreakLeft] = useState(0)
-  const [showBreak, setShowBreak] = useState(false)
-  const [showAddSvc, setShowAddSvc] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
-  const [announced, setAnnounced] = useState(false)
-  const [alertSent, setAlertSent] = useState(false)
+  const [breakId,      setBreakId]      = useState(null)
+  const [breakEnd,     setBreakEnd]     = useState(null)
+  const [breakLeft,    setBreakLeft]    = useState(0)
+  const [showBreak,    setShowBreak]    = useState(false)
   const [earningsView, setEarningsView] = useState('today')
-  const [busyId, setBusyId] = useState(null)
-  const [now, setNow] = useState(Date.now())
 
   const active = queue.find(b => b.status === 'in_progress') || null
-  const next = queue.find(b => b.status === 'confirmed') || null
-  const done = queue.filter(b => b.status === 'completed')
+  const done   = queue.filter(b => b.status === 'completed')
 
-  const commissionRate = barber.commission_rate ?? 35
+  const commissionRate   = barber.commission_rate ?? 35
   const commissionEarned = done.reduce((a, b) => {
-    const services = b.booking_services || b.services || []
-    const svcComm = services.reduce((acc, s) => acc + Math.round((parseFloat(s.price) || 0) * (parseFloat(s.commission_rate) || commissionRate) / 100), 0)
-    return a + svcComm
+    const svcs = b.booking_services || b.services || []
+    return a + svcs.reduce((acc, s) => acc + Math.round((parseFloat(s.price) || 0) * (parseFloat(s.commission_rate) || commissionRate) / 100), 0)
   }, 0)
   const tipsEarned = done.reduce((a, b) => a + parseFloat(b.tip || 0), 0)
 
@@ -374,24 +340,6 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
   useEffect(() => { if (lastQueueUpdate) loadQueue() }, [lastQueueUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    kioskApi.get(`/services?branch_id=${branchId}`)
-      .then(data => setServices(Array.isArray(data) ? data.filter(s => s.is_active !== false) : []))
-      .catch(() => { })
-  }, [branchId])
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30000)
-    return () => clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    if (!active?.started_at) return
-    const startMs = new Date(active.started_at).getTime()
-    const t = setInterval(() => setElapsed(Date.now() - startMs), 1000)
-    return () => clearInterval(t)
-  }, [active?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
     if (!breakEnd) return
     const t = setInterval(() => {
       const left = breakEnd - Date.now()
@@ -400,15 +348,6 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
     }, 1000)
     return () => clearInterval(t)
   }, [breakEnd])
-
-  const nextLateMin = (() => {
-    if (!next?.slot_time) return 0
-    const [h, m] = next.slot_time.split(':').map(Number)
-    if (isNaN(h) || isNaN(m)) return 0
-    const slotMs = new Date().setHours(h, m, 0, 0)
-    const overMs = now - slotMs
-    return overMs > 0 ? Math.floor(overMs / 60000) : 0
-  })()
 
   const handleClockIn = async () => {
     try {
@@ -449,98 +388,15 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
     } catch (err) { alert(err.message || 'End break failed') }
   }
 
-  const handleStart = async (bookingId) => {
-    setBusyId(bookingId)
-    try {
-      await kioskApi.patch(`/bookings/${bookingId}/start`)
-      setStatus('busy'); setElapsed(0); setAnnounced(false)
-      loadQueue()
-    } catch (err) { alert(err.message || 'Start failed') }
-    finally { setBusyId(null) }
-  }
-
-  const handleComplete = async (bookingId) => {
-    setBusyId(bookingId)
-    try {
-      console.log('[BarberPanel] Completing booking:', bookingId)
-      const res = await kioskApi.patch(`/bookings/${bookingId}/complete`)
-      console.log('[BarberPanel] Complete response:', res)
-      
-      setStatus('available')
-      
-      // Crucial: Trigger payment immediately using the response data
-      if (typeof triggerPayment === 'function') {
-        console.log('[BarberPanel] Triggering payment takeover...')
-        triggerPayment({ 
-          ...res, 
-          id: res.id || bookingId, 
-          booking_id: res.id || bookingId, 
-          amount: res.total_amount 
-        })
-      } else {
-        console.warn('[BarberPanel] triggerPayment prop is missing or not a function')
-      }
-      
-      onClose()
-    } catch (err) { 
-      console.error('[BarberPanel] Complete failed:', err)
-      alert(err.message || 'Complete failed') 
-    }
-    finally { setBusyId(null) }
-  }
-
-  const handleNoShow = async (bookingId) => {
-    setBusyId(bookingId)
-    try {
-      await kioskApi.patch(`/bookings/${bookingId}/no-show`)
-      loadQueue()
-    } catch (err) { alert(err.message || 'No-show failed') }
-    finally { setBusyId(null) }
-  }
-
-  const handleAddServices = async (serviceIds) => {
-    if (!active) return
-    setBusyId(active.id)
-    try {
-      await kioskApi.patch(`/bookings/${active.id}/add-services`, { service_ids: serviceIds })
-      setShowAddSvc(false)
-      loadQueue()
-    } catch (err) { alert(err.message || 'Add services failed') }
-    finally { setBusyId(null) }
-  }
-
-  const handleRemoveService = async (serviceId) => {
-    if (!active) return
-    if (!window.confirm('Hapus layanan tambahan ini?')) return
-    setBusyId(active.id)
-    try {
-      await kioskApi.delete(`/bookings/${active.id}/services/${serviceId}`)
-      loadQueue()
-    } catch (err) { alert(err.message || 'Remove service failed') }
-    finally { setBusyId(null) }
-  }
-
-  const handleCall = (name) => {
-    speak(`Panggil kapster ${barber.name}. Tamu atas nama ${name} sedang menunggu.`, { rate: 0.95 })
-    setAnnounced(true)
-  }
-
-  const handleClientNotArrived = (id) => {
-    setAlertSent(true)
-    kioskApi.post(`/bookings/${id}/client-not-arrived`).catch(() => { })
-  }
-
-  const isOut = status === 'clocked_out'
+  const isOut   = status === 'clocked_out'
   const isBreak = status === 'on_break'
-  const isBusy = status === 'busy'
+  const isBusy  = status === 'busy'
 
-  const allBookings = [
-    ...done,
-    ...(active ? [active] : []),
-    ...(next ? [next] : []),
-    ...queue.filter(b => b.status === 'confirmed' && b !== next),
-    ...queue.filter(b => b.status === 'no_show' || b.status === 'cancelled'),
-  ].filter((b, i, arr) => arr.indexOf(b) === i)
+  const next       = queue.find(b => b.status === 'confirmed') || null
+  const allBookings = [...queue].sort((a, b) => {
+    const order = { in_progress: 0, confirmed: 1, completed: 2, no_show: 3, cancelled: 4 }
+    return (order[a.status] ?? 5) - (order[b.status] ?? 5)
+  })
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: C.topBg, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -562,12 +418,11 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
           onCancel={() => setShowBreak(false)}
         />
       )}
-      {showAddSvc && active && <AddServiceModal booking={active} services={services} onConfirm={handleAddServices} onClose={() => setShowAddSvc(false)} />}
 
       {/* Top bar */}
       <div style={{ background: '#0a0a08', padding: '0 clamp(16px,2.4vw,28px)', height: 'clamp(52px,6.5vh,64px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, borderBottom: '1px solid #1a1a18' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain' }} />
+          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" onClick={onHome} style={{ height: 'clamp(22px,2.8vh,28px)', objectFit: 'contain', cursor: 'pointer' }} />
           <div style={{ width: 1, height: 24, background: '#2a2a28' }} />
           <div>
             <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.8vw,18px)', color: C.white }}>{barber.name}</div>
@@ -638,165 +493,21 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
         </div>
       </div>
 
-      {/* Body — two columns */}
+      {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
-        {/* Left — Queue */}
-        <div style={{ width: 'clamp(320px,42vw,480px)', borderRight: '1px solid #1a1a18', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-
-          {/* Sekarang */}
-          <div style={{ padding: 'clamp(14px,1.8vw,20px)', borderBottom: '1px solid #1a1a18', flexShrink: 0 }}>
-            <div style={{ fontSize: 'clamp(10px,1.2vw,11px)', fontWeight: 700, letterSpacing: '0.14em', color: '#444', textTransform: 'uppercase', marginBottom: 10 }}>⚡ Sekarang</div>
-            {loading ? (
-              <div style={{ background: '#1a1a18', borderRadius: 14, padding: 'clamp(16px,2vw,22px)', textAlign: 'center' }}>
-                <div style={{ color: '#555', fontSize: 'clamp(12px,1.4vw,14px)' }}>Loading…</div>
-              </div>
-            ) : active ? (
-              <div style={{ background: '#1a1a18', borderRadius: 14, padding: 'clamp(12px,1.6vw,16px)', border: '1.5px solid #2a2a28' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(16px,2vw,22px)', color: C.white }}>{active.customer_name || 'Guest'}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                      {(active.booking_services || active.services || []).map((s, si) => {
-                        const isAdded = s.added_mid_cut === true
-                        return (
-                          <div key={si} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: isAdded ? '#1a1a0a' : '#111', border: `1px solid ${isAdded ? '#3a3a1a' : '#222'}`, borderRadius: 6, padding: '4px 10px' }}>
-                            <span style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: isAdded ? C.accent : '#999', fontWeight: 600 }}>
-                              {isAdded ? '+ ' : ''}{s.service_name || s.name}
-                            </span>
-                            {isAdded && (
-                              <button onClick={(e) => { e.stopPropagation(); handleRemoveService(s.service_id || s.id) }}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', padding: 0, fontSize: 14, cursor: 'pointer', marginLeft: 4, fontWeight: 900, display: 'flex', alignItems: 'center' }}>
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  {active.queue_number && <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(11px,1.3vw,13px)', color: '#555' }}>#{active.queue_number}</div>}
-                </div>
-                {(() => {
-                  const estMin = (active.booking_services || []).reduce((a, s) => a + (parseInt(s.duration_minutes) || 0), 0) || 30
-                  const estMs = estMin * 60 * 1000
-                  const diffMs = elapsed - estMs
-                  const isOver = diffMs > 0
-                  const diffMin = Math.abs(Math.floor(diffMs / 60000))
-                  return (
-                    <div style={{ background: '#111110', borderRadius: 9, padding: '9px 13px', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                        <span style={{ fontSize: 'clamp(10px,1.2vw,11px)', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Waktu berjalan</span>
-                        <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(18px,2.4vw,24px)', color: C.accent, fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 'clamp(10px,1.2vw,11px)', color: '#444' }}>Estimasi: {formatElapsed(estMs)}</span>
-                        <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(11px,1.3vw,13px)', color: elapsed < 5000 ? '#555' : isOver ? '#ef5350' : '#4caf50' }}>
-                          {elapsed < 5000 ? '—' : isOver ? `+${diffMin}m melebihi` : diffMin === 0 ? 'tepat waktu' : `−${diffMin}m tersisa`}
-                        </span>
-                      </div>
-                      <div style={{ marginTop: 7, height: 3, borderRadius: 2, background: '#1a1a18', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: 2, width: `${Math.min(100, estMs > 0 ? (elapsed / estMs) * 100 : 0)}%`, background: isOver ? '#ef5350' : C.accent, transition: 'width 1s linear' }} />
-                      </div>
-                    </div>
-                  )
-                })()}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setShowAddSvc(true)}
-                    style={{ flex: 1, padding: 'clamp(11px,1.5vw,13px)', borderRadius: 9, background: '#2a2a28', color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(12px,1.4vw,13px)', border: 'none', cursor: 'pointer', minHeight: 48 }}>
-                    + Tambah
-                  </button>
-                  <button onClick={() => handleComplete(active.id)} disabled={busyId === active.id}
-                    style={{ flex: 2, padding: 'clamp(11px,1.5vw,13px)', borderRadius: 9, background: C.accent, color: C.accentText, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', border: 'none', cursor: 'pointer', minHeight: 48 }}>
-                    {busyId === active.id ? '…' : 'Selesai ✓'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: '#1a1a18', borderRadius: 14, padding: 'clamp(16px,2vw,22px)', textAlign: 'center', border: '1px dashed #2a2a28' }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>✂</div>
-                <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)', color: '#555' }}>
-                  {isBreak ? 'Sedang istirahat' : isOut ? 'Belum clock in' : 'Tidak ada pelanggan aktif'}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Berikutnya */}
-          {next && (
-            <div style={{ padding: 'clamp(14px,1.8vw,20px)', flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <div style={{ fontSize: 'clamp(10px,1.2vw,11px)', fontWeight: 700, letterSpacing: '0.14em', color: '#444', textTransform: 'uppercase' }}>→ Berikutnya</div>
-                {nextLateMin >= 5 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#2a0a0a', border: '1px solid #7a1a1a', borderRadius: 5, padding: '2px 8px' }}>
-                    <span style={{ fontSize: 10 }}>⚠</span>
-                    <span style={{ fontSize: 'clamp(9px,1.1vw,10px)', fontWeight: 700, color: '#ef5350', letterSpacing: '0.06em' }}>TERLAMBAT {nextLateMin}M</span>
-                  </div>
-                )}
-              </div>
-              <div style={{ background: '#1a1a18', borderRadius: 14, padding: 'clamp(12px,1.6vw,16px)', border: `1.5px solid ${nextLateMin >= 10 ? '#7a1a1a' : nextLateMin >= 5 ? '#5a3a0a' : '#2a2a28'}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.8vw,18px)', color: C.white }}>{next.customer_name || 'Guest'}</div>
-                    <div style={{ fontSize: 'clamp(11px,1.3vw,12px)', color: '#666', marginTop: 2 }}>
-                      {(next.booking_services || []).map(s => s.service_name || s.name).filter(Boolean).join(' + ') || next.service_name || ''}
-                    </div>
-                    <div style={{ fontSize: 'clamp(10px,1.2vw,11px)', color: nextLateMin >= 5 ? '#ef9a50' : '#444', marginTop: 4 }}>
-                      Slot: {next.slot_time}{nextLateMin >= 5 ? ` · ${nextLateMin} menit terlambat` : ''}
-                    </div>
-                  </div>
-                  <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(13px,1.7vw,16px)', color: C.accent }}>{fmt(parseFloat(next.total_amount || 0))}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button onClick={() => handleCall(next.customer_name)}
-                    style={{ flex: 1, minWidth: 60, padding: 'clamp(10px,1.3vw,12px)', borderRadius: 9, background: announced ? '#1a3a1a' : '#2a2a28', color: announced ? '#4caf50' : '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: 'pointer', minHeight: 44 }}>
-                    {announced ? '✓ Dipanggil' : '📢 Panggil'}
-                  </button>
-                  <button onClick={() => !alertSent && handleClientNotArrived(next.id)} disabled={alertSent}
-                    style={{ flex: 1, minWidth: 60, padding: 'clamp(10px,1.3vw,12px)', borderRadius: 9, background: alertSent ? '#1a2a1a' : '#2a2a28', color: alertSent ? '#4caf50' : '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: alertSent ? 'not-allowed' : 'pointer', minHeight: 44 }}>
-                    {alertSent ? '✓ Admin diberitahu' : '⚠ Belum Datang'}
-                  </button>
-                  <button onClick={() => !active && !isBreak && !isOut && handleStart(next.id)}
-                    disabled={!!active || isBreak || isOut || busyId === next.id}
-                    style={{ flex: 2, minWidth: 100, padding: 'clamp(10px,1.3vw,12px)', borderRadius: 9, background: (!active && !isBreak && !isOut) ? C.white : '#2a2a28', color: (!active && !isBreak && !isOut) ? C.text : '#555', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)', border: 'none', cursor: (!active && !isBreak && !isOut) ? 'pointer' : 'not-allowed', minHeight: 44 }}>
-                    {busyId === next.id ? '…' : active ? 'Selesaikan dulu ↑' : isBreak ? 'Sedang istirahat' : isOut ? 'Clock in dulu' : 'Mulai Layanan →'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!next && !loading && (
-            <div style={{ padding: 'clamp(14px,1.8vw,20px)', flex: 1 }}>
-              <div style={{ fontSize: 'clamp(10px,1.2vw,11px)', fontWeight: 700, letterSpacing: '0.14em', color: '#2a2a28', textTransform: 'uppercase', marginBottom: 10 }}>→ Berikutnya</div>
-              <div style={{ color: '#333', fontSize: 'clamp(12px,1.4vw,13px)', textAlign: 'center', paddingTop: 16 }}>Antrian kosong</div>
-            </div>
-          )}
-        </div>
-
-        {/* Right — Earnings + list */}
+        {/* Stats — full width */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
 
           {/* Earnings */}
           <div style={{ padding: 'clamp(10px,1.3vw,14px) clamp(14px,1.8vw,20px)', flexShrink: 0, borderBottom: '1px solid #1a1a18' }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-              {[['today', 'Hari Ini'], ['month', 'Bulan Ini']].map(([k, lbl]) => (
-                <button key={k} onClick={() => setEarningsView(k)}
-                  style={{ padding: '5px 14px', borderRadius: 20, border: `1.5px solid ${earningsView === k ? C.accent : '#2a2a28'}`, background: earningsView === k ? '#1a1a0a' : '#111110', color: earningsView === k ? C.accent : '#555', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(10px,1.2vw,12px)', cursor: 'pointer' }}>
-                  {lbl}
-                </button>
-              ))}
-            </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              {(earningsView === 'today' ? [
-                { label: 'Komisi', value: fmt(commissionEarned), sub: 'Layanan Selesai', accent: '#4caf50' },
-                { label: 'Tips', value: tipsEarned > 0 ? fmt(tipsEarned) : '—', sub: '100% untuk kamu', accent: C.accent },
+              {[
+                { label: 'Komisi Hari Ini', value: fmt(commissionEarned), sub: 'Layanan Selesai', accent: '#4caf50' },
+                { label: 'Tips Hari Ini', value: tipsEarned > 0 ? fmt(tipsEarned) : '—', sub: '100% untuk kamu', accent: C.accent },
                 { label: 'Selesai', value: done.length, sub: `dari ${queue.length} booking`, accent: C.white },
-              ] : [
-                { label: 'Komisi Bulan Ini', value: fmt(commissionEarned * 16), sub: 'Estimasi Pendapatan', accent: '#4caf50' },
-                { label: 'Tips Bulan Ini', value: tipsEarned > 0 ? fmt(tipsEarned * 16) : '—', sub: '100% untuk kamu', accent: C.accent },
-                { label: 'Total Layanan', value: done.length * 16, sub: 'estimasi bulan ini', accent: C.white },
-              ]).map(s => (
+              ].map(s => (
                 <div key={s.label} style={{ flex: 1, background: '#1a1a18', borderRadius: 12, padding: 'clamp(10px,1.4vw,14px)', border: '1.5px solid #2a2a28' }}>
                   <div style={{ fontSize: 'clamp(9px,1.1vw,10px)', fontWeight: 700, letterSpacing: '0.12em', color: '#555', textTransform: 'uppercase', marginBottom: 6 }}>{s.label}</div>
                   <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(17px,2.2vw,24px)', color: s.accent, lineHeight: 1 }}>{s.value}</div>
@@ -870,7 +581,7 @@ function BarberDetail({ barber, branchId, onBack, onClose, triggerPayment, lastQ
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHome, triggerPayment, lastQueueUpdate }) {
+export default function BarberPanel({ branchId, onClose, onHome, lastQueueUpdate }) {
   const [step, setStep] = useState('picker')
   const [barber, setBarber] = useState(null)
 
@@ -880,6 +591,7 @@ export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHo
         barber={barber}
         onUnlock={() => setStep('detail')}
         onBack={() => { setStep('picker'); setBarber(null) }}
+        onHome={onHome}
       />
     )
   }
@@ -890,8 +602,7 @@ export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHo
         branchId={branchId}
         lastQueueUpdate={lastQueueUpdate}
         onBack={() => { setStep('picker'); setBarber(null) }}
-        onClose={onClose || onHome}
-        triggerPayment={triggerPayment}
+        onHome={onHome}
       />
     )
   }
@@ -899,8 +610,9 @@ export default function BarberPanel({ barbers: _barbers, branchId, onClose, onHo
     <BarberPicker
       branchId={branchId}
       lastQueueUpdate={lastQueueUpdate}
-      onSelect={b => { setBarber(b); setStep('detail') }}
+      onSelect={b => { setBarber(b); setStep('pin') }}
       onClose={onClose}
+      onHome={onHome}
     />
   )
 }

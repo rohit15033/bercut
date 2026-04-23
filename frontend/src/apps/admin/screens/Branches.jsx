@@ -347,6 +347,7 @@ function BranchModal({ branch, onSave, onClose }) {
   const [showGenerate, setShowGenerate] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const [form, setForm] = useState({
     name:                         branch?.name || '',
@@ -570,35 +571,42 @@ function BranchModal({ branch, onSave, onClose }) {
           {tab === 'devices' && (
             <div>
               {/* TV Monitor Link */}
-              <div style={{ marginBottom: 24, padding: '16px', borderRadius: 12, background: T.bg, border: `1.5px solid ${T.border}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ marginBottom: 24, padding: '20px', borderRadius: 16, background: 'linear-gradient(135deg, #1a1a18 0%, #2a2a28 100%)', border: '1px solid #3a3a38', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 14, color: T.text }}>Live TV Monitor</div>
-                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Dashboard for real-time customer queue and status.</div>
+                    <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 15, color: '#f5e200', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 18 }}>📺</span> Live TV Monitor
+                    </div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Real-time waiting room dashboard for this branch.</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: form.online_booking_slug ? '#16A34A' : '#EF4444' }} />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: form.online_booking_slug ? '#16A34A' : '#EF4444', textTransform: 'uppercase' }}>
-                      {form.online_booking_slug ? 'Active' : 'Missing Slug'}
-                    </span>
-                  </div>
+                  {form.online_booking_slug && (
+                    <div style={{ background: 'rgba(22, 163, 74, 0.1)', color: '#22c55e', padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Ready
+                    </div>
+                  )}
                 </div>
 
                 {form.online_booking_slug ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.white, padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}` }}>
-                    <div style={{ flex: 1, fontFamily: 'monospace', fontSize: 13, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {window.location.origin}/tv/{form.online_booking_slug}
+                  <div style={{ position: 'relative', background: 'rgba(0,0,0,0.3)', border: '1px solid #3a3a38', borderRadius: 12, padding: '12px 14px', marginTop: 8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginBottom: 6 }}>Dashboard URL</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, fontFamily: 'monospace', fontSize: 12, color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {window.location.origin}/tv/{form.online_booking_slug}
+                      </div>
+                      <button onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/tv/${form.online_booking_slug}`);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }} style={{ padding: '6px 12px', borderRadius: 8, background: '#f5e200', color: '#000', border: 'none', fontWeight: 800, fontSize: 11, cursor: 'pointer', transition: 'transform 0.1s' }}
+                        onMouseDown={e => e.currentTarget.style.transform = 'scale(0.95)'}
+                        onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}>
+                        {copied ? '✓ COPIED' : 'COPY'}
+                      </button>
                     </div>
-                    <button onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/tv/${form.online_booking_slug}`);
-                      alert('TV Link copied!');
-                    }} style={{ padding: '6px 12px', borderRadius: 6, background: T.topBg, color: T.white, border: 'none', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
-                      Copy Link
-                    </button>
                   </div>
                 ) : (
-                  <div style={{ fontSize: 12, color: T.danger, background: '#FEF2F2', padding: '10px 12px', borderRadius: 8, border: '1px solid #FCA5A5' }}>
-                    ⚠ Please set an <strong>Online Booking Slug</strong> in the Details tab to enable the TV monitor.
+                  <div style={{ fontSize: 12, color: '#ef4444', background: 'rgba(239, 68, 68, 0.05)', padding: '12px', borderRadius: 10, border: '1px solid rgba(239, 68, 68, 0.2)', marginTop: 8 }}>
+                    ⚠ Set an <strong>Online Booking Slug</strong> in Details to enable the TV monitor.
                   </div>
                 )}
               </div>

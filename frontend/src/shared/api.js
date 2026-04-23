@@ -56,4 +56,5 @@ export const kioskApi = {
   post:   (path, body) => request('POST',   path, body,      { kiosk: true }),
   put:    (path, body) => request('PUT',    path, body,      { kiosk: true }),
   patch:  (path, body) => request('PATCH',  path, body,      { kiosk: true }),
+  delete: (path)       => request('DELETE', path, undefined, { kiosk: true }),
 }

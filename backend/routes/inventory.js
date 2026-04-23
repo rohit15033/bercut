@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin } = require('../middleware/auth')
+const { requireAdmin, requireKioskOrAdmin } = require('../middleware/auth')
 
 // GET /api/inventory?branch_id=
 router.get('/', requireAdmin, async (req, res) => {
@@ -32,14 +32,56 @@ router.get('/items', requireAdmin, async (req, res) => {
 
 // POST /api/inventory/items
 router.post('/items', requireAdmin, async (req, res) => {
+  const client = await pool.connect()
   try {
-    const { name, unit, category } = req.body
+    const { name, unit, category, initial_stock = 0 } = req.body
     if (!name) return res.status(400).json({ message: 'Name required' })
-    const { rows } = await pool.query(
+
+    await client.query('BEGIN')
+
+    const itemRes = await client.query(
       'INSERT INTO inventory_items (name, unit, category) VALUES ($1,$2,$3) RETURNING *',
       [name, unit || 'pcs', category || null])
-    res.status(201).json(rows[0])
-  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+    const item = itemRes.rows[0]
+
+    if (parseFloat(initial_stock) > 0) {
+      // Find HO branch
+      const branchRes = await client.query(
+        "SELECT id FROM branches WHERE name ILIKE '%HO%' OR name ILIKE '%Head Office%' LIMIT 1"
+      )
+      
+      let targetBranchId = branchRes.rows[0]?.id
+      
+      // Fallback to the first branch if no HO found (or we could error, but fallback is safer for now)
+      if (!targetBranchId) {
+        const firstBranch = await client.query('SELECT id FROM branches LIMIT 1')
+        targetBranchId = firstBranch.rows[0]?.id
+      }
+
+      if (targetBranchId) {
+        await client.query(
+          `INSERT INTO inventory_stock (item_id, branch_id, current_stock)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (item_id, branch_id)
+           DO UPDATE SET current_stock = inventory_stock.current_stock + $3`,
+          [item.id, targetBranchId, initial_stock])
+        
+        await client.query(
+          `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, note, logged_by)
+           VALUES ($1, $2, 'in', $3, 'initial_stock', $4)`,
+          [item.id, targetBranchId, initial_stock, req.user.id])
+      }
+    }
+
+    await client.query('COMMIT')
+    res.status(201).json(item)
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
 })
 
 // PATCH /api/inventory/items/:id
@@ -97,19 +139,37 @@ router.patch('/stock', requireAdmin, async (req, res) => {
   try {
     const { item_id, branch_id, ...updates } = req.body
     if (!item_id || !branch_id) return res.status(400).json({ message: 'item_id and branch_id required' })
+
     const allowed = ['current_stock', 'reorder_threshold', 'price', 'kiosk_visible']
-    const sets = []; const vals = []; let idx = 1
+    const columns = ['item_id', 'branch_id']
+    const values  = [item_id, branch_id]
+    const sets    = []
+
     for (const key of allowed) {
-      if (updates[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(updates[key]) }
+      if (updates[key] !== undefined) {
+        columns.push(key)
+        values.push(updates[key])
+        sets.push(`${key} = EXCLUDED.${key}`)
+      }
     }
+
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
-    sets.push('updated_at = NOW()')
-    vals.push(item_id, branch_id)
-    const { rows } = await pool.query(
-      `UPDATE inventory_stock SET ${sets.join(', ')} WHERE item_id = $${idx} AND branch_id = $${idx + 1} RETURNING *`, vals)
-    if (!rows.length) return res.status(404).json({ message: 'Not found' })
+
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ')
+    const query = `
+      INSERT INTO inventory_stock (${columns.join(', ')})
+      VALUES (${placeholders})
+      ON CONFLICT (item_id, branch_id)
+      DO UPDATE SET ${sets.join(', ')}, updated_at = NOW()
+      RETURNING *
+    `
+
+    const { rows } = await pool.query(query, values)
     res.json(rows[0])
-  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+  } catch (err) {
+    console.error('PATCH /inventory/stock error:', err)
+    res.status(500).json({ message: 'Internal server error' })
+  }
 })
 
 // POST /api/inventory/distribute — transfer stock from one branch to another
@@ -174,7 +234,7 @@ router.get('/movements', requireAdmin, async (req, res) => {
 })
 
 // GET /api/inventory/kiosk-menu?branch_id=
-router.get('/kiosk-menu', requireAdmin, async (req, res) => {
+router.get('/kiosk-menu', requireKioskOrAdmin, async (req, res) => {
   try {
     const { branch_id } = req.query
     if (!branch_id) return res.status(400).json({ message: 'branch_id required' })
@@ -185,6 +245,31 @@ router.get('/kiosk-menu', requireAdmin, async (req, res) => {
       [branch_id])
     res.json(rows)
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// DELETE /api/inventory/items/:id
+router.delete('/items/:id', requireAdmin, async (req, res) => {
+  try {
+    // 1. Check if there is any stock anywhere
+    const stockCheck = await pool.query(
+      'SELECT SUM(current_stock) AS total FROM inventory_stock WHERE item_id = $1',
+      [req.params.id]
+    )
+    const totalStock = parseFloat(stockCheck.rows[0]?.total || 0)
+    if (totalStock > 0) {
+      return res.status(409).json({ message: 'Cannot delete item with remaining stock. Please distribute or adjust stock to 0 first.' })
+    }
+
+    // 2. Try to delete (Postgres will block if referenced in movements/bookings)
+    await pool.query('DELETE FROM inventory_items WHERE id = $1', [req.params.id])
+    res.json({ ok: true })
+  } catch (err) {
+    if (err.code === '23503') { // Foreign key violation
+      return res.status(409).json({ message: 'Cannot delete item with transaction history. Please deactivate it instead.' })
+    }
+    console.error('DELETE /inventory/items/:id error:', err)
+    res.status(500).json({ message: 'Internal server error' })
+  }
 })
 
 module.exports = router

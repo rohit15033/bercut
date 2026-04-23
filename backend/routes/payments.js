@@ -2,6 +2,8 @@ const router  = require('express').Router()
 const pool    = require('../config/db')
 const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
+const { notifyPaymentReceipt } = require('../services/notifications')
+const { awardPoints } = require('../services/loyalty')
 
 const XENDIT_SECRET = process.env.XENDIT_SECRET_KEY || ''
 const WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || ''
@@ -97,6 +99,12 @@ router.post('/webhook', async (req, res) => {
       }
       await client.query('COMMIT')
       emitEvent(booking.branch_id, 'payment_complete', { booking_id: bookingId, tip: tipAmount })
+
+      // Async notification
+      notifyPaymentReceipt(booking, tipAmount).catch(e => console.error('[Notification] Receipt failed:', e))
+      
+      // Award loyalty points
+      awardPoints(bookingId).catch(e => console.error('[Loyalty] Award failed:', e))
     } catch (e) {
       await client.query('ROLLBACK')
       throw e
@@ -153,6 +161,21 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
     // 4. Notify kiosk
     emitEvent(booking.branch_id, 'payment_complete', { booking_id, status: 'completed' })
     
+    // Async notification (needs full booking data for template)
+    pool.query(`SELECT bk.*, b.name AS barber_name, (
+      COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id),0) +
+      COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id),0) -
+      bk.points_redeemed * 100
+    ) AS total_amount FROM bookings bk 
+    LEFT JOIN barbers b ON b.id = bk.barber_id
+    WHERE bk.id = $1`, [booking_id])
+      .then(r => {
+        if (r.rows[0]) notifyPaymentReceipt(r.rows[0], tip_amount).catch(e => console.error('[Notification] Receipt failed:', e))
+      })
+
+    // Award loyalty points
+    awardPoints(booking_id).catch(e => console.error('[Loyalty] Award failed:', e))
+
     res.json(rows[0])
   } catch (err) {
     await client.query('ROLLBACK')

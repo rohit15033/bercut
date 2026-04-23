@@ -1,8 +1,8 @@
 require('dotenv').config()
 const express = require('express')
-const cors    = require('cors')
-const path    = require('path')
-const cron    = require('node-cron')
+const cors = require('cors')
+const path = require('path')
+const cron = require('node-cron')
 
 const app = express()
 
@@ -17,23 +17,23 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 app.use(express.static(path.join(__dirname, 'public')))
 
 // ── API Routes ────────────────────────────────────────────────────────────────
-app.use('/api/auth',       require('./routes/auth'))
-app.use('/api/kiosk',      require('./routes/kiosk'))
-app.use('/api/branches',   require('./routes/branches'))
-app.use('/api/barbers',    require('./routes/barbers'))
-app.use('/api/services',   require('./routes/services'))
-app.use('/api/slots',      require('./routes/slots'))
-app.use('/api/bookings',   require('./routes/bookings'))
-app.use('/api/customers',  require('./routes/customers'))
-app.use('/api/payments',   require('./routes/payments'))
-app.use('/api/events',     require('./routes/events'))
-app.use('/api/expenses',   require('./routes/expenses'))
-app.use('/api/inventory',  require('./routes/inventory'))
+app.use('/api/auth', require('./routes/auth'))
+app.use('/api/kiosk', require('./routes/kiosk'))
+app.use('/api/branches', require('./routes/branches'))
+app.use('/api/barbers', require('./routes/barbers'))
+app.use('/api/services', require('./routes/services'))
+app.use('/api/slots', require('./routes/slots'))
+app.use('/api/bookings', require('./routes/bookings'))
+app.use('/api/customers', require('./routes/customers'))
+app.use('/api/payments', require('./routes/payments'))
+app.use('/api/events', require('./routes/events'))
+app.use('/api/expenses', require('./routes/expenses'))
+app.use('/api/inventory', require('./routes/inventory'))
 app.use('/api/attendance', require('./routes/attendance'))
-app.use('/api/reports',    require('./routes/reports'))
-app.use('/api/settings',   require('./routes/settings'))
-app.use('/api/payroll',    require('./routes/payroll'))
-app.use('/api/upload',     require('./routes/upload'))
+app.use('/api/reports', require('./routes/reports'))
+app.use('/api/settings', require('./routes/settings'))
+app.use('/api/payroll', require('./routes/payroll'))
+app.use('/api/upload', require('./routes/upload'))
 app.use('/api/barber-breaks', require('./routes/barber-breaks'))
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
@@ -49,7 +49,8 @@ app.use((err, req, res, _next) => {
 
 // ── Background jobs ───────────────────────────────────────────────────────────
 const { runPointsExpiry } = require('./services/pointsExpiry')
-const { runAutoCancel }   = require('./services/autoCancel')
+const { runAutoCancel } = require('./services/autoCancel')
+const { checkEscalations } = require('./services/escalation')
 
 // Points expiry — nightly at 00:05 WITA (UTC+8 = 16:05 UTC prev day)
 cron.schedule('5 16 * * *', () => {
@@ -61,8 +62,12 @@ cron.schedule('*/2 * * * *', () => {
   runAutoCancel().catch(console.error)
 })
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// Escalation check — every minute (sends WhatsApp to barbers who haven't started)
+cron.schedule('* * * * *', () => {
+  checkEscalations().catch(console.error)
+})
+
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
-  console.log(`Bercut backend running on port ${PORT}`)
+  console.log(`Server running on port ${PORT}`)
 })

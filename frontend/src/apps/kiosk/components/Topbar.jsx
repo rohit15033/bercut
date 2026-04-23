@@ -13,10 +13,7 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
   const tryAccess = async () => {
     if (pin.length < 4) return
     setError('')
-    
     const adminPin = settings?.kioskAdminPin || '1234'
-    const barberPin = settings?.kioskBarberPin || '0000'
-
     if (view === 'staff') {
       if (pin === adminPin) {
         onStaffAccess(pin)
@@ -25,25 +22,15 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
         setError('PIN Staff salah.')
         setPin('')
       }
-    } else if (view === 'barber') {
-      if (pin === barberPin) {
-        onBarberAccess(pin)
-        onClose()
-      } else {
-        setError('PIN Barber salah.')
-        setPin('')
-      }
     }
   }
-
-  const label = view === 'staff' ? 'Staff' : 'Barber / Kapster'
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:900, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }} onClick={onClose}>
       <div style={{ background:C.white, borderRadius:20, width:'100%', maxWidth:'clamp(320px,44vw,420px)', overflow:'hidden' }} onClick={e => e.stopPropagation()}>
         <div style={{ background:C.topBg, padding:'clamp(16px,2vw,22px) clamp(20px,2.6vw,28px)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:'clamp(16px,2vw,20px)', color:C.topText }}>
-            {view === 'choose' ? 'Staff Access / Akses Staf' : `Login — ${label}`}
+            {view === 'choose' ? 'Staff Access / Akses Staf' : 'Login — Staff / Admin'}
           </span>
           <button onClick={onClose} style={{ background:'#2a2a28', border:'none', borderRadius:8, width:32, height:32, color:'#888', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
@@ -55,7 +42,7 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
                 <span style={{ fontSize:28 }}>🔑</span>
                 <div><div>Staff / Admin</div><div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#888', fontWeight:400, marginTop:2 }}>Dashboard &amp; settings</div></div>
               </button>
-              <button onClick={() => setView('barber')}
+              <button onClick={() => { onBarberAccess(); onClose() }}
                 style={{ padding:'clamp(16px,2.2vw,22px)', borderRadius:14, background:C.surface, color:C.text, fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:'clamp(16px,2vw,20px)', border:`2px solid ${C.border}`, cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', gap:14 }}>
                 <span style={{ fontSize:28 }}>✂</span>
                 <div><div>Barber / Kapster</div><div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, fontWeight:400, marginTop:2 }}>Clock in · Breaks · Queue</div></div>
@@ -63,8 +50,8 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
             </div>
           ) : (
             <div>
-              <div style={{ fontSize:'clamp(13px,1.5vw,15px)', color:C.text2, marginBottom:16 }}>Enter PIN for {label}</div>
-              
+              <div style={{ fontSize:'clamp(13px,1.5vw,15px)', color:C.text2, marginBottom:16 }}>Enter PIN for Staff / Admin</div>
+
               {/* Display */}
               <div style={{ width:'100%', padding:'clamp(14px,1.8vw,18px) 16px', borderRadius:12, border:`2px solid ${error ? C.danger : C.border}`, fontSize:'clamp(20px,2.6vw,26px)', fontFamily:'monospace', letterSpacing:'0.3em', textAlign:'center', background:C.bg, marginBottom:20, minHeight:68, display:'flex', alignItems:'center', justifyContent:'center' }}>
                 {pin ? pin.split('').map(() => '●').join('') : <span style={{ color:'#ccc', letterSpacing:0 }}>● ● ● ●</span>}
@@ -84,16 +71,23 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
                         else if (key === '⌫') setPin(p => p.slice(0, -1))
                         else if (pin.length < 6) setPin(p => p + key)
                       }}
-                      style={{ 
-                        padding:'clamp(14px,1.8vw,18px) 0', 
-                        borderRadius:12, 
-                        background: isAction ? C.surface : C.white, 
+                      style={{
+                        padding:'clamp(14px,1.8vw,18px) 0',
+                        borderRadius:12,
+                        background: isAction ? C.surface : C.white,
                         border:`1.5px solid ${C.border}`,
                         color: key === 'C' ? C.danger : C.text,
                         fontSize:'clamp(18px,2.4vw,22px)',
                         fontWeight:700,
-                        cursor:'pointer'
-                      }}>
+                        cursor:'pointer',
+                        transition:'transform 0.1s, background 0.1s',
+                        transform:'scale(1)'
+                      }}
+                      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.95)'}
+                      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                      onTouchStart={e => e.currentTarget.style.transform = 'scale(0.95)'}
+                      onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}>
                       {key}
                     </button>
                   )
@@ -118,7 +112,7 @@ function AccessModal({ onBarberAccess, onStaffAccess, onClose, settings }) {
   )
 }
 
-export default function Topbar({ step, cartTotal, groupCount, branchName, onHome, onBarberAccess, onStaffAccess, settings }) {
+export default function Topbar({ step, cartTotal, groupCount, branchName, onHome, onBarberAccess, onStaffAccess, onQuickPanel, settings }) {
   const [time, setTime] = useState(new Date())
   const [showAccess, setShowAccess] = useState(false)
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t) }, [])
@@ -167,8 +161,11 @@ export default function Topbar({ step, cartTotal, groupCount, branchName, onHome
                 {groupCount > 0 && <span style={{ color:'#888', fontSize:'clamp(10px,1.2vw,12px)', marginLeft:6 }}>{groupCount+1} people</span>}
               </div>
             )}
-            {step === 0 && <button onClick={onHome} style={{ background:'transparent', border:'none', color:'#555', fontSize:'clamp(11px,1.3vw,13px)', cursor:'pointer' }}>Reset</button>}
             <span style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>{time.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' })}</span>
+            <button onClick={onQuickPanel}
+              style={{ background:'#1a1a18', border:'1px solid #2a2a28', borderRadius:8, width:'clamp(32px,3.8vw,40px)', height:'clamp(32px,3.8vw,40px)', color:'#888', fontSize:'clamp(16px,2vw,20px)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', letterSpacing:'0.05em', flexShrink:0 }}>
+              ···
+            </button>
           </div>
         </div>
         {step > 0 && step < 5 && (

@@ -5,9 +5,9 @@ import { api, BASE } from '../../shared/api.js'
 const T = {
   bg: '#FAFAF8',
   surface: '#FFFFFF',
-  border: '#DDDBD4',
+  border: '#000000',
   text: '#111110',
-  muted: '#88887E',
+  muted: '#222220',
   accent: '#16A34A',
   accentBg: 'rgba(22, 163, 74, 0.08)',
   waiting: '#2563EB',
@@ -33,11 +33,11 @@ function ChairCard({ barber, booking }) {
   }
 
   return (
-    <div style={{ background: T.surface, border: `0.2vw solid ${isInProg ? T.accent : (isBreak ? '#F59E0B' : T.border)}`, borderRadius: '1.5vw', padding: '2vw', display: 'flex', flexDirection: 'column', gap: '1vw', transition: 'all 0.3s' }}>
+    <div style={{ background: T.surface, border: `0.2vw solid ${T.border}`, borderRadius: '1.5vw', padding: '2vw', display: 'flex', flexDirection: 'column', gap: '1vw', transition: 'all 0.3s' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5vw' }}>
           <div style={{
-            background: isInProg ? T.accent : (isBreak ? '#F59E0B' : T.border),
+            background: isInProg ? T.accent : (isBreak ? '#F59E0B' : '#F3F4F6'),
             color: (isInProg || isBreak) ? T.bg : T.text,
             padding: '0.8vw 1.5vw',
             borderRadius: '1vw',
@@ -45,9 +45,10 @@ function ChairCard({ barber, booking }) {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            minWidth: '5vw'
+            minWidth: '5vw',
+            border: `0.15vw solid ${T.border}`
           }}>
-            <div style={{ fontSize: '0.8vw', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CHAIR</div>
+            <div style={{ fontSize: '0.8vw', fontWeight: 800, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CHAIR</div>
             <div style={{ fontSize: '2.5vw', fontWeight: 900, lineHeight: 1 }}>{barber.chair_label || '?'}</div>
           </div>
           <div>
@@ -59,7 +60,7 @@ function ChairCard({ barber, booking }) {
         ) : isBreak ? (
           <div style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B', padding: '0.5vw 1vw', borderRadius: '0.8vw', fontSize: '1vw', fontWeight: 800, border: '0.1vw solid #F59E0B' }}>ISTIRAHAT / ON BREAK</div>
         ) : (
-          <div style={{ background: T.border, color: T.muted, padding: '0.5vw 1vw', borderRadius: '0.8vw', fontSize: '1vw', fontWeight: 800 }}>AVAILABLE</div>
+          <div style={{ background: '#F3F4F6', color: T.text, padding: '0.5vw 1vw', borderRadius: '0.8vw', fontSize: '1vw', fontWeight: 800, border: `0.1vw solid ${T.border}` }}>AVAILABLE</div>
         )}
       </div>
 
@@ -183,34 +184,34 @@ export default function TvMonitor() {
   const waiting = queue.filter(b => b.status === 'confirmed').slice(0, 8)
 
   return (
-    <div style={{ background: T.bg, color: T.text, height: '100vh', padding: '3vw 4vw', fontFamily: "'Inter', sans-serif", overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: T.bg, color: T.text, height: '100vh', fontFamily: "'Inter', sans-serif", overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <style>{`
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         body { margin: 0; overflow: hidden; background: #FAFAF8; }
       `}</style>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3vw' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#000000', color: '#FFFFFF', padding: '1.2vw 4vw', marginBottom: '2.5vw', borderBottom: '0.3vw solid #F5E200', boxShadow: '0 0.5vw 1.5vw rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2vw' }}>
-          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style={{ height: '4vw', width: 'auto' }} />
-          <div style={{ width: '0.15vw', height: '3.5vw', background: T.border }} />
+          <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style={{ height: '3.8vw', width: 'auto' }} />
+          <div style={{ width: '0.1vw', height: '3vw', background: 'rgba(255,255,255,0.2)' }} />
           <div>
-            <div style={{ fontSize: '1.8vw', fontWeight: 900, letterSpacing: '-0.02em', color: T.text }}>
+            <div style={{ fontSize: '1.8vw', fontWeight: 900, letterSpacing: '-0.02em', color: '#FFFFFF', lineHeight: 1 }}>
               {branch.name.toUpperCase()}
             </div>
-            <div style={{ fontSize: '1vw', color: T.muted, marginTop: '0.2vw' }}>{branch.city} · Live Queue Monitor</div>
+            <div style={{ fontSize: '1vw', color: 'rgba(255,255,255,0.6)', marginTop: '0.3vw', fontWeight: 600 }}>{branch.city} · Live Queue Monitor</div>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '2.5vw', fontWeight: 800 }}>{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-          <div style={{ fontSize: '1vw', color: T.accent, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5vw' }}>
+          <div style={{ fontSize: '2.8vw', fontWeight: 900, color: '#FFFFFF', lineHeight: 1 }}>{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div style={{ fontSize: '1.1vw', color: T.accent, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.6vw', marginTop: '0.2vw' }}>
             <div style={{ width: '0.6vw', height: '0.6vw', borderRadius: '50%', background: T.accent, animation: 'pulse 2s infinite' }} />
             LIVE SYSTEM
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '3vw', flex: 1, minHeight: 0 }}>
+      <div style={{ padding: '0 4vw 3vw', display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '3vw', flex: 1, minHeight: 0 }}>
 
         {/* Left Side: Now Serving */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5vw' }}>
@@ -242,13 +243,13 @@ export default function TvMonitor() {
                 <div key={bk.id} style={{ display: 'flex', alignItems: 'center', gap: '2vw', padding: '1.2vw 2vw', borderBottom: idx === waiting.length - 1 ? 'none' : `0.1vw solid ${T.border}` }}>
 
                   {/* Left: Chair & Barber Assignment */}
-                  <div style={{ width: '10vw', flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4vw', marginBottom: '0.2vw' }}>
-                      <span style={{ fontSize: '0.7vw', fontWeight: 800, color: T.muted }}>CHAIR</span>
+                  <div style={{ width: '14vw', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4vw', marginBottom: '0.1vw' }}>
+                      <span style={{ fontSize: '0.8vw', fontWeight: 800, color: T.muted }}>CHAIR</span>
                       <span style={{ fontSize: '1.8vw', fontWeight: 900, color: bk.barber_name ? T.accent : T.text }}>{bk.chair_label || '—'}</span>
                     </div>
-                    <div style={{ fontSize: '0.8vw', fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {bk.barber_name ? `WITH ${bk.barber_name}` : 'ANY BARBER'}
+                    <div style={{ fontSize: '1.3vw', fontWeight: 800, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.02em', lineHeight: 1.1 }}>
+                      {bk.barber_name ? `${bk.barber_name}` : 'ANY BARBER'}
                     </div>
                   </div>
 

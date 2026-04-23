@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
-import OnScreenKeyboard from '../components/OnScreenKeyboard.jsx'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
@@ -79,6 +78,150 @@ function CountryPicker({ selected, onSelect, onClose }) {
     </div>
   )
 }
+
+const NUM_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
+
+const ALPHA_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['⇧','Z','X','C','V','B','N','M','⌫'],
+]
+const DEBOUNCE_MS = 150
+
+const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
+  const [shifted, setShifted] = useState(true)
+  const [pressedKey, setPressedKey] = useState(null)
+  const lastPressRef = useRef({})
+
+  const handleKey = (key) => {
+    if (!key) return
+    const now = Date.now()
+    if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
+    lastPressRef.current[key] = now
+    if (key === '⌫') { onChange(value.slice(0, -1)); return }
+    if (key === '⇧') { setShifted(s => !s); return }
+    if (key === ' ') { onChange(value + ' '); return }
+    const char = !shifted ? key.toLowerCase() : key
+    onChange(value + char)
+    if (shifted) setShifted(false)
+  }
+
+  const press = (key) => ({
+    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
+    onPointerUp:     ()  => setPressedKey(null),
+    onPointerLeave:  ()  => setPressedKey(null),
+    onPointerCancel: ()  => setPressedKey(null),
+  })
+
+  const keyBg = (key) => {
+    const p = pressedKey === key
+    if (p) return key === '⇧' || key === '⌫' ? '#888' : C.accent
+    if (key === '⇧') return shifted ? C.topBg : '#C4C4C4'
+    if (key === '⌫') return '#C4C4C4'
+    return '#FFFFFF'
+  }
+  const keyColor = (key) => {
+    const p = pressedKey === key
+    if (p) return key === '⇧' || key === '⌫' ? '#FFF' : C.accentText
+    if (key === '⇧') return shifted ? '#FFF' : C.text
+    return C.text
+  }
+
+  return (
+    <div style={{ background:'#D1D5DB', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)' }}>
+      {ALPHA_ROWS.map((row, ri) => (
+        <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)', justifyContent:'center' }}>
+          {ri === 1 && <div style={{ flex:0.5 }} />}
+          {row.map((key, ki) => {
+            const isSpecial = key === '⇧' || key === '⌫'
+            const isPressed = pressedKey === key
+            return (
+              <button key={ki} {...press(key)}
+                style={{ flex: isSpecial ? 1.5 : 1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(14px,1.8vw,19px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background:keyBg(key), color:keyColor(key), boxShadow: isPressed ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: isPressed ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+                {key === '⇧' ? (shifted ? '⇧' : '⇪') : key === '⌫' ? '⌫' : !shifted ? key.toLowerCase() : key}
+              </button>
+            )
+          })}
+          {ri === 1 && <div style={{ flex:0.5 }} />}
+        </div>
+      ))}
+      {/* Space + Done row */}
+      <div style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
+        <button {...press(' ')}
+          style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, fontFamily:"'DM Sans',sans-serif", cursor:'pointer', background: pressedKey === ' ' ? C.accent : '#FFFFFF', color: pressedKey === ' ' ? C.accentText : C.muted, boxShadow: pressedKey === ' ' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: pressedKey === ' ' ? 'scale(0.96)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+          space
+        </button>
+        <button
+          onPointerDown={(e) => { e.preventDefault(); setPressedKey('__done__') }}
+          onPointerUp={() => { setPressedKey(null); onDone() }}
+          onPointerLeave={() => setPressedKey(null)}
+          onPointerCancel={() => setPressedKey(null)}
+          style={{ width:'clamp(80px,10vw,108px)', height:'clamp(44px,5.9vh,56px)', flexShrink:0, borderRadius:8, border:'none', fontSize:'clamp(13px,1.5vw,16px)', fontWeight:800, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: pressedKey === '__done__' ? '#333' : C.topBg, color:'#FFF', boxShadow: pressedKey === '__done__' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: pressedKey === '__done__' ? 'scale(0.94)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+          Done ✓
+        </button>
+      </div>
+    </div>
+  )
+})
+
+const InlineNumpad = memo(function InlineNumpad({ value, onChange, country, onDone }) {
+  const [pressedKey, setPressedKey] = useState(null)
+  const lastPressRef = useRef({})
+
+  const handleKey = (key) => {
+    if (!key) return
+    const now = Date.now()
+    if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
+    lastPressRef.current[key] = now
+    if (key === '⌫') { onChange(value.slice(0, -1)); return }
+    onChange(value + key)
+  }
+
+  const press = (key) => ({
+    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
+    onPointerUp:     ()  => setPressedKey(null),
+    onPointerLeave:  ()  => setPressedKey(null),
+    onPointerCancel: ()  => setPressedKey(null),
+  })
+
+  return (
+    <div style={{ background:'#D1D5DB', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)' }}>
+      {/* Number display — compact single line */}
+      <div style={{ background:C.white, borderRadius:8, padding:'clamp(6px,0.8vh,9px) clamp(10px,1.2vw,14px)', fontSize:'clamp(15px,2vw,20px)', fontWeight:700, fontFamily:"'Inter',sans-serif", color:value ? C.text : C.muted, letterSpacing:'0.06em' }}>
+        {value ? `${country.code} ${value}` : `${country.code} Enter number…`}
+      </div>
+
+      {/* Numpad rows */}
+      {NUM_PAD.map((row, ri) => (
+        <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)', justifyContent:'center' }}>
+          {row.map((key, ki) => {
+            if (!key) return <div key={ki} style={{ flex:1 }} />
+            const isBs = key === '⌫'
+            const isP  = pressedKey === key
+            return (
+              <button key={ki} {...press(key)}
+                style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize: isBs ? 'clamp(16px,2vw,21px)' : 'clamp(18px,2.2vw,23px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: isP ? (isBs ? '#888' : C.accent) : (isBs ? '#C4C4C4' : '#FFFFFF'), color: isP ? (isBs ? '#FFF' : C.accentText) : C.text, boxShadow: isP ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: isP ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+                {key}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+
+      {/* Done row — mirrors QWERTY space+Done row */}
+      <div style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
+        <button
+          onPointerDown={(e) => { e.preventDefault(); setPressedKey('__done__') }}
+          onPointerUp={() => { setPressedKey(null); onDone() }}
+          onPointerLeave={() => setPressedKey(null)}
+          onPointerCancel={() => setPressedKey(null)}
+          style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(13px,1.5vw,16px)', fontWeight:800, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: pressedKey === '__done__' ? '#333' : C.topBg, color:'#FFF', boxShadow: pressedKey === '__done__' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: pressedKey === '__done__' ? 'scale(0.94)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+          Done ✓
+        </button>
+      </div>
+    </div>
+  )
+})
 
 export default function Confirm({ cart, services, barber, slot, selectedExtras, menuItems, name, setName, phone, setPhone, branchId, settings, onConfirm, onBack }) {
   const [country,       setCountry]       = useState(COUNTRIES[0])
@@ -185,8 +328,8 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
 
       <div className="confirm-layout">
         {/* LEFT — name + phone + loyalty + CTA */}
-        <div>
-          <div className="fu" style={{ animationDelay:'0.05s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(10px,1.2vw,14px)', marginBottom:'clamp(6px,0.8vw,8px)' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'clamp(6px,0.8vw,8px)' }}>
+          <div className="fu" style={{ animationDelay:'0.05s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(10px,1.2vw,14px)' }}>
 
             {/* Prominent name heading */}
             <div style={{ marginBottom:'clamp(6px,0.8vw,10px)' }}>
@@ -267,12 +410,20 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
             )}
           </div>
 
+          {/* Inline keyboards — part of left column flow */}
+          {activeField === 'name' && (
+            <InlineQwerty value={name} onChange={setName} onDone={() => setActiveField(null)} />
+          )}
+          {activeField === 'phone' && (
+            <InlineNumpad value={phone} onChange={setPhone} country={country} onDone={() => setActiveField(null)} />
+          )}
+
           {error && (
-            <div style={{ marginBottom:8, padding:'clamp(8px,1vw,11px)', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:C.danger, fontSize:'clamp(12px,1.4vw,13px)' }}>{error}</div>
+            <div style={{ padding:'clamp(8px,1vw,11px)', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:C.danger, fontSize:'clamp(12px,1.4vw,13px)' }}>{error}</div>
           )}
 
           <button className="btnP" disabled={!valid || loading} onClick={handleConfirm}
-            style={{ fontSize:'clamp(14px,1.6vw,16px)', marginBottom:6, padding:'clamp(10px,1.4vh,13px)' }}>
+            style={{ fontSize:'clamp(14px,1.6vw,16px)', padding:'clamp(10px,1.4vh,13px)' }}>
             {loading ? 'Confirming…' : valid ? 'Confirm Reservation ✓' : 'Enter your name to continue'}
           </button>
           <button className="btnG" onClick={onBack} style={{ width:'100%', minHeight:40, padding:'8px 20px' }}>← Back / Kembali</button>
@@ -378,21 +529,6 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
       </div>
       </div>
 
-      {/* On-screen keyboard — docked to bottom */}
-      {activeField && (
-        <OnScreenKeyboard
-          value={activeField === 'name' ? name : phone}
-          onChange={v => activeField === 'name' ? setName(v) : setPhone(v)}
-          mode={activeField === 'phone' ? 'numeric' : 'alpha'}
-          onDone={() => {
-            if (activeField === 'name' && name.trim().length >= 2) {
-              setActiveField('phone')
-            } else {
-              setActiveField(null)
-            }
-          }}
-        />
-      )}
     </div>
   )
 }

@@ -36,7 +36,7 @@ router.post('/register', async (req, res) => {
       pool.query(`SELECT s.id, s.name, s.name_id, s.category, s.duration_minutes, s.badge,
                          s.description, s.image_url, s.mutex_group,
                          COALESCE(bs.price, s.base_price) AS price,
-                         COALESCE((SELECT json_agg(sub_s.name) 
+                         COALESCE((SELECT json_agg(json_build_object('name', sub_s.name, 'or_group', ps.or_group) ORDER BY ps.or_group NULLS LAST, sub_s.sort_order, sub_s.name)
                           FROM package_services ps 
                           JOIN services sub_s ON sub_s.id = ps.service_id 
                           WHERE ps.package_id = s.id), '[]'::json) as included_services,

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS package_services (
   service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
   PRIMARY KEY (package_id, service_id)
 );
+ALTER TABLE package_services ADD COLUMN IF NOT EXISTS or_group SMALLINT;
 
 -- 2. Ensure barber_breaks has the right columns (renaming if old names exist)
 DO $$ 

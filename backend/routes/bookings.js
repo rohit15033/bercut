@@ -59,7 +59,7 @@ async function assignRoundRobin(client, branchId, scheduledISO, durationMin) {
      WHERE branch_id = $1
        AND DATE(created_at AT TIME ZONE 'Asia/Makassar') = (NOW() AT TIME ZONE 'Asia/Makassar')::date
        AND status NOT IN ('cancelled','no_show')
-     ORDER BY created_at DESC LIMIT 1`,
+     ORDER BY created_at DESC, booking_number DESC LIMIT 1`,
     [branchId]
   )
   const lastBarberId = lastRows[0]?.barber_id
@@ -571,7 +571,7 @@ router.patch('/:id/cancel', requireKioskOrAdmin, async (req, res) => {
     const { reason } = req.body
     const { rows } = await pool.query(
       `UPDATE bookings SET status = 'cancelled', cancellation_reason = $2
-       WHERE id = $1 AND status IN ('confirmed','in_progress') RETURNING *`,
+       WHERE id = $1 AND status IN ('confirmed','in_progress','pending_payment') RETURNING *`,
       [req.params.id, reason || null])
     if (!rows.length) return res.status(409).json({ message: 'Cannot cancel' })
     

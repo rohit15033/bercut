@@ -7,7 +7,7 @@ const fmt  = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const fmtM = n => {
   const v = Number(n || 0)
   if (v >= 1_000_000) return 'Rp ' + (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'jt'
-  if (v >= 1_000)     return 'Rp ' + (v / 1_000).toFixed(0) + 'rb'
+  if (v >= 1_000)     return 'Rp ' + v.toLocaleString('id-ID')
   return 'Rp ' + v
 }
 
@@ -394,26 +394,30 @@ export default function Reports() {
     : filterPeriod === 'today' ? 'Today' : filterPeriod === 'week' ? 'This Week' : 'This Month'
 
   function buildTxRows() {
-    const headers = ['Booking','Date','Scheduled','Started','Ended','Client','Phone','Barber','Service','Rate%','Commission','Amount','Tip','Payment']
+    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Rate%','Commission','Amount','Tip','Payment']
     const rows = [headers]
     txData.forEach(r => {
-      const svcs = Array.isArray(r.services) ? r.services : []
+      const svcs   = Array.isArray(r.services) ? r.services : []
+      const extras = Array.isArray(r.extras)   ? r.extras   : []
       const base = [
-        r.booking_number || '', r.date || '', r.time_scheduled || '',
+        r.date || '', r.booking_number || '', r.time_scheduled || '',
         r.time_started || '', r.time_ended || '',
         r.customer_name || '', r.customer_phone || '', r.barber_name || '',
       ]
       if (svcs.length === 0) {
         rows.push([...base, '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
       } else {
-        svcs.forEach(sv => {
+        svcs.forEach((sv, i) => {
           rows.push([
             ...base,
             sv.service_name || '',
             sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
             sv.commission != null ? sv.commission : '',
-            r.total_amount || '', r.tip || '', r.payment_method || '',
+            i === 0 ? (r.total_amount || '') : '', i === 0 ? (r.tip || '') : '', i === 0 ? (r.payment_method || '') : '',
           ])
+        })
+        extras.forEach(ex => {
+          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''} (add-on)`, '', '', '', '', ''])
         })
       }
     })
@@ -799,9 +803,9 @@ export default function Reports() {
           return s + svcs.reduce((a, sv) => a + Number(sv.commission || 0), 0)
         }, 0)
 
-        // Booking | Scheduled | Started | Ended | Client | Phone | Barber | Service | Rate | Commission | Amount | Tip
-        const COL  = '0.8fr 0.5fr 0.5fr 0.5fr 0.9fr 0.85fr 0.9fr 1.1fr 0.4fr 0.7fr 0.7fr 0.45fr'
-        const HDRS = ['Booking', 'Scheduled', 'Started', 'Ended', 'Client', 'Phone', 'Barber', 'Service', 'Rate', 'Commission', 'Amount', 'Tip']
+        // Date | Booking | Scheduled | Started | Ended | Client | Phone | Barber | Service | Rate | Commission | Amount | Tip
+        const COL  = '0.75fr 0.65fr 0.5fr 0.5fr 0.5fr 1fr 0.85fr 0.9fr 1.1fr 0.4fr 0.8fr 0.85fr 0.5fr'
+        const HDRS = ['Date', 'Booking', 'Scheduled', 'Started', 'Ended', 'Client', 'Phone', 'Barber', 'Service', 'Rate', 'Commission', 'Amount', 'Tip']
 
         function toggleTx(id) {
           setExpandedTx(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -831,40 +835,47 @@ export default function Reports() {
 
               <div style={{ overflowX: 'auto' }}>
                 {/* Header row */}
-                <div style={{ display: 'grid', gridTemplateColumns: COL, padding: '9px 18px', borderBottom: '1px solid ' + T.surface, background: T.bg, minWidth: 900 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: COL, padding: '10px 18px', borderBottom: '2px solid ' + T.border, background: T.bg, minWidth: 1000, position: 'sticky', top: 0, zIndex: 2 }}>
                   {HDRS.map((h, i) => (
-                    <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: i === 8 ? '#D97706' : T.muted }}>{h}</div>
+                    <div key={i} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: i === 9 ? '#D97706' : i === 11 ? T.text : T.muted }}>{h}</div>
                   ))}
                 </div>
 
-                <div style={{ maxHeight: 'calc(100vh - 380px)', minHeight: 160, overflowY: 'auto', minWidth: 900 }}>
+                <div style={{ maxHeight: 'calc(100vh - 380px)', minHeight: 160, overflowY: 'auto', minWidth: 1000 }}>
                   {txLoad && <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 14 }}>Loading…</div>}
                   {!txLoad && txData.length === 0 && (
                     <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 14 }}>No completed transactions for this period</div>
                   )}
                   {txData.map(r => {
                     const svcs       = Array.isArray(r.services) ? r.services : []
+                    const extras     = Array.isArray(r.extras) ? r.extras : []
                     const isExpanded = expandedTx.has(r.id)
                     const multiSvc   = svcs.length > 1
+                    const hasExtras  = extras.length > 0
                     const sv0        = svcs[0]
                     const svcLabel   = svcs.length === 0 ? '—'
                       : svcs.length === 1 ? sv0.service_name
                       : svcs.length === 2 ? `${svcs[0].service_name} · ${svcs[1].service_name}`
                       : `${svcs[0].service_name} · ${svcs[1].service_name} +${svcs.length - 2}`
+                    const extrasLabel = extras.map(e => e.quantity > 1 ? `${e.name} ×${e.quantity}` : e.name).join(', ')
                     const rowComm    = svcs.reduce((a, sv) => a + Number(sv.commission || 0), 0)
                     const rowRate    = !multiSvc && sv0 ? sv0.commission_rate : null
+                    const canExpand  = multiSvc || hasExtras
 
                     return (
                       <div key={r.id}>
                         {/* Main booking row */}
                         <div
-                          onClick={() => multiSvc && toggleTx(r.id)}
-                          style={{ display: 'grid', gridTemplateColumns: COL, padding: '12px 18px', borderBottom: '1px solid ' + T.surface, alignItems: 'center', cursor: multiSvc ? 'pointer' : 'default', background: isExpanded ? T.surface : 'transparent', transition: 'background 0.1s' }}
+                          onClick={() => canExpand && toggleTx(r.id)}
+                          style={{ display: 'grid', gridTemplateColumns: COL, padding: '12px 18px', borderBottom: '1px solid ' + T.surface, alignItems: 'center', cursor: canExpand ? 'pointer' : 'default', background: isExpanded ? T.surface : 'transparent', transition: 'background 0.1s' }}
                           onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = T.bg }}
                           onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}>
 
+                          <div style={{ fontSize: 11, fontWeight: 600, color: T.text2, whiteSpace: 'nowrap' }}>
+                            {r.date ? new Date(r.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            {multiSvc && <span style={{ fontSize: 10, color: T.muted, flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>}
+                            {canExpand && <span style={{ fontSize: 10, color: T.muted, flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>}
                             <span style={{ fontSize: 11, color: T.muted, fontFamily: 'monospace' }}>{r.booking_number || '—'}</span>
                           </div>
                           <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, color: T.muted }}>{r.time_scheduled || '—'}</div>
@@ -873,7 +884,10 @@ export default function Reports() {
                           <div style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{r.customer_name || '—'}</div>
                           <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{r.customer_phone || '—'}</div>
                           <div style={{ fontSize: 12, color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{r.barber_name || '—'}</div>
-                          <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 6 }}>{svcLabel}</div>
+                          <div style={{ overflow: 'hidden', paddingRight: 6 }}>
+                            <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svcLabel}</div>
+                            {hasExtras && <div style={{ fontSize: 10, color: '#9333EA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{extrasLabel}</div>}
+                          </div>
 
                           {/* Rate — show for single-service; "mix" badge for multi */}
                           <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
@@ -893,22 +907,33 @@ export default function Reports() {
 
                         {/* Expanded per-service rows */}
                         {isExpanded && svcs.map((sv, si) => (
-                          <div key={si} style={{ display: 'grid', gridTemplateColumns: COL, padding: '8px 18px 8px 32px', borderBottom: si < svcs.length - 1 ? '1px dashed ' + T.surface : '2px solid ' + T.border, background: '#FAFAF9', alignItems: 'center' }}>
-                            <div /><div /><div /><div /><div /><div /><div />
-                            {/* Service name + price sub-label */}
+                          <div key={si} style={{ display: 'grid', gridTemplateColumns: COL, padding: '8px 18px 8px 32px', borderBottom: '1px dashed ' + T.surface, background: '#FAFAF9', alignItems: 'center' }}>
+                            <div /><div /><div /><div /><div /><div /><div /><div />
                             <div>
                               <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{sv.service_name}</div>
                               <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{fmtM(sv.price)}</div>
                             </div>
-                            {/* Rate */}
                             <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
                               {sv.commission_rate != null ? `${Number(sv.commission_rate).toFixed(0)}%` : '—'}
                             </div>
-                            {/* Commission */}
                             <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
                               {sv.commission != null ? fmtM(sv.commission) : '—'}
                             </div>
                             <div /><div />
+                          </div>
+                        ))}
+                        {/* Expanded extras rows */}
+                        {isExpanded && extras.map((ex, ei) => (
+                          <div key={'ex' + ei} style={{ display: 'grid', gridTemplateColumns: COL, padding: '8px 18px 8px 32px', borderBottom: ei < extras.length - 1 ? '1px dashed ' + T.surface : '2px solid ' + T.border, background: '#FAF8FF', alignItems: 'center' }}>
+                            <div /><div /><div /><div /><div /><div /><div /><div />
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#9333EA' }}>{ex.name}{ex.quantity > 1 ? ` ×${ex.quantity}` : ''}</div>
+                              <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{fmtM(ex.price)}</div>
+                            </div>
+                            <div style={{ fontSize: 10, color: T.muted }}>add-on</div>
+                            <div />
+                            <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#9333EA' }}>{fmtM(ex.price * ex.quantity)}</div>
+                            <div />
                           </div>
                         ))}
                       </div>

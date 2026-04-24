@@ -188,7 +188,10 @@ router.get('/transactions', requireAdmin, async (req, res) => {
                 ON bs_barber.barber_id = bk.barber_id AND bs_barber.service_id = bsv.service_id
               LEFT JOIN branch_services bs_branch
                 ON bs_branch.service_id = bsv.service_id AND bs_branch.branch_id = bk.branch_id
-              WHERE bsv.booking_id = bk.id) AS services
+              WHERE bsv.booking_id = bk.id) AS services,
+              (SELECT json_agg(json_build_object('name', ii.name, 'price', be.price, 'quantity', be.quantity) ORDER BY ii.name)
+               FROM booking_extras be JOIN inventory_items ii ON ii.id = be.item_id
+               WHERE be.booking_id = bk.id) AS extras
        FROM bookings bk
        LEFT JOIN customers c ON c.id = bk.customer_id
        LEFT JOIN barbers b ON b.id = bk.barber_id

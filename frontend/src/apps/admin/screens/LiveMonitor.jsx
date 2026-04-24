@@ -633,7 +633,7 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit }) {
           onMouseLeave={() => setOpen(false)}>
           {isEditable && item('✏ Edit Barber / Services', T.text, T.bg, () => onEdit(booking))}
           {!isInProg && !isPendingPay && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
-          {!isPendingPay && item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
+          {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
         </div>
       )}
     </div>

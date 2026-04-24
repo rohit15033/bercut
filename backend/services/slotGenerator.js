@@ -64,8 +64,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
   const { rows: timeRows } = await pool.query("SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d")
   const nowMin = minutesFromMidnight(timeRows[0].t)
   const isToday = timeRows[0].d === date
-  // Fixed 10am bug: use floor instead of ceil to allow current slot if not elapsed
-  const actualStart = isToday ? Math.max(openTime, Math.floor(nowMin / SLOT_DURATION) * SLOT_DURATION) : openTime
+  const actualStart = isToday ? Math.max(openTime, Math.ceil(nowMin / SLOT_DURATION) * SLOT_DURATION) : openTime
 
   const slots = []
   // Fixed last order start time constraint

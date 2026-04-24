@@ -21,20 +21,55 @@ async function nextBookingNumber(client, branchId, dateStr) {
   return 'B' + String(rows[0].n).padStart(3, '0')
 }
 
-async function assignAnyAvailable(client, branchId, dateStr) {
-  const { rows } = await client.query(
-    `SELECT b.id FROM barbers b
-     LEFT JOIN bookings bk ON bk.barber_id = b.id
-       AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
-       AND bk.source = 'any_available'
-       AND bk.status NOT IN ('cancelled','no_show')
-     WHERE b.branch_id = $1 AND b.status NOT IN ('clocked_out','off') AND b.is_active = true
-     GROUP BY b.id, b.sort_order
-     ORDER BY COUNT(bk.id) ASC, b.sort_order ASC
-     LIMIT 1`,
-    [branchId, dateStr]
+async function assignRoundRobin(client, branchId, scheduledISO, durationMin) {
+  // Get active barbers in sort order
+  const { rows: barbers } = await client.query(
+    `SELECT id FROM barbers
+     WHERE branch_id = $1 AND is_active = true AND status NOT IN ('clocked_out','off')
+     ORDER BY name ASC`,
+    [branchId]
   )
-  return rows[0]?.id ?? null
+  if (!barbers.length) return null
+
+  // Find barbers free at the requested time
+  const { rows: freeRows } = await client.query(
+    `SELECT b.id FROM barbers b
+     WHERE b.branch_id = $1 AND b.is_active = true AND b.status NOT IN ('clocked_out','off')
+       AND NOT EXISTS (
+         SELECT 1 FROM bookings bk
+         JOIN (
+           SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
+           FROM booking_services bsv JOIN services s ON s.id = bsv.service_id
+           GROUP BY bsv.booking_id
+         ) dur ON dur.booking_id = bk.id
+         WHERE bk.barber_id = b.id
+           AND bk.status IN ('confirmed','in_progress')
+           AND bk.scheduled_at < $2::timestamptz + ($3 * INTERVAL '1 minute')
+           AND bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute') > $2::timestamptz
+       )`,
+    [branchId, scheduledISO, durationMin]
+  )
+  if (!freeRows.length) return null
+
+  const freeIds = new Set(freeRows.map(r => r.id))
+
+  // Last booking today (any source) determines whose turn is next
+  const { rows: lastRows } = await client.query(
+    `SELECT barber_id FROM bookings
+     WHERE branch_id = $1
+       AND DATE(created_at AT TIME ZONE 'Asia/Makassar') = (NOW() AT TIME ZONE 'Asia/Makassar')::date
+       AND status NOT IN ('cancelled','no_show')
+     ORDER BY created_at DESC LIMIT 1`,
+    [branchId]
+  )
+  const lastBarberId = lastRows[0]?.barber_id
+  const lastIdx = lastBarberId ? barbers.findIndex(b => b.id === lastBarberId) : -1
+
+  for (let i = 1; i <= barbers.length; i++) {
+    const idx = (lastIdx + i) % barbers.length
+    if (freeIds.has(barbers[idx].id)) return barbers[idx].id
+  }
+  return null
 }
 
 async function getBookingTotal(client, bookingId) {
@@ -95,11 +130,17 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     // resolve barber
     let barberId = barber_id
-    let resolvedSource = source === 'any_available' || !barber_id ? 'any_available' : 'walk_in'
-    if (!barberId || barberId === 'any') {
-      barberId = await assignAnyAvailable(client, branchId, bookingDate)
+    let resolvedSource = 'walk_in'
+    if (source === 'any_available' || !barberId || barberId === 'any') {
       resolvedSource = 'any_available'
-      if (!barberId) return res.status(409).json({ message: 'No available barbers' })
+      const durRes = await client.query(
+        `SELECT COALESCE(SUM(s.duration_minutes), 30) AS dur FROM services s WHERE s.id = ANY($1::uuid[])`,
+        [service_ids]
+      )
+      const totalDur   = parseInt(durRes.rows[0]?.dur || 30)
+      const scheduledISO = scheduledAt(bookingDate, slot_time)
+      barberId = await assignRoundRobin(client, branchId, scheduledISO, totalDur)
+      if (!barberId) return res.status(409).json({ message: 'No available barbers at that time' })
     } else {
       const barberCheck = await client.query(
         `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])

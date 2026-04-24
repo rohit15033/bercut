@@ -18,12 +18,14 @@ import { getKioskToken } from './tokens.js'
 const BASE               = import.meta.env.VITE_API_URL ?? '/api'
 const RECONNECT_DELAY_MS = 3000
 
-export function useSSE(branchId, handlers) {
+export function useSSE(branchId, handlers, options = {}) {
   const esRef       = useRef(null)
   const handlersRef = useRef(handlers)
+  const optionsRef  = useRef(options)
 
-  // Always call current handlers without restarting the connection
+  // Always call current handlers/options without restarting the connection
   useEffect(() => { handlersRef.current = handlers })
+  useEffect(() => { optionsRef.current  = options })
 
   useEffect(() => {
     if (!branchId) return
@@ -46,6 +48,8 @@ export function useSSE(branchId, handlers) {
           handlersRef.current?.[type]?.(data)
         } catch { /* ignore malformed */ }
       }
+
+      es.onopen = () => optionsRef.current?.onConnect?.()
 
       // Named event types (server sends `event: <type>\ndata: ...`)
       const knownTypes = Object.keys(handlersRef.current ?? {})

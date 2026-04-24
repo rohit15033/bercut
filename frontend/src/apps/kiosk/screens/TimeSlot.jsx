@@ -16,16 +16,21 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
     return s + (svc?.duration_minutes || svc?.duration_min || 30)
   }, 0)
 
+  const isAnyAvailable = barber?.source === 'any_available'
+
   useEffect(() => {
-    if (!barber || !barber.id) { setSlots([]); setLoadingSlots(false); return }
     setLoadingSlots(true)
-    kioskApi.get(`/slots?barber_id=${barber.id}&date=${dateStr}&duration_min=${totalDur}`)
+    const url = isAnyAvailable
+      ? `/slots/any-available?branch_id=${branchId}&date=${dateStr}&duration_min=${totalDur}`
+      : barber?.id ? `/slots?barber_id=${barber.id}&date=${dateStr}&duration_min=${totalDur}` : null
+    if (!url) { setSlots([]); setLoadingSlots(false); return }
+    kioskApi.get(url)
       .then(data => setSlots(Array.isArray(data) ? data : (data.slots || [])))
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false))
-  }, [barber?.id, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const barberAvailable = barber?.status === 'active'
+  const barberAvailable = isAnyAvailable ? slots.length > 0 : barber?.status === 'active'
 
   // Current WITA time as "HH:MM"
   const nowWitaStr = (() => {
@@ -100,7 +105,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
         <div className="step-header fu">
           <div className="step-eyebrow">Step 3 of 4 · Pick Time</div>
           <h2 className="step-title">When Do You Want Your Cut?</h2>
-          <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted, marginTop:4 }}>{barber?.name} · {today} · Kapan Anda ingin dipotong?</div>
+          <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted, marginTop:4 }}>{isAnyAvailable ? 'Any Available' : barber?.name} · {today} · Kapan Anda ingin dipotong?</div>
         </div>
 
         {/* Slot grid */}
@@ -122,7 +127,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
                   }}>
                   <span>Now ⚡</span>
                   <span style={{ fontSize:'clamp(9px,1.1vw,11px)', fontWeight:400, color:slot === 'Now' ? 'rgba(255,255,255,0.7)' : C.muted }}>
-                    {canNow ? nowWitaStr : (barber?.status === 'on_break' ? 'On Break' : 'Busy')}
+                    {canNow ? nowWitaStr : (isAnyAvailable ? 'No one free now' : barber?.status === 'on_break' ? 'On Break' : 'Busy')}
                   </span>
                 </button>
 

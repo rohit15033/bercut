@@ -484,8 +484,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     ? `Group · ${groupBks.length} people`
     : (booking?.customer_name || booking?.guest_name || 'Guest')
 
-  if (phase === 'receipt') return <ReceiptScreen booking={firstBk} grand={isGroup ? groupGrand : grand} onNext={() => setPhase('review')} />
-  if (phase === 'review')  return <ReviewScreen  booking={firstBk} grand={isGroup ? groupGrand : grand} feedbackTags={feedbackTags} onDone={onDone} />
+  if (phase === 'receipt') return <ReceiptScreen booking={firstBk} grand={isGroup ? groupGrand : grand} onNext={onDone} />
   if (phase === 'failed')  return (
     <PaymentFailedScreen
       method={method}

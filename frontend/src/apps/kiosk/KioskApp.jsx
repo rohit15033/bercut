@@ -169,6 +169,8 @@ function KioskContent({ config }) {
   const [pointsUsed,   setPointsUsed]   = useState(0)
   const [paymentPending,   setPaymentPending]   = useState(false)
   const [paymentBooking,   setPaymentBooking]   = useState(null)
+  const paymentPendingRef = useRef(false)
+  useEffect(() => { paymentPendingRef.current = paymentPending }, [paymentPending])
   const [paymentRefreshKey, setPaymentRefreshKey] = useState(0)
   const [barberPanelOpen, setBarberPanelOpen] = useState(false)
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
@@ -234,6 +236,19 @@ function KioskContent({ config }) {
     booking_started: () => setLastQueueUpdate(Date.now()),
     booking_cancelled: () => setLastQueueUpdate(Date.now()),
     payment_complete: () => setLastQueueUpdate(Date.now()),
+  }, {
+    onConnect: () => {
+      if (paymentPendingRef.current) return
+      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+      kioskApi.get(`/bookings?status=pending_payment&date=${today}`)
+        .then(rows => {
+          if (rows?.length > 0 && !paymentPendingRef.current) {
+            setPaymentBooking(rows[0])
+            setPaymentPending(true)
+          }
+        })
+        .catch(() => {})
+    }
   })
 
   // Idle timer
@@ -402,7 +417,15 @@ function KioskContent({ config }) {
           branchId={branchId}
           settings={settings}
           groupId={groupId}
-          onConfirm={(bk, pts) => { setBooking(bk); setPointsUsed(pts || 0); setStep(5) }}
+          onConfirm={(bk, pts) => {
+            setBooking(bk)
+            setPointsUsed(pts || 0)
+            if (barber?.source === 'any_available' && bk.barber_id) {
+              const assigned = barbers.find(b => b.id === bk.barber_id) || { id: bk.barber_id, name: bk.barber_name }
+              setBarber(assigned)
+            }
+            setStep(5)
+          }}
           onBack={() => setStep(3)}
         />
       )}

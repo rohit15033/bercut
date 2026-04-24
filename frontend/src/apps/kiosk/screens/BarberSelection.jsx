@@ -2,13 +2,6 @@ import { useEffect, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
 
-function pickAnyAvailable(barbers) {
-  const active = barbers.filter(b => b.status === 'active')
-  return [...active].sort((a, b) => {
-    const diff = (a.any_available_today ?? 0) - (b.any_available_today ?? 0)
-    return diff !== 0 ? diff : (a.sort_order ?? 0) - (b.sort_order ?? 0)
-  })[0]
-}
 
 export default function BarberSelection({ barbers, services, serviceIds, barber, setBarber, onNext, onBack }) {
   const [nextSlots, setNextSlots] = useState({})
@@ -74,7 +67,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
         {[null, ...sortedBarbers].map((b, i) => {
           const isAny = b === null
           const data  = isAny
-            ? { id: 0, name: 'Any Available', spec: 'Fastest queue', spec_id: 'Antrean tercepat', status: 'active' }
+            ? { id: 0, name: 'Any Available', spec: '', spec_id: '', status: 'active' }
             : b
             
           const isUnavailable = !isAny && ['clocked_out', 'off', 'on_break'].includes(data.status)
@@ -96,8 +89,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
               onClick={() => {
                 if (isUnavailable) return;
                 if (isAny) {
-                  const pick = pickAnyAvailable(barbers)
-                  setBarber({ ...pick, source: 'any_available' })
+                  setBarber({ id: null, name: 'Any Available', source: 'any_available' })
                 } else {
                   setBarber(b)
                 }
@@ -148,7 +140,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                     </span>
                   </div>
                   <div style={{ fontSize:'clamp(9px,1vw,10px)', color:sel ? '#1a1a1877' : C.muted, fontWeight:500 }}>
-                    Auto-assign fastest queue
+
                   </div>
                 </div>
               ) : (() => {

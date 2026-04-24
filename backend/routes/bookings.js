@@ -829,13 +829,13 @@ router.patch('/:id/reopen', requireAdmin, async (req, res) => {
       )
     }
 
-    // Reopen: status back to in_progress, started_at = now, est_duration = new services only
+    // Reopen: status back to in_progress, started_at = now, completed_at cleared
+    // (duration is derived at query time from booking_services; no est_duration_min column)
     const newDuration = svcRes.rows.reduce((s, sv) => s + parseInt(sv.duration_minutes || 30), 0)
     await client.query(
-      `UPDATE bookings SET status = 'in_progress', started_at = NOW(),
-          est_duration_min = $1, completed_at = NULL
-       WHERE id = $2`,
-      [newDuration, booking.id]
+      `UPDATE bookings SET status = 'in_progress', started_at = NOW(), completed_at = NULL
+       WHERE id = $1`,
+      [booking.id]
     )
 
     await client.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [booking.barber_id])
@@ -844,7 +844,7 @@ router.patch('/:id/reopen', requireAdmin, async (req, res) => {
     emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'busy' })
     emitEvent(booking.branch_id, 'booking_started', { id: booking.id })
 
-    res.json({ ok: true, added: svcRes.rows.length, new_duration: newDuration })
+    res.json({ ok: true, added: svcRes.rows.length, added_duration_min: newDuration })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error(err); res.status(500).json({ message: 'Internal server error' })

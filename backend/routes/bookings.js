@@ -72,16 +72,6 @@ async function assignRoundRobin(client, branchId, scheduledISO, durationMin) {
   return null
 }
 
-async function getBookingTotal(client, bookingId) {
-  const svcs = await client.query(
-    'SELECT COALESCE(SUM(price_charged), 0) AS total FROM booking_services WHERE booking_id = $1',
-    [bookingId])
-  const extras = await client.query(
-    'SELECT COALESCE(SUM(price), 0) AS total FROM booking_extras WHERE booking_id = $1',
-    [bookingId])
-  return parseFloat(svcs.rows[0].total) + parseFloat(extras.rows[0].total)
-}
-
 // ── POST /api/bookings ─────────────────────────────────────────────────────────
 
 router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, res) => {
@@ -751,23 +741,30 @@ router.post('/merge-group', requireAdmin, async (req, res) => {
 
     await client.query('BEGIN')
 
-    // Use existing group_id if any booking already belongs to one, else create new
-    const { rows: existing } = await client.query(
-      `SELECT group_id FROM bookings WHERE id = ANY($1::uuid[]) AND group_id IS NOT NULL LIMIT 1`,
+    const { rows: bk } = await client.query(
+      `SELECT branch_id FROM bookings WHERE id = $1`, [booking_ids[0]]
+    )
+    if (!bk.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Booking not found' }) }
+
+    // Collect any old group_ids from these bookings so we can clean up orphaned members
+    const { rows: oldGroups } = await client.query(
+      `SELECT DISTINCT group_id FROM bookings WHERE id = ANY($1::uuid[]) AND group_id IS NOT NULL`,
       [booking_ids]
     )
 
-    let groupId
-    if (existing.length) {
-      groupId = existing[0].group_id
-    } else {
-      const { rows: bk } = await client.query(
-        `SELECT branch_id FROM bookings WHERE id = $1`, [booking_ids[0]]
+    // Always create a fresh group
+    const { rows: grp } = await client.query(
+      `INSERT INTO booking_groups (branch_id) VALUES ($1) RETURNING id`, [bk[0].branch_id]
+    )
+    const groupId = grp[0].id
+
+    // Remove old group_id from any bookings that were in those groups but aren't in the new list
+    if (oldGroups.length) {
+      const oldGroupIds = oldGroups.map(r => r.group_id)
+      await client.query(
+        `UPDATE bookings SET group_id = NULL WHERE group_id = ANY($1::uuid[]) AND id != ANY($2::uuid[])`,
+        [oldGroupIds, booking_ids]
       )
-      const { rows: grp } = await client.query(
-        `INSERT INTO booking_groups (branch_id) VALUES ($1) RETURNING id`, [bk[0].branch_id]
-      )
-      groupId = grp[0].id
     }
 
     await client.query(

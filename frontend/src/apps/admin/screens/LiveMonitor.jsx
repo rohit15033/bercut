@@ -691,7 +691,14 @@ function ReopenModal({ booking, onConfirm, onClose }) {
 
 function GroupModal({ anchor, allBarberQueues, onConfirm, onClose }) {
   const allBookings = allBarberQueues.flatMap(b => (b.queue || []).map(bk => ({ ...bk, barber_name: b.name })))
-  const [selected, setSelected] = useState(new Set([anchor.id]))
+
+  const [selected, setSelected] = useState(() => {
+    if (anchor.group_id) {
+      const groupMembers = allBookings.filter(bk => bk.group_id === anchor.group_id).map(bk => bk.id)
+      return new Set([anchor.id, ...groupMembers])
+    }
+    return new Set([anchor.id])
+  })
 
   const toggle = id => setSelected(s => { const n = new Set(s); n.has(id) ? (id !== anchor.id && n.delete(id)) : n.add(id); return n })
 
@@ -829,14 +836,18 @@ function BarberActionMenu({ barber, onAction }) {
 function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, allBarbers, barberBusy, nextSlot }) {
   const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
-  
+
   const schedTime = formatTime(booking.scheduled_at)
   const startTime = formatTime(booking.started_at)
   const estEnd    = booking.calculatedEstEnd ? booking.calculatedEstEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'
   const serviceNames = booking.service_names || '—'
 
+  const groupMembers = booking.group_id
+    ? (allBarbers || []).flatMap(b => b.queue || []).filter(bk => bk.group_id === booking.group_id && bk.id !== booking.id)
+    : []
+
   return (
-    <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.surface}`, borderLeft: booking.client_not_arrived ? '3px solid #F59E0B' : '3px solid transparent', background: booking.client_not_arrived ? '#FFFDF5' : 'transparent', transition: 'background 0.1s' }}
+    <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.surface}`, borderLeft: booking.client_not_arrived ? '3px solid #F59E0B' : booking.group_id ? '3px solid #7C3AED' : '3px solid transparent', background: booking.client_not_arrived ? '#FFFDF5' : 'transparent', transition: 'background 0.1s' }}
       onMouseEnter={e => { if (!booking.client_not_arrived) e.currentTarget.style.background = T.bg }}
       onMouseLeave={e => { e.currentTarget.style.background = booking.client_not_arrived ? '#FFFDF5' : 'transparent' }}>
 
@@ -844,8 +855,15 @@ function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, all
         <div>
           <span style={{ background: T.topBg, color: '#F5E200', padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>{booking.booking_number}</span>
         </div>
-        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 13, color: T.text, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {booking.customer_name || 'Walk-in'}
+        <div style={{ paddingRight: 8, overflow: 'hidden' }}>
+          <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 13, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {booking.customer_name || 'Walk-in'}
+          </div>
+          {groupMembers.length > 0 && (
+            <div style={{ fontSize: 10, color: '#7C3AED', fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              ⊕ Grouped · {[booking.customer_name || 'Walk-in', ...groupMembers.map(m => m.customer_name || 'Walk-in')].join(', ')}
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 11, color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
           {serviceNames}

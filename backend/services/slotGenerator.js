@@ -106,7 +106,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
  * A slot is included if at least one barber is free for the full duration at that time.
  */
 async function getUnionSlots(branchId, date, durationMin = 30) {
-  const openTime       = minutesFromMidnight('09:00')
+  const openTime       = minutesFromMidnight('10:00')
   const closeTime      = minutesFromMidnight('21:00')
   const lastOrderStart = minutesFromMidnight('19:30')
   const GRID           = 30
@@ -170,6 +170,14 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
   const isFreeAt = (t) => barbers.some(b => !blockedMap[b.id].some(bk => t < bk.end && t + durationMin > bk.start))
 
   const slotSet = new Set()
+
+  // If any barber is free right now, add current time as first slot so "Now" works on the kiosk
+  if (isToday && isFreeAt(nowMin)) {
+    const nowRounded = roundUpTo5(nowMin)
+    if (nowRounded <= lastOrderStart && nowRounded + durationMin <= closeTime) {
+      slotSet.add(nowRounded)
+    }
+  }
 
   // Fixed grid slots
   for (let t = gridStart; t <= lastOrderStart && t + durationMin <= closeTime; t += GRID) {

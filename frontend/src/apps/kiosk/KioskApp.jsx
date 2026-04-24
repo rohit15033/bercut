@@ -171,6 +171,8 @@ function KioskContent({ config }) {
   const [paymentBooking,   setPaymentBooking]   = useState(null)
   const paymentPendingRef = useRef(false)
   useEffect(() => { paymentPendingRef.current = paymentPending }, [paymentPending])
+  const stepRef = useRef(0)
+  useEffect(() => { stepRef.current = step }, [step])
   const [paymentRefreshKey, setPaymentRefreshKey] = useState(0)
   const [barberPanelOpen, setBarberPanelOpen] = useState(false)
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
@@ -213,10 +215,11 @@ function KioskContent({ config }) {
   // SSE — real-time updates
   useSSE(branchId, {
     payment_trigger: (data) => {
-      if (data?.group_id || data?.booking_id || data?.id) {
-        setPaymentBooking(data)
-        setPaymentPending(true)
-      }
+      if (!(data?.group_id || data?.booking_id || data?.id)) return
+      // If mid-booking, don't interrupt — step 0 poll will catch it when user returns home
+      if (stepRef.current !== 0) return
+      setPaymentBooking(data)
+      setPaymentPending(true)
     },
     kiosk_settings_update: () => {
       window.location.reload()
@@ -238,18 +241,36 @@ function KioskContent({ config }) {
     payment_complete: () => setLastQueueUpdate(Date.now()),
   }, {
     onConnect: () => {
-      if (paymentPendingRef.current) return
+      // Only poll when kiosk is idle at home — don't interrupt an active booking flow
+      if (paymentPendingRef.current || stepRef.current !== 0) return
       const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
       kioskApi.get(`/bookings?status=pending_payment&date=${today}`)
         .then(rows => {
-          if (rows?.length > 0 && !paymentPendingRef.current) {
-            setPaymentBooking(rows[0])
+          // Skip group bookings — those are paid at the admin counter
+          const single = (rows || []).find(r => !r.group_id)
+          if (single && !paymentPendingRef.current) {
+            setPaymentBooking(single)
             setPaymentPending(true)
           }
         })
         .catch(() => {})
     }
   })
+
+  // When kiosk returns to home (step 0), check for any missed pending_payment bookings
+  useEffect(() => {
+    if (step !== 0 || paymentPending) return
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+    kioskApi.get(`/bookings?status=pending_payment&date=${today}`)
+      .then(rows => {
+        const single = (rows || []).find(r => !r.group_id)
+        if (single && !paymentPendingRef.current) {
+          setPaymentBooking(single)
+          setPaymentPending(true)
+        }
+      })
+      .catch(() => {})
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Idle timer
   const resetIdleTimer = () => {

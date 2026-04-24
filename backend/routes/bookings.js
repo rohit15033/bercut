@@ -739,6 +739,118 @@ router.delete('/:id/extras/:extra_id', requireKiosk, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// ── POST /api/bookings/merge-group ───────────────────────────────────────────
+// Admin: merge a list of booking IDs into one shared group for payment together
+
+router.post('/merge-group', requireAdmin, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { booking_ids } = req.body
+    if (!Array.isArray(booking_ids) || booking_ids.length < 2)
+      return res.status(400).json({ message: 'At least 2 booking_ids required' })
+
+    await client.query('BEGIN')
+
+    // Use existing group_id if any booking already belongs to one, else create new
+    const { rows: existing } = await client.query(
+      `SELECT group_id FROM bookings WHERE id = ANY($1::uuid[]) AND group_id IS NOT NULL LIMIT 1`,
+      [booking_ids]
+    )
+
+    let groupId
+    if (existing.length) {
+      groupId = existing[0].group_id
+    } else {
+      const { rows: bk } = await client.query(
+        `SELECT branch_id FROM bookings WHERE id = $1`, [booking_ids[0]]
+      )
+      const { rows: grp } = await client.query(
+        `INSERT INTO booking_groups (branch_id) VALUES ($1) RETURNING id`, [bk[0].branch_id]
+      )
+      groupId = grp[0].id
+    }
+
+    await client.query(
+      `UPDATE bookings SET group_id = $1 WHERE id = ANY($2::uuid[]) AND status IN ('confirmed','in_progress','pending_payment')`,
+      [groupId, booking_ids]
+    )
+
+    await client.query('COMMIT')
+    res.json({ group_id: groupId })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err); res.status(500).json({ message: 'Internal server error' })
+  } finally { client.release() }
+})
+
+// ── PATCH /api/bookings/:id/reopen ───────────────────────────────────────────
+// Admin: add extra services to a pending_payment booking and restart it
+
+router.patch('/:id/reopen', requireAdmin, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const { service_ids } = req.body
+    if (!Array.isArray(service_ids) || !service_ids.length)
+      return res.status(400).json({ message: 'service_ids required' })
+
+    await client.query('BEGIN')
+
+    const { rows } = await client.query(
+      `SELECT * FROM bookings WHERE id = $1 AND status = 'pending_payment'`, [req.params.id]
+    )
+    if (!rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ message: 'Booking is not in pending_payment status' })
+    }
+    const booking = rows[0]
+
+    // Fetch new services with branch-level price and commission rate
+    const svcRes = await client.query(
+      `SELECT s.id, s.duration_minutes,
+              COALESCE(bs.price, s.base_price) AS price,
+              COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
+       FROM services s
+       LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+       LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $2
+       LEFT JOIN barbers b ON b.id = $2
+       WHERE s.id = ANY($3::uuid[]) AND s.is_active = true`,
+      [booking.branch_id, booking.barber_id, service_ids]
+    )
+    if (!svcRes.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'Services not found' })
+    }
+
+    // Insert new booking_services (marked added_mid_cut; existing services are untouched)
+    for (const svc of svcRes.rows) {
+      await client.query(
+        `INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1, $2, $3, true)`,
+        [booking.id, svc.id, svc.price]
+      )
+    }
+
+    // Reopen: status back to in_progress, started_at = now, est_duration = new services only
+    const newDuration = svcRes.rows.reduce((s, sv) => s + parseInt(sv.duration_minutes || 30), 0)
+    await client.query(
+      `UPDATE bookings SET status = 'in_progress', started_at = NOW(),
+          est_duration_min = $1, completed_at = NULL
+       WHERE id = $2`,
+      [newDuration, booking.id]
+    )
+
+    await client.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [booking.barber_id])
+    await client.query('COMMIT')
+
+    emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'busy' })
+    emitEvent(booking.branch_id, 'booking_started', { id: booking.id })
+
+    res.json({ ok: true, added: svcRes.rows.length, new_duration: newDuration })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err); res.status(500).json({ message: 'Internal server error' })
+  } finally { client.release() }
+})
+
 // ── PATCH /api/bookings/:id/set-group ────────────────────────────────────────
 router.patch('/:id/set-group', requireKiosk, async (req, res) => {
   try {

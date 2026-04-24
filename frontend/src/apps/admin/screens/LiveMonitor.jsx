@@ -601,9 +601,154 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
   )
 }
 
+// ── ReopenModal ───────────────────────────────────────────────────────────────
+
+function ReopenModal({ booking, onConfirm, onClose }) {
+  const [services,  setServices]  = useState([])
+  const [selected,  setSelected]  = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
+
+  useEffect(() => {
+    api.get(`/services?branch_id=${booking.branch_id}`)
+      .then(data => setServices(Array.isArray(data) ? data.filter(s => s.is_active !== false) : []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [booking.branch_id])
+
+  const toggle = id => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+
+  async function handleConfirm() {
+    if (!selected.length) return
+    setSaving(true)
+    try {
+      await api.patch(`/bookings/${booking.id}/reopen`, { service_ids: selected })
+      onConfirm()
+      onClose()
+    } catch (err) { alert(err.message || 'Failed to reopen booking') }
+    finally { setSaving(false) }
+  }
+
+  const newDuration = selected.reduce((s, id) => {
+    const svc = services.find(x => x.id === id)
+    return s + parseInt(svc?.duration_minutes || 30)
+  }, 0)
+
+  const existingServiceIds = new Set((booking.services || []).map(s => s.service_id))
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: T.white, borderRadius: 16, padding: '28px 28px 24px', width: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 17, color: T.text, marginBottom: 4 }}>Add Service & Resume</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 18 }}>
+          <b>{booking.booking_number}</b> · {booking.customer_name || booking.guest_name || 'Guest'} · Select additional service(s) to add
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '24px 0', color: T.muted, fontSize: 13 }}>Loading services…</div>
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 18 }}>
+            {services.map(svc => {
+              const sel = selected.includes(svc.id)
+              const already = existingServiceIds.has(svc.id)
+              return (
+                <div key={svc.id} onClick={() => !already && toggle(svc.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${already ? T.border : sel ? '#16A34A' : T.border}`, background: already ? T.surface : sel ? 'rgba(22,163,74,0.06)' : T.white, cursor: already ? 'default' : 'pointer', transition: 'all 0.12s', opacity: already ? 0.6 : 1 }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${already ? T.muted : sel ? '#16A34A' : T.border}`, background: already ? T.border : sel ? '#16A34A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {(sel || already) && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: already ? T.muted : T.text }}>{svc.name}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{already ? 'Already in booking' : `${svc.duration_minutes} min`}</div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: already ? T.muted : T.text2 }}>Rp {Number(svc.base_price || 0).toLocaleString('id-ID')}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {selected.length > 0 && (
+          <div style={{ fontSize: 12, color: '#16A34A', fontWeight: 600, marginBottom: 14 }}>
+            Est. additional time: {newDuration} min
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '11px 0', borderRadius: 9, border: `1.5px solid ${T.border}`, background: 'transparent', fontWeight: 600, fontSize: 14, cursor: 'pointer', color: T.text2 }}>Cancel</button>
+          <button onClick={handleConfirm} disabled={!selected.length || saving}
+            style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: selected.length && !saving ? '#16A34A' : T.surface, color: selected.length && !saving ? '#fff' : T.muted, fontWeight: 700, fontSize: 14, cursor: selected.length && !saving ? 'pointer' : 'not-allowed' }}>
+            {saving ? 'Saving…' : `Resume with ${selected.length} service${selected.length > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── GroupModal ────────────────────────────────────────────────────────────────
+
+function GroupModal({ anchor, allBarberQueues, onConfirm, onClose }) {
+  const allBookings = allBarberQueues.flatMap(b => (b.queue || []).map(bk => ({ ...bk, barber_name: b.name })))
+  const [selected, setSelected] = useState(new Set([anchor.id]))
+
+  const toggle = id => setSelected(s => { const n = new Set(s); n.has(id) ? (id !== anchor.id && n.delete(id)) : n.add(id); return n })
+
+  async function handleConfirm() {
+    try {
+      await api.post(`/bookings/merge-group`, { booking_ids: [...selected] })
+      onConfirm()
+      onClose()
+    } catch (err) { alert(err.message || 'Failed to group bookings') }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: T.white, borderRadius: 16, padding: '28px 28px 24px', width: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 17, color: T.text, marginBottom: 6 }}>Group for Payment</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>Select bookings to pay together. <b>{anchor.booking_number}</b> is pre-selected.</div>
+
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+          {allBookings.map(bk => {
+            const sel = selected.has(bk.id)
+            const isAnchor = bk.id === anchor.id
+            return (
+              <div key={bk.id} onClick={() => toggle(bk.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${sel ? '#2563EB' : T.border}`, background: sel ? 'rgba(37,99,235,0.06)' : T.white, cursor: isAnchor ? 'default' : 'pointer', transition: 'all 0.12s' }}>
+                <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#2563EB' : T.border}`, background: sel ? '#2563EB' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{bk.booking_number}</span>
+                    <span style={{ fontSize: 12, color: T.muted }}>{bk.customer_name || bk.guest_name || 'Guest'}</span>
+                    {isAnchor && <span style={{ fontSize: 10, fontWeight: 700, color: '#2563EB', background: 'rgba(37,99,235,0.1)', padding: '1px 6px', borderRadius: 4 }}>selected</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{bk.barber_name} · {bk.service_names || '—'}</div>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: bk.status === 'in_progress' ? '#16A34A' : T.muted, textTransform: 'uppercase' }}>{bk.status.replace('_', ' ')}</div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '11px 0', borderRadius: 9, border: `1.5px solid ${T.border}`, background: 'transparent', fontWeight: 600, fontSize: 14, cursor: 'pointer', color: T.text2 }}>Cancel</button>
+          <button onClick={handleConfirm} disabled={selected.size < 2}
+            style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: selected.size >= 2 ? '#2563EB' : T.surface, color: selected.size >= 2 ? '#fff' : T.muted, fontWeight: 700, fontSize: 14, cursor: selected.size >= 2 ? 'pointer' : 'not-allowed' }}>
+            Group {selected.size} Bookings Together
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── ActionMenu ────────────────────────────────────────────────────────────────
 
-function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit }) {
+function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, onReopen }) {
   const [open, setOpen] = useState(false)
   const isInProg    = booking.status === 'in_progress'
   const isEditable  = EDITABLE_STATUSES.has(booking.status)
@@ -632,6 +777,8 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit }) {
         <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 9999, minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden' }}
           onMouseLeave={() => setOpen(false)}>
           {isEditable && item('✏ Edit Barber / Services', T.text, T.bg, () => onEdit(booking))}
+          {isEditable && item('⊕ Group for Payment', '#2563EB', 'rgba(37,99,235,0.06)', () => onGroup(booking))}
+          {isPendingPay && item('＋ Add Service & Resume', '#16A34A', '#F0FDF4', () => onReopen(booking))}
           {!isInProg && !isPendingPay && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
           {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
         </div>
@@ -679,7 +826,7 @@ function BarberActionMenu({ barber, onAction }) {
   )
 }
 
-function BookingRow({ booking, onCancel, onStart, onEdit, allBarbers, barberBusy, nextSlot }) {
+function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, allBarbers, barberBusy, nextSlot }) {
   const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
   
@@ -712,7 +859,7 @@ function BookingRow({ booking, onCancel, onStart, onEdit, allBarbers, barberBusy
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <ActionMenu booking={booking} barberBusy={barberBusy} onCancel={onCancel} onStart={onStart} onEdit={onEdit} allBarbers={allBarbers} />
+          <ActionMenu booking={booking} barberBusy={barberBusy} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} allBarbers={allBarbers} />
         </div>
       </div>
 
@@ -727,7 +874,7 @@ function BookingRow({ booking, onCancel, onStart, onEdit, allBarbers, barberBusy
 
 // ── BarberQueueBlock ──────────────────────────────────────────────────────────
 
-function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onBarberAction }) {
+function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onBarberAction }) {
   const [expanded, setExpanded] = useState(true)
   const cfg        = BARBER_STATUS[barber.status] || BARBER_STATUS.available
   const activeQ    = (barber.queue || []).filter(b => EDITABLE_STATUSES.has(b.status))
@@ -790,7 +937,7 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onBar
               
               return (
                 <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
-                  onCancel={onCancel} onStart={onStart} onEdit={onEdit}
+                  onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen}
                   allBarbers={allBarbers} barberBusy={barber.status === 'busy'}
                   nextSlot={nextSlotTime}
                 />
@@ -805,7 +952,7 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onBar
 
 // ── BranchSection ─────────────────────────────────────────────────────────────
 
-function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit, onBarberAction }) {
+function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onBarberAction }) {
   const inService    = barbers.filter(b => b.status === 'busy').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
@@ -826,7 +973,7 @@ function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit,
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
-          <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onBarberAction={onBarberAction} />
+          <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onBarberAction={onBarberAction} />
         ))}
       </div>
     </div>
@@ -842,6 +989,8 @@ export default function LiveMonitor() {
   const [cancelModal,     setCancelModal]      = useState(null)
   const [forceStartModal, setForceStartModal]  = useState(null)
   const [editModal,       setEditModal]        = useState(null)
+  const [groupModal,      setGroupModal]       = useState(null)
+  const [reopenModal,     setReopenModal]      = useState(null)
   const [showPaxModal,    setShowPaxModal]     = useState(false)
   const [showNewBooking,  setShowNewBooking]   = useState(false)
   const [showPaxPanel,    setShowPaxPanel]     = useState(false)
@@ -963,6 +1112,21 @@ export default function LiveMonitor() {
           onClose={() => setEditModal(null)}
         />
       )}
+      {groupModal && (
+        <GroupModal
+          anchor={groupModal.booking}
+          allBarberQueues={barberQueues}
+          onConfirm={loadData}
+          onClose={() => setGroupModal(null)}
+        />
+      )}
+      {reopenModal && (
+        <ReopenModal
+          booking={reopenModal.booking}
+          onConfirm={loadData}
+          onClose={() => setReopenModal(null)}
+        />
+      )}
       {showPaxModal && (
         <LogPaxOutModal branches={branches} onLog={e => setPaxOutEvents(p => [e, ...p])} onClose={() => setShowPaxModal(false)} />
       )}
@@ -1049,6 +1213,8 @@ export default function LiveMonitor() {
             onCancel={bk => setCancelModal({ booking: bk })}
             onStart={bk => setForceStartModal({ booking: bk })}
             onEdit={bk => setEditModal({ booking: bk })}
+            onGroup={bk => setGroupModal({ booking: bk })}
+            onReopen={bk => setReopenModal({ booking: bk })}
             onBarberAction={handleBarberAction}
           />
         )

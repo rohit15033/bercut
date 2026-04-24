@@ -33,28 +33,27 @@ function ChairCard({ barber, booking, compact }) {
   }
 
   const fs = compact
-    ? { chair: '0.7vw', chairNum: '2vw', name: '2.2vw', label: '0.85vw', body: '1.5vw', sub: '0.85vw', prog: '0.65vw' }
+    ? { chair: '0.6vw', chairNum: '1.6vw', name: '1.8vw', label: '0.7vw', body: '1.3vw', sub: '0.75vw', prog: '0.6vw' }
     : { chair: '0.8vw', chairNum: '2.6vw', name: '2.8vw', label: '0.95vw', body: '1.7vw', sub: '0.9vw', prog: '0.7vw' }
 
   return (
-    <div style={{ background: T.surface, border: `0.2vw solid ${T.border}`, borderRadius: '1.2vw', padding: compact ? '1.4vw 1.6vw' : '1.8vw 2vw', display: 'flex', flexDirection: 'column', gap: '0.8vw', overflow: 'hidden', height: '100%' }}>
+    <div style={{ background: T.surface, border: `0.2vw solid ${T.border}`, borderRadius: '1vw', padding: compact ? '0.8vw 1.2vw' : '1.8vw 2vw', display: 'flex', flexDirection: 'column', gap: compact ? '0.5vw' : '0.8vw', overflow: 'hidden', height: '100%' }}>
 
-      {/* Top row: chair + name + status badge */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.2vw' }}>
-          <div style={{ background: isInProg ? T.accent : isBreak ? '#F59E0B' : '#E5E7EB', color: (isInProg || isBreak) ? '#fff' : T.text, padding: '0.5vw 1vw', borderRadius: '0.8vw', textAlign: 'center', border: `0.12vw solid ${T.border}`, minWidth: '4vw' }}>
-            <div style={{ fontSize: fs.chair, fontWeight: 800, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>CHAIR</div>
-            <div style={{ fontSize: fs.chairNum, fontWeight: 900, lineHeight: 1 }}>{barber.chair_label || '?'}</div>
-          </div>
-          <div style={{ fontSize: fs.name, fontWeight: 900, color: T.text, lineHeight: 1 }}>{barber.name}</div>
+      {/* Top row: chair + name + status badge under name */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.2vw' }}>
+        <div style={{ background: isInProg ? T.accent : isBreak ? '#F59E0B' : '#E5E7EB', color: (isInProg || isBreak) ? '#fff' : T.text, padding: '0.5vw 1vw', borderRadius: '0.8vw', textAlign: 'center', border: `0.12vw solid ${T.border}`, minWidth: '4vw', flexShrink: 0 }}>
+          <div style={{ fontSize: fs.chair, fontWeight: 800, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>CHAIR</div>
+          <div style={{ fontSize: fs.chairNum, fontWeight: 900, lineHeight: 1 }}>{barber.chair_label || '?'}</div>
         </div>
-        <div style={{ fontSize: fs.label, fontWeight: 800, padding: '0.3vw 0.8vw', borderRadius: '0.6vw',
-          background: isInProg ? T.accentBg : isBreak ? 'rgba(245,158,11,0.1)' : '#F3F4F6',
-          color:      isInProg ? T.accent   : isBreak ? '#F59E0B'              : T.muted,
-          border:     `0.1vw solid ${isInProg ? T.accent : isBreak ? '#F59E0B' : T.border}`,
-          whiteSpace: 'nowrap'
-        }}>
-          {isInProg ? 'IN SERVICE' : isBreak ? 'ON BREAK' : 'AVAILABLE'}
+        <div>
+          <div style={{ fontSize: fs.name, fontWeight: 900, color: T.text, lineHeight: 1 }}>{barber.name}</div>
+          <div style={{ display: 'inline-block', marginTop: '0.4vw', fontSize: fs.label, fontWeight: 800, padding: '0.2vw 0.7vw', borderRadius: '0.5vw',
+            background: isInProg ? T.accentBg : isBreak ? 'rgba(245,158,11,0.1)' : '#F3F4F6',
+            color:      isInProg ? T.accent   : isBreak ? '#F59E0B'              : T.muted,
+            border:     `0.1vw solid ${isInProg ? T.accent : isBreak ? '#F59E0B' : T.border}`,
+          }}>
+            {isInProg ? 'IN SERVICE' : isBreak ? 'ON BREAK' : 'AVAILABLE'}
+          </div>
         </div>
       </div>
 
@@ -164,7 +163,8 @@ export default function TvMonitor() {
   const inProg        = queue.filter(b => b.status === 'in_progress')
   const waiting       = queue.filter(b => b.status === 'confirmed').slice(0, 8)
   const barberCount   = activeBarbers.length
-  const compact       = barberCount >= 3
+  const compact       = barberCount >= 4
+  const twoRows       = barberCount >= 4
 
   return (
     <div style={{ background: T.bg, color: T.text, height: '100vh', width: '100vw', fontFamily: "'Inter', sans-serif", overflow: 'hidden', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
@@ -201,7 +201,7 @@ export default function TvMonitor() {
               <div style={{ fontSize: '1.8vw', fontWeight: 800 }}>No Barbers Clocked In</div>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(barberCount, 3)}, 1fr)`, gridAutoRows: 'clamp(220px, 42vh, 420px)', gap: '1.5vw', alignContent: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(barberCount, 3)}, 1fr)`, gridAutoRows: twoRows ? 'clamp(120px, 20vh, 220px)' : 'clamp(220px, 42vh, 420px)', gap: '1vw', alignContent: 'start' }}>
               {activeBarbers.map(barber => {
                 const booking = inProg.find(b => b.barber_id === barber.id)
                 return <ChairCard key={barber.id} barber={barber} booking={booking} compact={compact} />

@@ -195,8 +195,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                 </div>
               ) : (() => {
                 const bSlot = nextSlots[data.id]
-                const bSlotMin = toMin(bSlot)
-                const bCanNow = bSlotMin !== null && nowMin !== null && bSlotMin <= nowMin + 30
+                const bCanNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(data.status)
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>

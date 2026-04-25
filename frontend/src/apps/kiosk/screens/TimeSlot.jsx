@@ -30,7 +30,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
       .finally(() => setLoadingSlots(false))
   }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const barberAvailable = isAnyAvailable ? slots.length > 0 : barber?.status === 'active'
+  const barberAvailable = isAnyAvailable ? slots.length > 0 : barber?.status === 'available'
 
   // Current WITA time as "HH:MM"
   const nowWitaStr = (() => {
@@ -48,7 +48,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   // "Now" is available if barber is active and current time + service duration
   // doesn't overlap any taken slot (first available slot is at or before now)
   const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
-  const nowWindow = isAnyAvailable ? 5 : 30
+  const nowWindow = isAnyAvailable ? 4 : 30
   const canNow = barberAvailable && (firstSlotMin !== null && firstSlotMin <= nowMin + nowWindow)
 
   // If barber busy but slots available, offer first slot as "Next"

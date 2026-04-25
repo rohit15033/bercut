@@ -33,7 +33,10 @@ async function getFreeBarberIds(client, branchId, scheduledISO, durationMin) {
          WHERE bk.barber_id = b.id
            AND bk.status IN ('confirmed','in_progress')
            AND bk.scheduled_at < $2::timestamptz + ($3 * INTERVAL '1 minute')
-           AND bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute') > $2::timestamptz
+           AND CASE WHEN bk.status = 'in_progress'
+                    THEN GREATEST(bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute'), NOW() + INTERVAL '1 minute')
+                    ELSE bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute')
+               END > $2::timestamptz
        )`,
     [branchId, scheduledISO, durationMin]
   )
@@ -59,7 +62,10 @@ async function pickFastestBarber(client, branchId) {
   const { rows } = await client.query(
     `SELECT b.id,
        COALESCE(
-         MAX(bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute')),
+         MAX(CASE WHEN bk.status = 'in_progress'
+                  THEN GREATEST(bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute'), NOW())
+                  ELSE bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute')
+             END),
          NOW()
        ) AS est_end
      FROM barbers b

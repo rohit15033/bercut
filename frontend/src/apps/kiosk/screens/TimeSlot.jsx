@@ -36,7 +36,6 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
       .finally(() => setLoadingSlots(false))
   }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const barberAvailable = isAnyAvailable ? slots.length > 0 : barber?.status === 'available'
 
   // Current WITA time as "HH:MM"
   const nowWitaStr = (() => {
@@ -55,7 +54,9 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   // doesn't overlap any taken slot (first available slot is at or before now)
   const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
   const nowWindow = isAnyAvailable ? 4 : 30
-  const canNow = barberAvailable && (firstSlotMin !== null && firstSlotMin <= nowMin + nowWindow)
+  // Specific barber availability should be derived from slot generation, not stale UI status.
+  // If first available slot is within the "now window", enable Now.
+  const canNow = firstSlotMin !== null && firstSlotMin <= nowMin + nowWindow
   useEffect(() => {
     // #region agent log
     fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H4',location:'frontend/src/apps/kiosk/screens/TimeSlot.jsx:canNow',message:'Computed canNow and first slot relationship',data:{isAnyAvailable,barberStatus:barber?.status||null,nowWitaStr,nowMin,firstSlot:slots[0]||null,firstSlotMin,nowWindow,canNow},timestamp:Date.now()})}).catch(()=>{});

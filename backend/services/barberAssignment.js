@@ -1,19 +1,19 @@
 const pool = require('../config/db')
 
-// Returns barbers sorted by idle time: who completed last service earliest today (or never = null) comes first.
-// Alphabetical tiebreaker for nulls (start of day).
+// Returns available barbers sorted by idle time: who completed their last service TODAY earliest comes first.
+// Barbers with no completed bookings today sort first (null), broken by name alphabetically.
+// Barbers who are in_service, on_break, clocked_out, or off are excluded entirely.
 async function getActiveBarbers(client, branchId) {
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
   const { rows } = await client.query(
     `SELECT b.id, b.name, MAX(bk.completed_at) AS last_completed_at
      FROM barbers b
      LEFT JOIN bookings bk ON bk.barber_id = b.id
        AND bk.status IN ('pending_payment','completed')
-       AND DATE(bk.completed_at AT TIME ZONE 'Asia/Makassar') = $2
-     WHERE b.branch_id = $1 AND b.is_active = true AND b.status NOT IN ('clocked_out','off')
+       AND DATE(bk.completed_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')
+     WHERE b.branch_id = $1 AND b.is_active = true AND b.status = 'available'
      GROUP BY b.id, b.name
      ORDER BY last_completed_at ASC NULLS FIRST, b.name ASC`,
-    [branchId, today]
+    [branchId]
   )
   return rows
 }
@@ -32,6 +32,7 @@ async function getFreeBarberIds(client, branchId, scheduledISO, durationMin) {
          ) dur ON dur.booking_id = bk.id
          WHERE bk.barber_id = b.id
            AND bk.status IN ('confirmed','in_progress')
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = DATE($2::timestamptz AT TIME ZONE 'Asia/Makassar')
            AND bk.scheduled_at < $2::timestamptz + ($3 * INTERVAL '1 minute')
            AND CASE WHEN bk.status = 'in_progress'
                     THEN GREATEST(bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute'), NOW() + INTERVAL '1 minute')

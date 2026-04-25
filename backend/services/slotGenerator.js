@@ -67,6 +67,9 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
   const nowMin    = minutesFromMidnight(timeRows[0].t)
   const isToday   = timeRows[0].d === date
   const gridStart = Math.max(openTime, isToday ? Math.ceil(nowMin / GRID) * GRID : openTime)
+  // #region agent log
+  fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H1',location:'backend/services/slotGenerator.js:getAvailableSlots:pre-loop',message:'Computed specific barber slot baseline',data:{barberId,date,durationMin,isToday,nowMin,gridStart,blockedCount:blocked.length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   blocked.sort((a, b) => a.start - b.start)
 
@@ -96,6 +99,9 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
     cursor = Math.max(cursor, b.end)
   }
   addWindow(cursor, closeTime)
+  // #region agent log
+  fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H1',location:'backend/services/slotGenerator.js:getAvailableSlots:return',message:'Returning specific barber slots',data:{barberId,date,slotCount:slots.length,firstSlot:slots[0]||null,firstThree:slots.slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   return slots
 }
@@ -176,6 +182,9 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
     const nowRounded = roundUpTo5(nowMin)
     if (nowRounded <= lastOrderStart && nowRounded + durationMin <= closeTime) {
       slotSet.add(nowRounded)
+      // #region agent log
+      fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H2',location:'backend/services/slotGenerator.js:getUnionSlots:now-slot',message:'Added nowRounded slot for any_available',data:{branchId,date,durationMin,nowMin,nowRounded},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     }
   }
 
@@ -196,7 +205,11 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
     }
   }
 
-  return [...slotSet].sort((a, b) => a - b).map(minutesToTime)
+  const unionSlots = [...slotSet].sort((a, b) => a - b).map(minutesToTime)
+  // #region agent log
+  fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H2',location:'backend/services/slotGenerator.js:getUnionSlots:return',message:'Returning any_available union slots',data:{branchId,date,slotCount:unionSlots.length,firstSlot:unionSlots[0]||null,firstFour:unionSlots.slice(0,4)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return unionSlots
 }
 
 module.exports = { getAvailableSlots, getUnionSlots }

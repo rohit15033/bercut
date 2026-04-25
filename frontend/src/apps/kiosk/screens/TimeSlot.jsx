@@ -25,7 +25,13 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
       : barber?.id ? `/slots?barber_id=${barber.id}&date=${dateStr}&duration_min=${totalDur}` : null
     if (!url) { setSlots([]); setLoadingSlots(false); return }
     kioskApi.get(url)
-      .then(data => setSlots(Array.isArray(data) ? data : (data.slots || [])))
+      .then(data => {
+        const parsedSlots = Array.isArray(data) ? data : (data.slots || [])
+        // #region agent log
+        fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H4',location:'frontend/src/apps/kiosk/screens/TimeSlot.jsx:fetchSlots',message:'Fetched timeslot payload for UI',data:{isAnyAvailable,barberId:barber?.id||null,branchId,totalDur,slotCount:parsedSlots.length,firstThree:parsedSlots.slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setSlots(parsedSlots)
+      })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false))
   }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -50,6 +56,11 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
   const nowWindow = isAnyAvailable ? 4 : 30
   const canNow = barberAvailable && (firstSlotMin !== null && firstSlotMin <= nowMin + nowWindow)
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H4',location:'frontend/src/apps/kiosk/screens/TimeSlot.jsx:canNow',message:'Computed canNow and first slot relationship',data:{isAnyAvailable,barberStatus:barber?.status||null,nowWitaStr,nowMin,firstSlot:slots[0]||null,firstSlotMin,nowWindow,canNow},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [isAnyAvailable, barber?.status, nowWitaStr, nowMin, firstSlotMin, nowWindow, canNow, slots])
 
   // If barber busy but slots available, offer first slot as "Next"
   const nextSlot = !canNow && slots.length > 0 ? slots[0] : null

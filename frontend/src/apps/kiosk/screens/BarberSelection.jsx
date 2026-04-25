@@ -89,8 +89,12 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
   // Find the earliest time among all barbers for "Any Available"
   const allAvailableTimes = Object.values(nextSlots).sort()
   const earliestAnyTime = allAvailableTimes[0] || null
-  const earliestAnyMin = toMin(earliestAnyTime)
-  const anyCanNow = earliestAnyMin !== null && nowMin !== null && earliestAnyMin <= nowMin + 4
+  const anyCanNow = sortedBarbers.some((b) => {
+    if (['clocked_out', 'off', 'on_break'].includes(b.status)) return false
+    const next = nextSlots[b.id]
+    const nextMin = toMin(next)
+    return nextMin !== null && nowMin !== null && nextMin <= nowMin + 30
+  })
 
   const sortedBarbers = [...barbers].sort((a, b) => {
     const aU = ['clocked_out', 'off', 'on_break'].includes(a.status)

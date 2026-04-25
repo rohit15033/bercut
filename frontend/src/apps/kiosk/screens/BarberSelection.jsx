@@ -98,7 +98,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
     return 0
   })
 
-  const anyCanNow = sortedBarbers.some(b => b.status === 'available')
+  const anyCanNow = sortedBarbers.some(b => !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(b.status))
 
   return (
     <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(16px,2.4vw,28px)' }}>

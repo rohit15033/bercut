@@ -5,7 +5,6 @@ import { api } from '../../../shared/api.js'
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 const BARBER_STATUS = {
-  busy:        { dot: '#16A34A', label: 'In Service'     },
   in_service:  { dot: '#16A34A', label: 'In Service'     },
   available:   { dot: '#2563EB', label: 'Available'      },
   on_break:    { dot: '#D97706', label: 'On Break'       },
@@ -346,7 +345,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
               <option value="">— select barber —</option>
               {branchBarbers.map(b => (
                 <option key={b.id} value={b.id}>
-                  {b.name}{b.status === 'clocked_out' ? ' (not clocked in)' : b.status === 'on_break' ? ' (on break)' : b.status === 'busy' ? ' (in service)' : ''}
+                  {b.name}{b.status === 'clocked_out' ? ' (not clocked in)' : b.status === 'on_break' ? ' (on break)' : b.status === 'in_service' ? ' (in service)' : ''}
                 </option>
               ))}
             </select>
@@ -526,7 +525,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                 <select value={barberId} onChange={e => setBarberId(e.target.value)}
                   style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, cursor: 'pointer' }}>
                   {branchBarbers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}{b.status === 'busy' ? ' (In Service)' : b.status === 'on_break' ? ' (On Break)' : ''}</option>
+                    <option key={b.id} value={b.id}>{b.name}{b.status === 'in_service' ? ' (In Service)' : b.status === 'on_break' ? ' (On Break)' : ''}</option>
                   ))}
                 </select>
               </div>
@@ -958,7 +957,7 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
               return (
                 <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
                   onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign}
-                  allBarbers={allBarbers} barberBusy={barber.status === 'busy' || barber.status === 'in_service'}
+                  allBarbers={allBarbers} barberBusy={barber.status === 'in_service'}
                   nextSlot={nextSlotTime}
                 />
               )
@@ -1003,7 +1002,7 @@ function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
 }
 
 function BranchSection({ branch, barbers, unassigned = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
-  const inService    = barbers.filter(b => b.status === 'busy' || b.status === 'in_service').length
+  const inService    = barbers.filter(b => b.status === 'in_service' || b.status === 'in_service').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
   const totalWaiting = barbers.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0) + unassigned.length
@@ -1120,7 +1119,7 @@ export default function LiveMonitor() {
       if (action === 'clock-in') {
         await api.post('/attendance/clock-in', { barber_id: barber.id, branch_id: barber.branch_id, force: true })
       } else if (action === 'clock-out') {
-        if (barber.status === 'busy' || barber.status === 'in_service') {
+        if (barber.status === 'in_service') {
           if (!window.confirm('Barber is currently in service. Clocking out will force complete the service. Continue?')) return
         }
         try {
@@ -1146,7 +1145,7 @@ export default function LiveMonitor() {
     } catch (err) { alert(err.message || 'Action failed') }
   }
 
-  const totalInService = barberQueues.filter(b => b.status === 'busy' || b.status === 'in_service').length
+  const totalInService = barberQueues.filter(b => b.status === 'in_service' || b.status === 'in_service').length
   const totalWaiting   = barberQueues.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0)
   const totalAlerts    = barberQueues.reduce((a, b) => a + (b.queue || []).filter(q => q.client_not_arrived).length, 0)
   const refreshStr     = lastRefresh.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })

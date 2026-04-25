@@ -280,7 +280,7 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(280px,30vw,420px), 1fr))', gap: 'clamp(12px,1.6vw,18px)' }}>
             {barbers.map(b => {
               const rawStatusFromDb = b.current_status || b.status || 'clocked_out'
-              const rawStatus = (rawStatusFromDb === 'in_service' || rawStatusFromDb === 'busy') && !getActive(b.id) ? 'available' : rawStatusFromDb
+              const rawStatus = rawStatusFromDb === 'in_service' && !getActive(b.id) ? 'available' : rawStatusFromDb
               const sm        = STATUS_META[rawStatus] || STATUS_META.clocked_out
               const active    = getActive(b.id)
               const next      = getNext(b.id)

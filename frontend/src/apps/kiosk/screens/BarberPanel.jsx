@@ -253,7 +253,7 @@ function BarberPicker({ branchId, onSelect, onClose, onHome, lastQueueUpdate }) 
                     <div style={{ background: '#111110', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                         <div style={{ fontSize: 'clamp(9px,1.1vw,10px)', color: '#444', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                          {(rawStatus === 'busy' || rawStatus === 'in_service') ? '⚡ Melayani' : '→ Berikutnya'}
+                          {(rawStatus === 'in_service') ? '⚡ Melayani' : '→ Berikutnya'}
                         </div>
                         {b.next_slot_time && (
                           <div style={{
@@ -279,11 +279,11 @@ function BarberPicker({ branchId, onSelect, onClose, onHome, lastQueueUpdate }) 
                           </div>
                         )}
                       </div>
-                      <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', color: (rawStatus === 'busy' || rawStatus === 'in_service') ? C.accent : C.white }}>
-                        {(rawStatus === 'busy' || rawStatus === 'in_service') ? b.serving_customer_name : b.next_customer_name}
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', color: (rawStatus === 'in_service') ? C.accent : C.white }}>
+                        {(rawStatus === 'in_service') ? b.serving_customer_name : b.next_customer_name}
                       </div>
                     </div>
-                  ) : (rawStatus === 'busy' || rawStatus === 'in_service') && b.serving_customer_name && (
+                  ) : (rawStatus === 'in_service') && b.serving_customer_name && (
                     <div style={{ background: '#111110', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
                       <div style={{ fontSize: 'clamp(9px,1.1vw,10px)', color: '#444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>⚡ Melayani</div>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', color: C.accent }}>{b.serving_customer_name}</div>
@@ -390,7 +390,7 @@ function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
 
   const isOut   = status === 'clocked_out'
   const isBreak = status === 'on_break'
-  const isBusy  = status === 'busy'
+  const isBusy  = status === 'in_service'
 
   const next       = queue.find(b => b.status === 'confirmed') || null
   const allBookings = [...queue].sort((a, b) => {

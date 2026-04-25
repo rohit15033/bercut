@@ -419,8 +419,8 @@ router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
        WHERE id = $1 AND status = 'confirmed' RETURNING *`,
       [req.params.id])
     if (!rows.length) return res.status(409).json({ message: 'Cannot start booking' })
-    await pool.query(`UPDATE barbers SET status = 'busy' WHERE id = $1`, [rows[0].barber_id])
-    emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'busy' })
+    await pool.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
+    emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'in_service' })
     emitEvent(rows[0].branch_id, 'booking_started', rows[0])
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
@@ -834,10 +834,10 @@ router.patch('/:id/reopen', requireAdmin, async (req, res) => {
       [booking.id]
     )
 
-    await client.query(`UPDATE barbers SET status = 'busy' WHERE id = $1`, [booking.barber_id])
+    await client.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [booking.barber_id])
     await client.query('COMMIT')
 
-    emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'busy' })
+    emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'in_service' })
     emitEvent(booking.branch_id, 'booking_started', { id: booking.id })
 
     res.json({ ok: true, added: svcRes.rows.length, added_duration_min: newDuration })

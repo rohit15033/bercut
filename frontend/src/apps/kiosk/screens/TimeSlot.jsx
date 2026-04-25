@@ -54,7 +54,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   // doesn't overlap any taken slot (first available slot is at or before now)
   const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
   const nowWindow = isAnyAvailable ? 4 : 30
-  const barberAvailableNow = isAnyAvailable || barber?.status === 'available'
+  const barberAvailableNow = isAnyAvailable || !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(barber?.status)
   const canNow = barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + nowWindow
   useEffect(() => {
     // #region agent log

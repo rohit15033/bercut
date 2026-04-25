@@ -227,7 +227,7 @@ function KioskContent({ config }) {
     barber_update: (data) => {
       if (!data?.barber_id) return
       setBarbers(prev => prev.map(b =>
-        b.id == data.barber_id ? { ...b, status: data.status === 'available' ? 'active' : data.status } : b
+        b.id == data.barber_id ? { ...b, status: data.status } : b
       ))
       setLastQueueUpdate(Date.now())
     },

@@ -58,12 +58,12 @@ function ChairCard({ barber, booking, compact }) {
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
         {isInProg ? (
           <>
             <div style={{ fontSize: fs.sub, color: T.muted, marginBottom: '0.15vw' }}>Serving</div>
-            <div style={{ fontSize: fs.body, fontWeight: 800, color: T.text, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{booking.customer_name}</div>
-            <div style={{ fontSize: fs.sub, color: T.muted, marginTop: '0.4vw', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{booking.service_names}</div>
+            <div style={{ fontSize: fs.body, fontWeight: 800, color: T.text, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{booking.customer_name}</div>
+            <div style={{ fontSize: fs.sub, color: T.muted, marginTop: '0.4vw', overflow: 'hidden', lineHeight: 1.4 }}>{booking.service_names}</div>
           </>
         ) : isBreak ? (
           <div style={{ fontSize: fs.body, color: '#F59E0B', fontStyle: 'italic' }}>Taking a short break</div>
@@ -234,7 +234,7 @@ export default function TvMonitor() {
                       <div style={{ fontSize: '1.5vw', fontWeight: 800, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bk.customer_name}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6vw', marginTop: '0.15vw' }}>
                         <span style={{ fontSize: '0.7vw', fontWeight: 900, color: '#000', background: '#F5E200', padding: '0.1vw 0.5vw', borderRadius: '0.3vw' }}>{bk.booking_number}</span>
-                        <span style={{ fontSize: '0.9vw', color: T.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bk.service_names}</span>
+                        <span style={{ fontSize: '0.9vw', color: T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{bk.service_names}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>

@@ -1,7 +1,7 @@
 const router = require('express').Router()
 const bcrypt = require('bcrypt')
 const pool   = require('../config/db')
-const { requireAdmin, requireKiosk } = require('../middleware/auth')
+const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 
 // GET /api/barbers?branch_id=&service_ids=  (also used by kiosk)
 router.get('/', async (req, res) => {
@@ -138,7 +138,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/barbers/:id/status
-router.patch('/:id/status', requireKiosk, async (req, res) => {
+router.patch('/:id/status', requireKioskOrAdmin, async (req, res) => {
   try {
     const { status } = req.body
     const { rows } = await pool.query('UPDATE barbers SET status = $1 WHERE id = $2 RETURNING *', [status, req.params.id])

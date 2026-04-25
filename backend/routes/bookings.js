@@ -21,56 +21,8 @@ async function nextBookingNumber(client, branchId, dateStr) {
   return 'B' + String(rows[0].n).padStart(3, '0')
 }
 
-async function assignRoundRobin(client, branchId, scheduledISO, durationMin) {
-  // Get active barbers in sort order
-  const { rows: barbers } = await client.query(
-    `SELECT id FROM barbers
-     WHERE branch_id = $1 AND is_active = true AND status NOT IN ('clocked_out','off')
-     ORDER BY name ASC`,
-    [branchId]
-  )
-  if (!barbers.length) return null
-
-  // Find barbers free at the requested time
-  const { rows: freeRows } = await client.query(
-    `SELECT b.id FROM barbers b
-     WHERE b.branch_id = $1 AND b.is_active = true AND b.status NOT IN ('clocked_out','off')
-       AND NOT EXISTS (
-         SELECT 1 FROM bookings bk
-         JOIN (
-           SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
-           FROM booking_services bsv JOIN services s ON s.id = bsv.service_id
-           GROUP BY bsv.booking_id
-         ) dur ON dur.booking_id = bk.id
-         WHERE bk.barber_id = b.id
-           AND bk.status IN ('confirmed','in_progress')
-           AND bk.scheduled_at < $2::timestamptz + ($3 * INTERVAL '1 minute')
-           AND bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute') > $2::timestamptz
-       )`,
-    [branchId, scheduledISO, durationMin]
-  )
-  if (!freeRows.length) return null
-
-  const freeIds = new Set(freeRows.map(r => r.id))
-
-  // Last booking today (any source) determines whose turn is next
-  const { rows: lastRows } = await client.query(
-    `SELECT barber_id FROM bookings
-     WHERE branch_id = $1
-       AND DATE(created_at AT TIME ZONE 'Asia/Makassar') = (NOW() AT TIME ZONE 'Asia/Makassar')::date
-       AND status NOT IN ('cancelled','no_show')
-     ORDER BY created_at DESC, booking_number DESC LIMIT 1`,
-    [branchId]
-  )
-  const lastBarberId = lastRows[0]?.barber_id
-  const lastIdx = lastBarberId ? barbers.findIndex(b => b.id === lastBarberId) : -1
-
-  for (let i = 1; i <= barbers.length; i++) {
-    const idx = (lastIdx + i) % barbers.length
-    if (freeIds.has(barbers[idx].id)) return barbers[idx].id
-  }
-  return null
-}
+// ── Round-tracker helpers (imported from shared service) ──────────────────────
+const { getFreeBarberIds, pickIdleBarber, pickFastestBarber, tryAssignDeferred } = require('../services/barberAssignment')
 
 // ── POST /api/bookings ─────────────────────────────────────────────────────────
 
@@ -118,6 +70,8 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       }
     }
 
+    const isNow = !slot_time || slot_time === 'Now'
+
     // resolve barber
     let barberId = barber_id
     let resolvedSource = 'walk_in'
@@ -127,10 +81,14 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
         `SELECT COALESCE(SUM(s.duration_minutes), 30) AS dur FROM services s WHERE s.id = ANY($1::uuid[])`,
         [service_ids]
       )
-      const totalDur   = parseInt(durRes.rows[0]?.dur || 30)
+      const totalDur     = parseInt(durRes.rows[0]?.dur || 30)
       const scheduledISO = scheduledAt(bookingDate, slot_time)
-      barberId = await assignRoundRobin(client, branchId, scheduledISO, totalDur)
-      if (!barberId) return res.status(409).json({ message: 'No available barbers at that time' })
+      if (isNow) {
+        const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur)
+        barberId = await pickIdleBarber(client, branchId, freeIds)
+        if (!barberId) barberId = await pickFastestBarber(client, branchId)
+      }
+      // Future slot → always defer; scheduler assigns 30 min before slot time
     } else {
       const barberCheck = await client.query(
         `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])
@@ -194,7 +152,6 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     // auto_cancel_at
     const branchRow = await client.query('SELECT auto_cancel_minutes FROM branches WHERE id = $1', [branchId])
     const autoCancelMin = branchRow.rows[0]?.auto_cancel_minutes ?? null
-    const isNow = !slot_time || slot_time === 'Now'
 
     const bookingNumber = await nextBookingNumber(client, branchId, bookingDate)
 
@@ -236,8 +193,11 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     await client.query('COMMIT')
 
     // Fetch barber name and build service names for the response + notifications
-    const barberRow = await pool.query('SELECT name FROM barbers WHERE id = $1', [barberId])
-    const barberName = barberRow.rows[0]?.name || ''
+    let barberName = 'Any Available'
+    if (barberId) {
+      const barberRow = await pool.query('SELECT name FROM barbers WHERE id = $1', [barberId])
+      barberName = barberRow.rows[0]?.name || ''
+    }
     const svcNameRows = await pool.query(
       'SELECT name FROM services WHERE id = ANY($1::uuid[])', [service_ids])
     const serviceNames = svcNameRows.rows.map(r => r.name).join(', ')
@@ -252,14 +212,15 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       slot_time: isNow ? null : slot_time,
       date: bookingDate,
       barber_name: barberName,
-      service_names: serviceNames
+      service_names: serviceNames,
+      deferred: !barberId
     }
 
     emitEvent(branchId, 'new_booking', resp)
-    
-    // Async notification
+
+    // Async notification — skip barber alert for deferred bookings
     notifyBookingConfirmed(resp).catch(e => console.error('[Notification] Confirmed failed:', e))
-    notifyBarberNewBooking(resp).catch(e => console.error('[Notification] Barber alert failed:', e))
+    if (barberId) notifyBarberNewBooking(resp).catch(e => console.error('[Notification] Barber alert failed:', e))
 
     res.status(201).json(resp)
   } catch (err) {
@@ -359,7 +320,7 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
           FROM booking_services bs
           JOIN services s ON s.id = bs.service_id
           JOIN bookings bk_inner ON bk_inner.id = bs.booking_id
-          JOIN barbers b_inner ON b_inner.id = bk_inner.barber_id
+          LEFT JOIN barbers b_inner ON b_inner.id = bk_inner.barber_id
           LEFT JOIN branch_services brs ON brs.service_id = bs.service_id AND brs.branch_id = bk_inner.branch_id
           LEFT JOIN barber_services bar_svc ON bar_svc.barber_id = bk_inner.barber_id AND bar_svc.service_id = bs.service_id
           GROUP BY bs.booking_id
@@ -424,6 +385,19 @@ router.get('/:id', requireKioskOrAdmin, async (req, res) => {
        GROUP BY bk.id, b.name, c.name, c.phone, c.points_balance, s_total.total, e_total.total, gs.points_redemption_rate`,
       [req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    res.json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// ── PATCH /api/bookings/:id/unassign ─────────────────────────────────────────
+
+router.patch('/:id/unassign', requireKioskOrAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE bookings SET barber_id = NULL WHERE id = $1 AND status = 'confirmed' RETURNING *`,
+      [req.params.id])
+    if (!rows.length) return res.status(409).json({ message: 'Booking not found or cannot be unassigned' })
+    emitEvent(rows[0].branch_id, 'booking_updated', rows[0])
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
@@ -514,6 +488,23 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
     }
 
     await client.query('COMMIT')
+
+    // Try to assign the oldest deferred any_available booking now that a barber is free
+    const assigned = await tryAssignDeferred(booking.branch_id, booking.barber_id)
+    if (assigned) {
+      const { rows: deferredRows } = await pool.query(
+        `SELECT bk.*, COALESCE(bk.guest_name, c.name) AS customer_name,
+                bar.name AS barber_name
+         FROM bookings bk
+         LEFT JOIN customers c ON c.id = bk.customer_id
+         LEFT JOIN barbers bar ON bar.id = bk.barber_id
+         WHERE bk.id = $1`, [assigned.bookingId])
+      if (deferredRows.length) {
+        emitEvent(booking.branch_id, 'booking_updated', deferredRows[0])
+        notifyBarberNewBooking(deferredRows[0]).catch(e => console.error('[Notification] Deferred barber alert failed:', e))
+      }
+    }
+
     const totalResult = await pool.query(
       'SELECT COALESCE(SUM(price_charged),0) AS total FROM booking_services WHERE booking_id = $1', [booking.id])
     const extrasResult = await pool.query(

@@ -12,9 +12,10 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
   const displayName = name || booking?.customer_name || 'Guest'
   const isNow       = slot === 'Now' || !booking?.slot_time
   const isGrouped   = group.length > 0
+  const isDeferred  = !!booking?.deferred
 
   const callBarber = () => {
-    if (calling) return
+    if (calling || isDeferred) return
     setCalling(true)
     const barberName   = barber?.name || booking?.barber_name || 'kapster'
     const customerName = displayName
@@ -27,7 +28,7 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
     setEscalateIn(ESCALATE_AFTER)
   }
 
-  useEffect(() => { if (isNow) callBarber() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isNow && !isDeferred) callBarber() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (escalateIn === null) return
@@ -46,8 +47,8 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
   const dur   = cart.reduce((s, id) => s + (services.find(x => x.id === id)?.duration_min || services.find(x => x.id === id)?.duration_minutes || 30), 0)
   
   const targetBarber = barber || barbers.find(b => b.id === booking?.barber_id)
-  const barberName   = targetBarber?.name || booking?.barber_name || '—'
-  const chairNum     = targetBarber?.chair || null
+  const barberName   = isDeferred ? 'Any Available' : (targetBarber?.name || booking?.barber_name || '—')
+  const chairNum     = isDeferred ? null : (targetBarber?.chair || null)
   const slotDisplay = slot === 'Now' ? 'Now ⚡' : (slot || booking?.slot_time || '—')
   const serviceNames = cart.map(id => services.find(x => x.id === id)?.name).filter(Boolean).join(', ')
 
@@ -122,9 +123,21 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
 
         {/* Barber status card */}
         {!isGrouped && (
-          <div style={{ background:isNow ? '#e8f5e9' : C.surface, border:`1.5px solid ${isNow ? '#4caf50' : C.border}`, borderRadius:12, padding:'clamp(10px,1.4vh,15px) clamp(14px,2vw,20px)', marginBottom:'clamp(8px,1.2vw,12px)', display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center', gap:4 }}>
-            <span style={{ fontSize:'clamp(20px,2.4vw,24px)' }}>{isNow ? '✂' : '⏳'}</span>
-            {isNow ? (
+          <div style={{ background: isDeferred ? '#1a1a00' : isNow ? '#e8f5e9' : C.surface, border:`1.5px solid ${isDeferred ? '#665500' : isNow ? '#4caf50' : C.border}`, borderRadius:12, padding:'clamp(10px,1.4vh,15px) clamp(14px,2vw,20px)', marginBottom:'clamp(8px,1.2vw,12px)', display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center', gap:4 }}>
+            <span style={{ fontSize:'clamp(20px,2.4vw,24px)' }}>{isDeferred ? '🔄' : isNow ? '✂' : '⏳'}</span>
+            {isDeferred ? (
+              <>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2vw,20px)', fontWeight:800, color:'#ffcc00' }}>
+                  We're Assigning You a Barber
+                </div>
+                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#aa9900', lineHeight:1.5 }}>
+                  All barbers are busy right now. The first barber who finishes will be assigned to you automatically.
+                </div>
+                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#887700', marginTop:2 }}>
+                  Semua kapster sedang sibuk. Kapster pertama yang selesai akan melayani Anda.
+                </div>
+              </>
+            ) : isNow ? (
               <>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:'#1a5c1a', marginBottom:2 }}>
                   Take a seat at:

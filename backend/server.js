@@ -52,6 +52,7 @@ app.use((err, req, res, _next) => {
 const { runPointsExpiry } = require('./services/pointsExpiry')
 const { runAutoCancel } = require('./services/autoCancel')
 const { checkEscalations } = require('./services/escalation')
+const { assignUpcomingDeferred } = require('./services/deferredScheduler')
 
 // Points expiry — nightly at 00:05 WITA (UTC+8 = 16:05 UTC prev day)
 cron.schedule('5 16 * * *', () => {
@@ -66,6 +67,11 @@ cron.schedule('*/2 * * * *', () => {
 // Escalation check — every minute (sends WhatsApp to barbers who haven't started)
 cron.schedule('* * * * *', () => {
   checkEscalations().catch(console.error)
+})
+
+// Deferred booking assignment — every minute, assigns T-10min future any_available slots
+cron.schedule('* * * * *', () => {
+  assignUpcomingDeferred().catch(console.error)
 })
 
 const PORT = process.env.PORT || 3000

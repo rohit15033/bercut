@@ -755,7 +755,7 @@ function GroupModal({ anchor, allBarberQueues, onConfirm, onClose }) {
 
 // ── ActionMenu ────────────────────────────────────────────────────────────────
 
-function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, onReopen }) {
+function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign }) {
   const [open, setOpen] = useState(false)
   const isInProg    = booking.status === 'in_progress'
   const isEditable  = EDITABLE_STATUSES.has(booking.status)
@@ -787,6 +787,7 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, o
           {isEditable && item('⊕ Group for Payment', '#2563EB', 'rgba(37,99,235,0.06)', () => onGroup(booking))}
           {isPendingPay && item('＋ Add Service & Resume', '#16A34A', '#F0FDF4', () => onReopen(booking))}
           {!isInProg && !isPendingPay && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
+          {booking.status === 'confirmed' && booking.barber_id && item('↩ Unassign Barber', '#D97706', '#FFFBEB', () => onUnassign(booking))}
           {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
         </div>
       )}
@@ -833,7 +834,7 @@ function BarberActionMenu({ barber, onAction }) {
   )
 }
 
-function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, allBarbers, barberBusy, nextSlot }) {
+function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, allBarbers, barberBusy, nextSlot }) {
   const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
 
@@ -877,7 +878,7 @@ function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, all
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <ActionMenu booking={booking} barberBusy={barberBusy} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} allBarbers={allBarbers} />
+          <ActionMenu booking={booking} barberBusy={barberBusy} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign} allBarbers={allBarbers} />
         </div>
       </div>
 
@@ -892,7 +893,7 @@ function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, all
 
 // ── BarberQueueBlock ──────────────────────────────────────────────────────────
 
-function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onBarberAction }) {
+function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
   const [expanded, setExpanded] = useState(true)
   const cfg        = BARBER_STATUS[barber.status] || BARBER_STATUS.available
   const activeQ    = (barber.queue || []).filter(b => EDITABLE_STATUSES.has(b.status))
@@ -955,7 +956,7 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
               
               return (
                 <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
-                  onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen}
+                  onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign}
                   allBarbers={allBarbers} barberBusy={barber.status === 'busy'}
                   nextSlot={nextSlotTime}
                 />
@@ -970,11 +971,41 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
 
 // ── BranchSection ─────────────────────────────────────────────────────────────
 
-function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onBarberAction }) {
+function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
+  if (!bookings?.length) return null
+  return (
+    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FDE68A', background: '#FFFBEB', padding: '10px 14px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400E', marginBottom: 8 }}>
+        🔄 Waiting for Barber Assignment ({bookings.length})
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {bookings.sort((a, z) => new Date(a.created_at) - new Date(z.created_at)).map(bk => (
+          <div key={bk.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#FEF9C3', border: '1px solid #FDE68A' }}>
+            <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 12, color: '#92400E', flexShrink: 0 }}>{bk.booking_number}</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: '#78350F', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {bk.customer_name || bk.guest_name || 'Guest'}
+            </span>
+            <span style={{ fontSize: 11, color: '#A16207', flexShrink: 0 }}>{bk.service_names}</span>
+            <button onClick={() => onEdit(bk)}
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #D97706', background: 'transparent', color: '#92400E', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              Assign
+            </button>
+            <button onClick={() => onCancel(bk)}
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #DC2626', background: 'transparent', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BranchSection({ branch, barbers, unassigned = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
   const inService    = barbers.filter(b => b.status === 'busy').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
-  const totalWaiting = barbers.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0)
+  const totalWaiting = barbers.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0) + unassigned.length
   const totalAlerts  = barbers.reduce((a, b) => a + (b.queue || []).filter(q => q.client_not_arrived).length, 0)
 
   return (
@@ -989,9 +1020,10 @@ function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit,
           {totalAlerts > 0  && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#FEF3C7', color: '#92400E' }}>⚠ {totalAlerts} alert{totalAlerts > 1 ? 's' : ''}</span>}
         </div>
       </div>
+      <UnassignedBlock bookings={unassigned} allBarbers={allBarbers} onCancel={onCancel} onEdit={onEdit} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
-          <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onBarberAction={onBarberAction} />
+          <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign} onBarberAction={onBarberAction} />
         ))}
       </div>
     </div>
@@ -1003,6 +1035,7 @@ function BranchSection({ branch, barbers, allBarbers, onCancel, onStart, onEdit,
 export default function LiveMonitor() {
   const [branches,        setBranches]        = useState([])
   const [barberQueues,    setBarberQueues]     = useState([])
+  const [unassignedByBranch, setUnassignedByBranch] = useState({})
   const [branchFilter,    setBranchFilter]     = useState('all')
   const [cancelModal,     setCancelModal]      = useState(null)
   const [forceStartModal, setForceStartModal]  = useState(null)
@@ -1029,8 +1062,11 @@ export default function LiveMonitor() {
       const bookings   = Array.isArray(bks) ? bks.filter(b => EDITABLE_STATUSES.has(b.status)) : []
       const barberList = Array.isArray(bars) ? bars : []
 
+      const assignedBookings   = bookings.filter(bk => bk.barber_id)
+      const unassignedBookings = bookings.filter(bk => !bk.barber_id)
+
       const bkByBarber = {}
-      for (const bk of bookings) {
+      for (const bk of assignedBookings) {
         if (!bkByBarber[bk.barber_id]) bkByBarber[bk.barber_id] = []
         bkByBarber[bk.barber_id].push(bk)
       }
@@ -1041,8 +1077,15 @@ export default function LiveMonitor() {
         queue:  (bkByBarber[b.id] || []).sort((a, z) => new Date(a.scheduled_at) - new Date(z.scheduled_at)),
       }))
 
+      const unassignedMap = {}
+      for (const bk of unassignedBookings) {
+        if (!unassignedMap[bk.branch_id]) unassignedMap[bk.branch_id] = []
+        unassignedMap[bk.branch_id].push(bk)
+      }
+
       setBranches(branchList)
       setBarberQueues(enriched)
+      setUnassignedByBranch(unassignedMap)
       setLastRefresh(new Date())
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
@@ -1060,6 +1103,11 @@ export default function LiveMonitor() {
     loadData()
   }
 
+  async function handleUnassign(booking) {
+    try { await api.patch(`/bookings/${booking.id}/unassign`, {}) } catch (err) { alert(err.message || 'Failed to unassign') }
+    loadData()
+  }
+
   async function handleConfirmForceStart(booking) {
     try { await api.patch(`/bookings/${booking.id}/start`, {}) } catch (err) { alert(err.message) }
     setForceStartModal(null)
@@ -1074,7 +1122,12 @@ export default function LiveMonitor() {
         if (barber.status === 'busy') {
           if (!window.confirm('Barber is currently in service. Clocking out will force complete the service. Continue?')) return
         }
-        await api.post('/attendance/clock-out', { barber_id: barber.id })
+        try {
+          await api.post('/attendance/clock-out', { barber_id: barber.id })
+        } catch (e) {
+          // No open attendance record — force status directly
+          await api.patch(`/barbers/${barber.id}/status`, { status: 'clocked_out' })
+        }
       } else if (action === 'break') {
         await api.post('/barber-breaks', { barber_id: barber.id, duration_minutes: 30, note: 'Admin Force Break' })
       } else if (action === 'end-break') {
@@ -1085,7 +1138,7 @@ export default function LiveMonitor() {
           await api.patch(`/barber-breaks/${active.id}/end`)
         } else {
           // Fallback: just set status back to available if no break record found
-          await api.patch(`/barbers/${barber.id}`, { status: 'available' })
+          await api.patch(`/barbers/${barber.id}/status`, { status: 'available' })
         }
       }
       loadData()
@@ -1227,12 +1280,14 @@ export default function LiveMonitor() {
         const branchBarbers = barberQueues.filter(b => b.branch_id === branch.id)
         return (
           <BranchSection key={branch.id} branch={branch} barbers={branchBarbers}
+            unassigned={unassignedByBranch[branch.id] || []}
             allBarbers={barberQueues}
             onCancel={bk => setCancelModal({ booking: bk })}
             onStart={bk => setForceStartModal({ booking: bk })}
             onEdit={bk => setEditModal({ booking: bk })}
             onGroup={bk => setGroupModal({ booking: bk })}
             onReopen={bk => setReopenModal({ booking: bk })}
+            onUnassign={handleUnassign}
             onBarberAction={handleBarberAction}
           />
         )

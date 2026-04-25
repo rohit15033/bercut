@@ -3,6 +3,22 @@ const pool   = require('../config/db')
 const { requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
 
+// GET /api/barber-breaks?barber_id=&active=true — fetch breaks
+router.get('/', requireKioskOrAdmin, async (req, res) => {
+  try {
+    const { barber_id, active } = req.query
+    if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+    const { rows } = await pool.query(
+      `SELECT * FROM barber_breaks WHERE barber_id = $1 ${active === 'true' ? 'AND ended_at IS NULL' : ''} ORDER BY started_at DESC`,
+      [barber_id]
+    )
+    res.json(rows)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+})
+
 // POST /api/barber-breaks — start a break
 router.post('/', requireKioskOrAdmin, async (req, res) => {
   try {

@@ -98,12 +98,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
     return 0
   })
 
-  const anyCanNow = sortedBarbers.some((b) => {
-    if (['clocked_out', 'off', 'on_break'].includes(b.status)) return false
-    const next = nextSlots[b.id]
-    const nextMin = toMin(next)
-    return nextMin !== null && nowMin !== null && nextMin <= nowMin + 30
-  })
+  const anyCanNow = sortedBarbers.some(b => b.status === 'available')
 
   return (
     <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(16px,2.4vw,28px)' }}>

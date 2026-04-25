@@ -1,9 +1,9 @@
 const pool = require('../config/db')
 const { emitEvent } = require('../routes/events')
 const { notifyBarberNewBooking } = require('./notifications')
-const { getFreeBarberIds, pickIdleBarber, pickFastestBarber } = require('./barberAssignment')
+const { getFreeBarberIds, pickIdleBarber } = require('./barberAssignment')
 
-// Runs every minute — assigns deferred future-slot bookings starting within 10 minutes.
+// Runs every minute — assigns deferred future-slot bookings starting within 30 minutes.
 async function assignUpcomingDeferred() {
   try {
     const { rows: branches } = await pool.query(
@@ -26,17 +26,26 @@ async function assignDeferredForBranch(branchId) {
     await client.query('BEGIN')
 
     const { rows: deferred } = await client.query(
-      `SELECT bk.id, bk.scheduled_at,
-              COALESCE(SUM(s.duration_minutes), 30) AS total_dur
-       FROM bookings bk
-       JOIN booking_services bsv ON bsv.booking_id = bk.id
-       JOIN services s ON s.id = bsv.service_id
-       WHERE bk.branch_id = $1 AND bk.barber_id IS NULL AND bk.status = 'confirmed'
-         AND bk.scheduled_at <= NOW() + INTERVAL '30 minutes'
-         AND bk.scheduled_at > NOW() - INTERVAL '2 hours'
-       GROUP BY bk.id, bk.scheduled_at
-       ORDER BY bk.scheduled_at ASC
-       LIMIT 1 FOR UPDATE SKIP LOCKED`,
+      `WITH candidate AS (
+         SELECT bk.id, bk.scheduled_at
+         FROM bookings bk
+         WHERE bk.branch_id = $1
+           AND bk.barber_id IS NULL
+           AND bk.status = 'confirmed'
+           AND bk.scheduled_at <= NOW() + INTERVAL '30 minutes'
+           AND bk.scheduled_at > NOW() - INTERVAL '2 hours'
+         ORDER BY bk.scheduled_at ASC, bk.created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       SELECT c.id, c.scheduled_at, COALESCE(d.total_dur, 30) AS total_dur
+       FROM candidate c
+       LEFT JOIN (
+         SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
+         FROM booking_services bsv
+         JOIN services s ON s.id = bsv.service_id
+         GROUP BY bsv.booking_id
+       ) d ON d.booking_id = c.id`,
       [branchId]
     )
     if (!deferred.length) { await client.query('ROLLBACK'); return }
@@ -44,9 +53,8 @@ async function assignDeferredForBranch(branchId) {
     const booking = deferred[0]
     const freeIds = await getFreeBarberIds(client, branchId, booking.scheduled_at.toISOString(), booking.total_dur)
 
-    // Most-idle free barber first; all-busy fallback to fastest finisher
+    // Assign only when at least one barber is actually free.
     let assignedId = await pickIdleBarber(client, branchId, freeIds)
-    if (!assignedId) assignedId = await pickFastestBarber(client, branchId)
     if (!assignedId) { await client.query('ROLLBACK'); return }
 
     await client.query(`UPDATE bookings SET barber_id = $1 WHERE id = $2`, [assignedId, booking.id])

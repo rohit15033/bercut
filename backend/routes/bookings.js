@@ -22,7 +22,7 @@ async function nextBookingNumber(client, branchId, dateStr) {
 }
 
 // ── Round-tracker helpers (imported from shared service) ──────────────────────
-const { getFreeBarberIds, pickIdleBarber, pickFastestBarber, tryAssignDeferred } = require('../services/barberAssignment')
+const { getFreeBarberIds, pickIdleBarber, tryAssignDeferred } = require('../services/barberAssignment')
 
 // ── POST /api/bookings ─────────────────────────────────────────────────────────
 
@@ -87,12 +87,12 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       )
       const totalDur     = parseInt(durRes.rows[0]?.dur || 30)
       const scheduledISO = scheduledAt(bookingDate, slot_time)
-      if (isNow) {
+      const within30Min = !isNow && (new Date(scheduledISO).getTime() <= (Date.now() + 30 * 60 * 1000))
+      if (isNow || within30Min) {
         const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur)
         barberId = await pickIdleBarber(client, branchId, freeIds)
-        if (!barberId) barberId = await pickFastestBarber(client, branchId)
       }
-      // Future slot → always defer; scheduler assigns 30 min before slot time
+      // Future slot outside 30-min window stays deferred; scheduler picks it up later.
     } else {
       const barberCheck = await client.query(
         `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])

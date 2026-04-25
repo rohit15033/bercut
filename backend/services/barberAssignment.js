@@ -86,25 +86,44 @@ async function pickFastestBarber(client, branchId) {
   return rows[0]?.id || null
 }
 
-// Called after barber clicks Selesai — assigns oldest upcoming deferred booking to that barber.
-// No picking needed: the barber who just finished IS the most recently idle.
-async function tryAssignDeferred(branchId, completingBarberId) {
+// Called after barber clicks Selesai — tries assigning oldest deferred booking
+// using the same policy as scheduler/create: only free barbers, longest-idle first.
+async function tryAssignDeferred(branchId, _completingBarberId) {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     const { rows: deferred } = await client.query(
-      `SELECT id FROM bookings
-       WHERE branch_id = $1 AND barber_id IS NULL AND status = 'confirmed'
-         AND scheduled_at <= NOW() + INTERVAL '30 minutes'
-       ORDER BY scheduled_at ASC, created_at ASC
-       LIMIT 1 FOR UPDATE SKIP LOCKED`,
+      `WITH candidate AS (
+         SELECT bk.id, bk.scheduled_at
+         FROM bookings bk
+         WHERE bk.branch_id = $1
+           AND bk.barber_id IS NULL
+           AND bk.status = 'confirmed'
+           AND bk.scheduled_at <= NOW() + INTERVAL '30 minutes'
+         ORDER BY bk.scheduled_at ASC, bk.created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       SELECT c.id, c.scheduled_at, COALESCE(d.total_dur, 30) AS total_dur
+       FROM candidate c
+       LEFT JOIN (
+         SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
+         FROM booking_services bsv
+         JOIN services s ON s.id = bsv.service_id
+         GROUP BY bsv.booking_id
+       ) d ON d.booking_id = c.id`,
       [branchId]
     )
     if (!deferred.length) { await client.query('ROLLBACK'); return null }
 
-    await client.query(`UPDATE bookings SET barber_id = $1 WHERE id = $2`, [completingBarberId, deferred[0].id])
+    const booking = deferred[0]
+    const freeIds = await getFreeBarberIds(client, branchId, booking.scheduled_at.toISOString(), booking.total_dur)
+    const assignedId = await pickIdleBarber(client, branchId, freeIds)
+    if (!assignedId) { await client.query('ROLLBACK'); return null }
+
+    await client.query(`UPDATE bookings SET barber_id = $1 WHERE id = $2`, [assignedId, booking.id])
     await client.query('COMMIT')
-    return { bookingId: deferred[0].id, barberId: completingBarberId }
+    return { bookingId: booking.id, barberId: assignedId }
   } catch (err) {
     await client.query('ROLLBACK')
     console.error('[tryAssignDeferred]', err)

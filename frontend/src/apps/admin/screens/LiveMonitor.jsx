@@ -1079,7 +1079,7 @@ export default function LiveMonitor() {
   const [lastRefresh,     setLastRefresh]      = useState(new Date())
   const [loading,         setLoading]          = useState(true)
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
 
   const loadData = useCallback(async () => {
     try {
@@ -1089,7 +1089,11 @@ export default function LiveMonitor() {
         api.get('/barbers/all'),
         api.get(`/bookings?status=confirmed`).then(all => {
           const todayWita = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
-          return (Array.isArray(all) ? all : []).filter(bk => bk.date && bk.date < todayWita)
+          return (Array.isArray(all) ? all : []).filter(bk => {
+            if (!bk.scheduled_at) return false
+            const bkDateWita = new Date(bk.scheduled_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+            return bkDateWita < todayWita
+          })
         }).catch(() => []),
       ])
       const branchList = Array.isArray(brs) ? brs.filter(b => b.is_active !== false) : []

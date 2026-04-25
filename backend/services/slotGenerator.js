@@ -28,7 +28,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
 
   const openTime       = minutesFromMidnight('10:00')
   const closeTime      = minutesFromMidnight('21:00')
-  const lastOrderStart = minutesFromMidnight('19:55')
+  const lastOrderStart = minutesFromMidnight('19:45')
   const GRID           = 30
 
   const bookings = await pool.query(
@@ -108,7 +108,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
 async function getUnionSlots(branchId, date, durationMin = 30) {
   const openTime       = minutesFromMidnight('10:00')
   const closeTime      = minutesFromMidnight('21:00')
-  const lastOrderStart = minutesFromMidnight('19:55')
+  const lastOrderStart = minutesFromMidnight('19:45')
   const GRID           = 30
 
   const { rows: barbers } = await pool.query(

@@ -59,7 +59,11 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
     return 0
   })
 
-  const anyCanNow = sortedBarbers.some(b => !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(b.status))
+  const anyCanNow = sortedBarbers.some(b => {
+    if (['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(b.status)) return false
+    const slotMin = toMin(nextSlots[b.id])
+    return slotMin !== null && slotMin <= nowMin + 1
+  })
 
   return (
     <div className="scroll-y" style={{ height:'calc(100vh - clamp(51px,6.5vh,63px))', padding:'clamp(16px,2.4vw,28px)' }}>
@@ -151,7 +155,9 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                 </div>
               ) : (() => {
                 const bSlot = nextSlots[data.id]
+                const bSlotMin = toMin(bSlot)
                 const bCanNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(data.status)
+                  && bSlotMin !== null && bSlotMin <= nowMin + 1
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>

@@ -29,7 +29,7 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
   try {
     const { barber_id, branch_id, force = false } = req.body
     if (!barber_id || !branch_id) return res.status(400).json({ message: 'barber_id and branch_id required' })
-    const today = new Date().toISOString().slice(0, 10)
+    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
     // Check if already clocked in today (WITA)
     const existing = await pool.query(
       `SELECT id FROM attendance

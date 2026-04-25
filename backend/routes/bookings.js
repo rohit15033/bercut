@@ -46,7 +46,7 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     if (!service_ids.length) return res.status(400).json({ message: 'At least one service required' })
 
-    const bookingDate = date || new Date().toISOString().slice(0, 10)
+    const bookingDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
     // resolve or create customer for loyalty
     let customerId = null
@@ -236,7 +236,7 @@ router.get('/public', async (req, res) => {
     const { branch_id, date } = req.query
     if (!branch_id) return res.status(400).json({ message: 'branch_id required' })
 
-    const targetDate = date || new Date().toISOString().slice(0, 10)
+    const targetDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
     const { rows } = await pool.query(
       `SELECT bk.id, bk.booking_number, bk.status, bk.scheduled_at, bk.started_at,
@@ -946,7 +946,7 @@ router.post('/admin-force', requireAdmin, async (req, res) => {
     if (!barber_id)        return res.status(400).json({ message: 'barber_id required' })
     if (!service_ids.length) return res.status(400).json({ message: 'At least one service required' })
 
-    const bookingDate = date || new Date().toISOString().slice(0, 10)
+    const bookingDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
     // Resolve or create customer
     let customerId = null

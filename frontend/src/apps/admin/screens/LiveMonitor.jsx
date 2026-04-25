@@ -1002,7 +1002,7 @@ function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
 }
 
 function BranchSection({ branch, barbers, unassigned = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
-  const inService    = barbers.filter(b => b.status === 'in_service' || b.status === 'in_service').length
+  const inService    = barbers.filter(b => b.status === 'in_service').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
   const totalWaiting = barbers.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0) + unassigned.length

@@ -13,7 +13,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
   const [nextSlots, setNextSlots] = useState({})
   const [loadingSlots, setLoadingSlots] = useState(false)
 
-  const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+  const dateStr = new Date().toISOString().slice(0, 10)
   const totalDur = serviceIds.reduce((s, id) => {
     const svc = services.find(x => x.id === id)
     return s + (svc?.duration_minutes || svc?.duration_min || 30)
@@ -32,12 +32,51 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
           }
         } catch (e) { console.error(e) }
       }))
+      // #region agent log
+      const now = new Date()
+      const witaMs = now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000)
+      const w = new Date(witaMs)
+      const nowWita = `${w.getHours().toString().padStart(2, '0')}:${w.getMinutes().toString().padStart(2, '0')}`
+      console.log('[DBG85][H5] barber-selection-fetchAllNext', JSON.stringify({
+        dateStr,
+        totalDur,
+        nowWita,
+        barbers: barbers.slice(0, 8).map(b => ({ id: b.id, name: b.name, status: b.status, next: results[b.id] || null }))
+      }))
+      // #endregion
       setNextSlots(results)
       setLoadingSlots(false)
     }
     fetchAllNext()
   }, [barbers, dateStr, totalDur])
 
+  useEffect(() => {
+    if (!barbers?.length) return
+    const now = new Date()
+    const witaMs = now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000)
+    const w = new Date(witaMs)
+    const nowWita = `${w.getHours().toString().padStart(2, '0')}:${w.getMinutes().toString().padStart(2, '0')}`
+    const nowMin = toMin(nowWita)
+    // #region agent log
+    console.log('[DBG85][H6] barber-selection-labelDecision', JSON.stringify({
+      nowWita,
+      nowMin,
+      sample: barbers.slice(0, 8).map(b => {
+        const next = nextSlots[b.id] || null
+        const nextMin = toMin(next)
+        return {
+          id: b.id,
+          name: b.name,
+          status: b.status,
+          next,
+          nextMin,
+          within30: nextMin !== null && nowMin !== null ? nextMin <= nowMin + 30 : null,
+          labelByStatus: b.status === 'available' ? 'Now ⚡' : (next ? `Next: ${next}` : 'Busy')
+        }
+      })
+    }))
+    // #endregion
+  }, [barbers, nextSlots])
 
   // Show all barbers, but we will visually disable those who are unavailable
   const isAnySelected = barber?.source === 'any_available'

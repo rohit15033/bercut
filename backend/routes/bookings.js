@@ -71,6 +71,10 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     }
 
     const isNow = !slot_time || slot_time === 'Now'
+    // #region agent log
+    fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H3',location:'backend/routes/bookings.js:post:create:input',message:'Booking create input timing/source resolved',data:{branchId,barber_id,source,slot_time,isNow,bookingDate},timestamp:Date.now()})}).catch(()=>{});
+    console.log('[DBG85][H3] booking-input', JSON.stringify({ branchId, barber_id, source, slot_time, isNow, bookingDate }))
+    // #endregion
 
     // resolve barber
     let barberId = barber_id
@@ -83,11 +87,12 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       )
       const totalDur     = parseInt(durRes.rows[0]?.dur || 30)
       const scheduledISO = scheduledAt(bookingDate, slot_time)
-      if (isNow) {
+      const within30Min = !isNow && (new Date(scheduledISO).getTime() <= (Date.now() + 30 * 60 * 1000))
+      if (isNow || within30Min) {
         const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur)
         barberId = await pickIdleBarber(client, branchId, freeIds)
       }
-      // All future any_available slots stay deferred — assigned when a barber clicks Selesai.
+      // Future slot outside 30-min window stays deferred; scheduler picks it up later.
     } else {
       const barberCheck = await client.query(
         `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])
@@ -214,6 +219,11 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       service_names: serviceNames,
       deferred: !barberId
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H3',location:'backend/routes/bookings.js:post:create:output',message:'Booking create final assignment result',data:{bookingId:booking.id,resolvedSource,slot_time:resp.slot_time,barberId:booking.barber_id,deferred:resp.deferred,barberName:resp.barber_name},timestamp:Date.now()})}).catch(()=>{});
+    console.log('[DBG85][H3] booking-output', JSON.stringify({ bookingId: booking.id, resolvedSource, slot_time: resp.slot_time, barberId: booking.barber_id, deferred: resp.deferred, barberName: resp.barber_name }))
+    // #endregion
+
     emitEvent(branchId, 'new_booking', resp)
 
     // Async notification — skip barber alert for deferred bookings

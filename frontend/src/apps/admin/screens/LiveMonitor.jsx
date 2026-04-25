@@ -524,7 +524,6 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 8 }}>Barber</div>
                 <select value={barberId} onChange={e => setBarberId(e.target.value)}
                   style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, cursor: 'pointer' }}>
-                  <option value="">— Select barber —</option>
                   {branchBarbers.map(b => (
                     <option key={b.id} value={b.id}>{b.name}{b.status === 'in_service' ? ' (In Service)' : b.status === 'on_break' ? ' (On Break)' : ''}</option>
                   ))}
@@ -1002,34 +1001,7 @@ function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
   )
 }
 
-function GhostBookingsBlock({ bookings, onCancel }) {
-  if (!bookings?.length) return null
-  return (
-    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FECACA', background: '#FEF2F2', padding: '10px 14px' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991B1B', marginBottom: 8 }}>
-        👻 Ghost Bookings — Stale Confirmed from Previous Days ({bookings.length})
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {bookings.sort((a, z) => new Date(a.scheduled_at) - new Date(z.scheduled_at)).map(bk => (
-          <div key={bk.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#FFF1F2', border: '1px solid #FECACA' }}>
-            <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 12, color: '#991B1B', flexShrink: 0 }}>{bk.booking_number}</span>
-            <span style={{ fontWeight: 600, fontSize: 13, color: '#7F1D1D', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {bk.customer_name || bk.guest_name || 'Guest'}
-            </span>
-            <span style={{ fontSize: 11, color: '#B91C1C', flexShrink: 0 }}>{bk.service_names}</span>
-            <span style={{ fontSize: 11, color: '#B91C1C', flexShrink: 0, fontWeight: 600 }}>{bk.date} · {bk.barber_name || 'Unassigned'}</span>
-            <button onClick={() => onCancel(bk)}
-              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #DC2626', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function BranchSection({ branch, barbers, unassigned = [], ghost = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
+function BranchSection({ branch, barbers, unassigned = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
   const inService    = barbers.filter(b => b.status === 'in_service').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
@@ -1048,7 +1020,6 @@ function BranchSection({ branch, barbers, unassigned = [], ghost = [], allBarber
           {totalAlerts > 0  && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#FEF3C7', color: '#92400E' }}>⚠ {totalAlerts} alert{totalAlerts > 1 ? 's' : ''}</span>}
         </div>
       </div>
-      <GhostBookingsBlock bookings={ghost} onCancel={onCancel} />
       <UnassignedBlock bookings={unassigned} allBarbers={allBarbers} onCancel={onCancel} onEdit={onEdit} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
@@ -1065,7 +1036,6 @@ export default function LiveMonitor() {
   const [branches,        setBranches]        = useState([])
   const [barberQueues,    setBarberQueues]     = useState([])
   const [unassignedByBranch, setUnassignedByBranch] = useState({})
-  const [ghostByBranch,   setGhostByBranch]   = useState({})
   const [branchFilter,    setBranchFilter]     = useState('all')
   const [cancelModal,     setCancelModal]      = useState(null)
   const [forceStartModal, setForceStartModal]  = useState(null)
@@ -1083,25 +1053,14 @@ export default function LiveMonitor() {
 
   const loadData = useCallback(async () => {
     try {
-      const [brs, bks, bars, ghosts] = await Promise.all([
+      const [brs, bks, bars] = await Promise.all([
         api.get('/branches'),
         api.get(`/bookings?date=${today}`),
         api.get('/barbers/all'),
-        api.get(`/bookings?status=confirmed`).then(all => {
-          const todayWita = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
-          return (Array.isArray(all) ? all : []).filter(bk => bk.date && bk.date < todayWita)
-        }).catch(() => []),
       ])
       const branchList = Array.isArray(brs) ? brs.filter(b => b.is_active !== false) : []
       const bookings   = Array.isArray(bks) ? bks.filter(b => EDITABLE_STATUSES.has(b.status)) : []
       const barberList = Array.isArray(bars) ? bars : []
-
-      const ghostMap = {}
-      for (const bk of ghosts) {
-        if (!ghostMap[bk.branch_id]) ghostMap[bk.branch_id] = []
-        ghostMap[bk.branch_id].push(bk)
-      }
-      setGhostByBranch(ghostMap)
 
       const assignedBookings   = bookings.filter(bk => bk.barber_id)
       const unassignedBookings = bookings.filter(bk => !bk.barber_id)
@@ -1186,7 +1145,7 @@ export default function LiveMonitor() {
     } catch (err) { alert(err.message || 'Action failed') }
   }
 
-  const totalInService = barberQueues.filter(b => b.status === 'in_service').length
+  const totalInService = barberQueues.filter(b => b.status === 'in_service' || b.status === 'in_service').length
   const totalWaiting   = barberQueues.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0)
   const totalAlerts    = barberQueues.reduce((a, b) => a + (b.queue || []).filter(q => q.client_not_arrived).length, 0)
   const refreshStr     = lastRefresh.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -1322,7 +1281,6 @@ export default function LiveMonitor() {
         return (
           <BranchSection key={branch.id} branch={branch} barbers={branchBarbers}
             unassigned={unassignedByBranch[branch.id] || []}
-            ghost={ghostByBranch[branch.id] || []}
             allBarbers={barberQueues}
             onCancel={bk => setCancelModal({ booking: bk })}
             onStart={bk => setForceStartModal({ booking: bk })}

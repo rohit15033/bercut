@@ -7,7 +7,7 @@ const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 export default function StaffPanel({ branchId, onClose, onHome }) {
   const [bookings, setBookings] = useState([])
   const [loading,  setLoading]  = useState(true)
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+  const today = new Date().toISOString().slice(0, 10)
 
   const load = () => {
     setLoading(true)

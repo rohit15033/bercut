@@ -159,7 +159,7 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
   const [alertSent,  setAlertSent]  = useState({})
   const [calling,    setCalling]    = useState({})
 
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+  const today = new Date().toISOString().slice(0, 10)
 
   const load = () => {
     setLoading(true)

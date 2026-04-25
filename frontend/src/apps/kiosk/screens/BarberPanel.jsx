@@ -307,7 +307,7 @@ function BarberPicker({ branchId, onSelect, onClose, onHome, lastQueueUpdate }) 
 // ── Barber Detail ─────────────────────────────────────────────────────────────
 
 function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+  const today = new Date().toISOString().slice(0, 10)
 
   const [queue,        setQueue]        = useState([])
   const [loading,      setLoading]      = useState(true)

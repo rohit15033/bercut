@@ -9,7 +9,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   const [loadingSlots, setLoadingSlots] = useState(true)
 
   const today = new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', timeZone:'Asia/Makassar' })
-  const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+  const dateStr = new Date().toISOString().slice(0, 10)
 
   const totalDur = serviceIds.reduce((s, id) => {
     const svc = services.find(x => x.id === id)
@@ -27,6 +27,9 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
     kioskApi.get(url)
       .then(data => {
         const parsedSlots = Array.isArray(data) ? data : (data.slots || [])
+        // #region agent log
+        fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H4',location:'frontend/src/apps/kiosk/screens/TimeSlot.jsx:fetchSlots',message:'Fetched timeslot payload for UI',data:{isAnyAvailable,barberId:barber?.id||null,branchId,totalDur,slotCount:parsedSlots.length,firstThree:parsedSlots.slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setSlots(parsedSlots)
       })
       .catch(() => setSlots([]))
@@ -53,6 +56,11 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   const nowWindow = isAnyAvailable ? 4 : 30
   const barberAvailableNow = isAnyAvailable || !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(barber?.status)
   const canNow = barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + nowWindow
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H4',location:'frontend/src/apps/kiosk/screens/TimeSlot.jsx:canNow',message:'Computed canNow and first slot relationship',data:{isAnyAvailable,barberStatus:barber?.status||null,nowWitaStr,nowMin,firstSlot:slots[0]||null,firstSlotMin,nowWindow,canNow},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [isAnyAvailable, barber?.status, nowWitaStr, nowMin, firstSlotMin, nowWindow, canNow, slots])
 
   // If barber busy but slots available, offer first slot as "Next"
   const nextSlot = !canNow && slots.length > 0 ? slots[0] : null

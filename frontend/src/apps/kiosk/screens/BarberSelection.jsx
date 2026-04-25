@@ -80,11 +80,17 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
 
   // Show all barbers, but we will visually disable those who are unavailable
   const isAnySelected = barber?.source === 'any_available'
+  const now = new Date()
+  const witaMs = now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000)
+  const w = new Date(witaMs)
+  const nowWita = `${w.getHours().toString().padStart(2, '0')}:${w.getMinutes().toString().padStart(2, '0')}`
+  const nowMin = toMin(nowWita)
   
   // Find the earliest time among all barbers for "Any Available"
   const allAvailableTimes = Object.values(nextSlots).sort()
   const earliestAnyTime = allAvailableTimes[0] || null
-  const anyCanNow = barbers.some(b => b.status === 'available')
+  const earliestAnyMin = toMin(earliestAnyTime)
+  const anyCanNow = earliestAnyMin !== null && nowMin !== null && earliestAnyMin <= nowMin + 4
 
   const sortedBarbers = [...barbers].sort((a, b) => {
     const aU = ['clocked_out', 'off', 'on_break'].includes(a.status)
@@ -184,12 +190,13 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                 </div>
               ) : (() => {
                 const bSlot = nextSlots[data.id]
-                const bIsNow = data.status === 'available'
+                const bSlotMin = toMin(bSlot)
+                const bCanNow = bSlotMin !== null && nowMin !== null && bSlotMin <= nowMin + 30
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>
                       <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color: isUnavailable ? '#888' : (sel ? C.accentText : C.text) }}>
-                        {bIsNow ? 'Now ⚡' 
+                        {bCanNow ? 'Now ⚡' 
                           : data.status === 'clocked_out' ? 'No shift today'
                           : data.status === 'on_break' ? 'On Break'
                           : data.status === 'off' ? 'Off'
@@ -197,7 +204,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                           : 'Busy'}
                       </span>
                     </div>
-                    {!isUnavailable && !bIsNow && bSlot && (
+                    {!isUnavailable && !bCanNow && bSlot && (
                       <div style={{ fontSize:'clamp(9px,1.1vw,10px)', color:sel ? C.accentText : C.muted, fontWeight:500 }}>
                         Next available slot
                       </div>

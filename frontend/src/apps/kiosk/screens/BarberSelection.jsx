@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
 
+const toMin = (hhmm) => {
+  if (!hhmm || typeof hhmm !== 'string' || !hhmm.includes(':')) return null
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  return h * 60 + m
+}
 
 export default function BarberSelection({ barbers, services, serviceIds, barber, setBarber, onNext, onBack }) {
   const [nextSlots, setNextSlots] = useState({})
@@ -26,11 +32,51 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
           }
         } catch (e) { console.error(e) }
       }))
+      // #region agent log
+      const now = new Date()
+      const witaMs = now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000)
+      const w = new Date(witaMs)
+      const nowWita = `${w.getHours().toString().padStart(2, '0')}:${w.getMinutes().toString().padStart(2, '0')}`
+      console.log('[DBG85][H5] barber-selection-fetchAllNext', JSON.stringify({
+        dateStr,
+        totalDur,
+        nowWita,
+        barbers: barbers.slice(0, 8).map(b => ({ id: b.id, name: b.name, status: b.status, next: results[b.id] || null }))
+      }))
+      // #endregion
       setNextSlots(results)
       setLoadingSlots(false)
     }
     fetchAllNext()
   }, [barbers, dateStr, totalDur])
+
+  useEffect(() => {
+    if (!barbers?.length) return
+    const now = new Date()
+    const witaMs = now.getTime() + (now.getTimezoneOffset() * 60000) + (8 * 3600000)
+    const w = new Date(witaMs)
+    const nowWita = `${w.getHours().toString().padStart(2, '0')}:${w.getMinutes().toString().padStart(2, '0')}`
+    const nowMin = toMin(nowWita)
+    // #region agent log
+    console.log('[DBG85][H6] barber-selection-labelDecision', JSON.stringify({
+      nowWita,
+      nowMin,
+      sample: barbers.slice(0, 8).map(b => {
+        const next = nextSlots[b.id] || null
+        const nextMin = toMin(next)
+        return {
+          id: b.id,
+          name: b.name,
+          status: b.status,
+          next,
+          nextMin,
+          within30: nextMin !== null && nowMin !== null ? nextMin <= nowMin + 30 : null,
+          labelByStatus: b.status === 'available' ? 'Now ⚡' : (next ? `Next: ${next}` : 'Busy')
+        }
+      })
+    }))
+    // #endregion
+  }, [barbers, nextSlots])
 
   // Show all barbers, but we will visually disable those who are unavailable
   const isAnySelected = barber?.source === 'any_available'

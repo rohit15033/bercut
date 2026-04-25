@@ -73,6 +73,7 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     const isNow = !slot_time || slot_time === 'Now'
     // #region agent log
     fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H3',location:'backend/routes/bookings.js:post:create:input',message:'Booking create input timing/source resolved',data:{branchId,barber_id,source,slot_time,isNow,bookingDate},timestamp:Date.now()})}).catch(()=>{});
+    console.log('[DBG85][H3] booking-input', JSON.stringify({ branchId, barber_id, source, slot_time, isNow, bookingDate }))
     // #endregion
 
     // resolve barber
@@ -220,6 +221,7 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     }
     // #region agent log
     fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H3',location:'backend/routes/bookings.js:post:create:output',message:'Booking create final assignment result',data:{bookingId:booking.id,resolvedSource,slot_time:resp.slot_time,barberId:booking.barber_id,deferred:resp.deferred,barberName:resp.barber_name},timestamp:Date.now()})}).catch(()=>{});
+    console.log('[DBG85][H3] booking-output', JSON.stringify({ bookingId: booking.id, resolvedSource, slot_time: resp.slot_time, barberId: booking.barber_id, deferred: resp.deferred, barberName: resp.barber_name }))
     // #endregion
 
     emitEvent(branchId, 'new_booking', resp)

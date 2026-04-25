@@ -35,17 +35,10 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
   // Show all barbers, but we will visually disable those who are unavailable
   const isAnySelected = barber?.source === 'any_available'
   
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
-  const checkIsNow = (timeStr) => {
-    if (!timeStr) return false
-    const [h, m] = timeStr.split(':').map(Number)
-    return (h * 60 + m) <= nowMin + 30
-  }
-
   // Find the earliest time among all barbers for "Any Available"
   const allAvailableTimes = Object.values(nextSlots).sort()
   const earliestAnyTime = allAvailableTimes[0] || null
-  const anyCanNow = barbers.some(b => b.status === 'active' && checkIsNow(nextSlots[b.id]))
+  const anyCanNow = barbers.some(b => b.status === 'available')
 
   const sortedBarbers = [...barbers].sort((a, b) => {
     const aU = ['clocked_out', 'off', 'on_break'].includes(a.status)
@@ -145,7 +138,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                 </div>
               ) : (() => {
                 const bSlot = nextSlots[data.id]
-                const bIsNow = data.status === 'active' && checkIsNow(bSlot)
+                const bIsNow = data.status === 'available'
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>

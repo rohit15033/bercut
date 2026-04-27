@@ -57,36 +57,6 @@ async function pickIdleBarber(client, branchId, freeIds) {
   return picked?.id || null
 }
 
-// Picks the barber whose current workload ends soonest — used when all are busy.
-async function pickFastestBarber(client, branchId) {
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
-  const { rows } = await client.query(
-    `SELECT b.id,
-       COALESCE(
-         MAX(CASE WHEN bk.status = 'in_progress'
-                  THEN GREATEST(bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute'), NOW())
-                  ELSE bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute')
-             END),
-         NOW()
-       ) AS est_end
-     FROM barbers b
-     LEFT JOIN bookings bk ON bk.barber_id = b.id
-       AND bk.status IN ('confirmed','in_progress')
-       AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
-     LEFT JOIN (
-       SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
-       FROM booking_services bsv JOIN services s ON s.id = bsv.service_id
-       GROUP BY bsv.booking_id
-     ) dur ON dur.booking_id = bk.id
-     WHERE b.branch_id = $1 AND b.is_active = true AND b.status NOT IN ('clocked_out','off','on_break')
-     GROUP BY b.id
-     ORDER BY est_end ASC
-     LIMIT 1`,
-    [branchId, today]
-  )
-  return rows[0]?.id || null
-}
-
 // Called after barber clicks Selesai — tries assigning oldest deferred booking
 // using the same policy as scheduler/create: only free barbers, longest-idle first.
 async function tryAssignDeferred(branchId, _completingBarberId) {
@@ -132,4 +102,4 @@ async function tryAssignDeferred(branchId, _completingBarberId) {
   } finally { client.release() }
 }
 
-module.exports = { getActiveBarbers, getFreeBarberIds, pickIdleBarber, pickFastestBarber, tryAssignDeferred }
+module.exports = { getActiveBarbers, getFreeBarberIds, pickIdleBarber, tryAssignDeferred }

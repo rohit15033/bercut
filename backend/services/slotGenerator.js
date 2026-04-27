@@ -33,6 +33,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
 
   const bookings = await pool.query(
     `SELECT TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
+            bk.status,
             SUM(s.duration_minutes) AS total_duration
      FROM bookings bk
      JOIN booking_services bsv ON bsv.booking_id = bk.id
@@ -40,7 +41,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
      WHERE bk.barber_id = $1
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
        AND bk.status IN ('confirmed','in_progress')
-     GROUP BY bk.id, bk.scheduled_at`,
+     GROUP BY bk.id, bk.scheduled_at, bk.status`,
     [barberId, date])
 
   const breaks = await pool.query(
@@ -51,22 +52,23 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
        AND DATE(started_at AT TIME ZONE 'Asia/Makassar') = $2`,
     [barberId, date])
 
+  const { rows: timeRows } = await pool.query(
+    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
+  )
+  const nowMin  = minutesFromMidnight(timeRows[0].t)
+  const isToday = timeRows[0].d === date
+
   const blocked = []
   for (const bk of bookings.rows) {
     if (!bk.slot_time) continue
-    const start = minutesFromMidnight(bk.slot_time)
-    blocked.push({ start, end: start + parseInt(bk.total_duration || 30) + BUFFER_MIN })
+    const start        = minutesFromMidnight(bk.slot_time)
+    const estimatedEnd = start + parseInt(bk.total_duration || 30)
+    const isOverrun    = bk.status === 'in_progress' && isToday && nowMin > estimatedEnd
+    blocked.push({ start, end: isOverrun ? nowMin + 5 : estimatedEnd + BUFFER_MIN })
   }
   for (const br of breaks.rows) {
     blocked.push({ start: minutesFromMidnight(br.start_time), end: minutesFromMidnight(br.end_time) })
   }
-
-  const { rows: timeRows } = await pool.query(
-    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
-  )
-  const nowMin    = minutesFromMidnight(timeRows[0].t)
-  const isToday   = timeRows[0].d === date
-  const gridStart = Math.max(openTime, isToday ? Math.ceil(nowMin / GRID) * GRID : openTime)
 
   blocked.sort((a, b) => a.start - b.start)
 
@@ -98,7 +100,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
     }
   }
 
-  let cursor = gridStart
+  let cursor = Math.max(openTime, isToday ? nowMin : openTime)
 
   for (const b of blocked) {
     if (b.end <= cursor) continue

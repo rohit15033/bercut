@@ -143,21 +143,65 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(16px,3vw,32px)' }} onClick={onClose}>
       <div className="si" style={{ background: C.white, borderRadius: 20, width: '100%', maxWidth: 'clamp(360px,52vw,520px)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
 
-        {/* Hero */}
-        <div style={{ padding: 'clamp(22px,2.8vw,34px) clamp(20px,2.6vw,28px)', background: C.topBg, position: 'relative' }}>
+        {/* Hero photo strip — package name as hero, savings as top-right badge */}
+        <div style={{ position: 'relative', height: 'clamp(180px,22vw,240px)', overflow: 'hidden', background: C.topBg }}>
+          {(() => {
+            // Iterate pkg.included slots as source of truth.
+            // For each slot: use the cart item's image if the slot is satisfied,
+            // otherwise fall back to the first service in the slot.
+            // Mutex/category matches pick the right cart item (e.g. Ear Candle over Ear Wax).
+            const heroImgs = []
+            const seenSlot = new Set()
+            const raw = pkg.included?.length ? pkg.included : []
+            for (const item of raw) {
+              const slotKey = item.or_group != null ? `g${item.or_group}` : `s_${item.name}`
+              if (seenSlot.has(slotKey)) continue
+              seenSlot.add(slotKey)
+              const svc = svcs.find(s => s.name === item.name)
+              if (!svc) continue
+              // Find which cart item satisfies this slot (if any)
+              let cartSvc = null
+              if (workCart.includes(svc.id)) {
+                cartSvc = svc
+              } else if (svc.mutex_group) {
+                cartSvc = workCart.map(id => svcs.find(s => s.id === id)).find(s => s?.mutex_group === svc.mutex_group) ?? null
+              } else if (svc.cat === 'Haircut') {
+                cartSvc = workCart.map(id => svcs.find(s => s.id === id)).find(s => s?.cat === 'Haircut') ?? null
+              }
+              const img = cartSvc?.img || svc.img
+              if (img) heroImgs.push(img)
+            }
+            if (!heroImgs.length) return null
+            return (
+              <div style={{ display: 'flex', height: '100%', position: 'absolute', inset: 0 }}>
+                {heroImgs.map((src, i) => (
+                  <div key={i} style={{ flex: 1, overflow: 'hidden', borderRight: i < heroImgs.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none' }}>
+                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 45%, rgba(0,0,0,0.08) 100%)' }} />
+
+          {/* pkg.badge top-left (e.g. "MOST POPULAR") */}
           {pkg.badge && (
-            <div style={{ display: 'inline-block', background: C.accent, color: C.accentText, fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 800, padding: '3px 9px', borderRadius: 5, marginBottom: 10 }}>{pkg.badge}</div>
+            <div style={{ position: 'absolute', top: 'clamp(12px,1.6vw,16px)', left: 'clamp(14px,1.8vw,18px)', background: C.accent, color: C.accentText, fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 800, padding: '3px 9px', borderRadius: 5, zIndex: 2 }}>{pkg.badge}</div>
           )}
-          <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-            {pkg.name}{pkg.nameId ? ` · ${pkg.nameId}` : ''}
+
+          {/* Savings pill — top-right */}
+          {pkgSave > 0 && (
+            <div style={{ position: 'absolute', top: 'clamp(12px,1.6vw,16px)', right: 'clamp(14px,1.8vw,18px)', background: C.accent, color: C.accentText, borderRadius: 999, padding: 'clamp(5px,0.7vw,7px) clamp(10px,1.3vw,14px)', zIndex: 2, textAlign: 'center', lineHeight: 1.2 }}>
+              <div style={{ fontFamily: "'Inter',sans-serif", fontSize: 'clamp(12px,1.5vw,15px)', fontWeight: 800 }}>Save {fmt(pkgSave)}</div>
+              <div style={{ fontSize: 'clamp(8px,0.9vw,10px)', fontWeight: 600, opacity: 0.65 }}>vs individually</div>
+            </div>
+          )}
+
+          {/* Package name anchored to bottom */}
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 'clamp(14px,1.8vw,20px) clamp(18px,2.4vw,24px)', zIndex: 2 }}>
+            {pkg.nameId && <div style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>{pkg.nameId}</div>}
+            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(28px,3.6vw,42px)', color: C.white, lineHeight: 1.05 }}>{pkg.name}</div>
           </div>
-          {pkgSave > 0
-            ? <>
-              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(26px,3.4vw,38px)', color: C.accent, lineHeight: 1.1 }}>Save {fmt(pkgSave)}</div>
-              <div style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: 'rgba(255,255,255,0.4)', marginTop: 5 }}>vs buying individually · vs beli satuan</div>
-            </>
-            : <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(22px,2.8vw,32px)', color: C.white, lineHeight: 1.1 }}>Upgrade to Package</div>
-          }
         </div>
 
         {/* What's included chips */}
@@ -166,20 +210,50 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
             What's included · Yang termasuk
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'clamp(5px,0.7vw,7px)' }}>
-            {workCart.map(id => {
-              const svc = svcs.find(s => s.id === id)
-              if (!svc) return null
-              return (
-                <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px clamp(8px,1.1vw,10px)', borderRadius: 999, fontSize: 'clamp(11px,1.3vw,12px)', fontWeight: 600, background: C.surface, color: C.muted, border: `1px solid ${C.border}` }}>
-                  ✓ {svc.name}
-                </span>
-              )
-            })}
-            {(pkg.included?.length > 0 ? groupIncluded(pkg.included) : pkg.desc.split('  ·  ')).map((d, i) => (
-              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px clamp(8px,1.1vw,10px)', borderRadius: 999, fontSize: 'clamp(11px,1.3vw,12px)', fontWeight: 600, background: C.accent, color: C.accentText, border: `1px solid ${C.accent}` }}>
-                + {d}
-              </span>
-            ))}
+            {(() => {
+              const raw = pkg.included?.length > 0
+                ? pkg.included
+                : pkg.desc?.split('  ·  ').map(name => ({ name })) ?? []
+
+              // Group items by or_group key; singles become a one-item array
+              const grouped = []
+              const seen = {}
+              raw.forEach(item => {
+                if (item.or_group != null) {
+                  if (!seen[item.or_group]) { seen[item.or_group] = []; grouped.push(seen[item.or_group]) }
+                  seen[item.or_group].push(item.name)
+                } else {
+                  grouped.push([item.name])
+                }
+              })
+
+              // Returns the display name from the cart that satisfies this OR group,
+              // or null if unsatisfied. For ✓ chips we show what the customer actually picked;
+              // for + chips (unsatisfied) we fall back to the first name in the group.
+              const satisfiedBy = (names) => {
+                for (const name of names) {
+                  const svc = svcs.find(s => s.name === name)
+                  if (!svc) continue
+                  if (workCart.includes(svc.id)) return svc.name
+                  if (svc.mutex_group) {
+                    const match = workCart.map(id => svcs.find(s => s.id === id)).find(s => s?.mutex_group === svc.mutex_group)
+                    if (match) return match.name
+                  }
+                  if (svc.cat === 'Haircut') {
+                    const match = workCart.map(id => svcs.find(s => s.id === id)).find(s => s?.cat === 'Haircut')
+                    if (match) return match.name
+                  }
+                }
+                return null
+              }
+
+              return grouped.map((names, i) => {
+                const cartName = satisfiedBy(names)
+                return cartName
+                  ? <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px clamp(8px,1.1vw,10px)', borderRadius: 999, fontSize: 'clamp(11px,1.3vw,12px)', fontWeight: 600, background: C.surface, color: C.muted, border: `1px solid ${C.border}` }}>✓ {cartName}</span>
+                  : <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px clamp(8px,1.1vw,10px)', borderRadius: 999, fontSize: 'clamp(11px,1.3vw,12px)', fontWeight: 600, background: C.accent, color: C.accentText, border: `1px solid ${C.accent}` }}>+ {names[0]}</span>
+              })
+            })()}
           </div>
         </div>
 
@@ -195,7 +269,7 @@ function UpsellModal({ cart, svcs, settings, extras, setExtras, findRuleForCart,
             </span>
           </button>
           <button className="btnG" onClick={() => onConfirm(workCart, null)} style={{ width: '100%', fontSize: 'clamp(12px,1.4vw,14px)' }}>
-            {settings.upsellKeepCta || 'Keep My Selection · Pertahankan pilihan'}
+            {settings.upsellKeepCta || 'Skip'}
           </button>
         </div>
       </div>
@@ -438,16 +512,30 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
   const renderPackageCard = (s, i, ci) => {
     const sel = cart.includes(s.id)
     return (
-      <div key={s.id} onClick={() => toggle(s.id)} style={{ cursor: 'pointer', borderRadius: 14, overflow: 'hidden', border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : 'rgba(255,255,255,0.08)'}`, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: 'relative', background: C.topBg, display: 'flex', minHeight: 'clamp(120px,15vw,145px)' }}>
+      <div key={s.id} onClick={() => toggle(s.id)} style={{ cursor: 'pointer', borderRadius: 14, overflow: 'hidden', border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : 'rgba(255,255,255,0.08)'}`, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: 'relative', background: C.topBg, display: 'flex', height: 'clamp(180px,23vw,250px)' }}>
 
         {/* Left — treatment image mosaic or fallback */}
-        <div style={{ width: '28%', flexShrink: 0, display: 'flex', position: 'relative', overflow: 'hidden', borderRight: '1px solid rgba(0,0,0,0.2)', background: '#222' }}>
+        <div style={{ width: '56%', flexShrink: 0, display: 'flex', position: 'relative', overflow: 'hidden', borderRight: '1px solid rgba(0,0,0,0.2)', background: '#222' }}>
           {s.includedImages?.length > 0 ? (
-            s.includedImages.slice(0, 3).map((img, ti) => (
-              <div key={ti} style={{ flex: 1, overflow: 'hidden', borderRight: ti < Math.min(s.includedImages.length, 3) - 1 ? '1px solid rgba(0,0,0,0.1)' : 'none' }}>
-                <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            ))
+            (() => {
+              // One image per slot — mutex or_groups contribute only their first image
+              const seen = new Set()
+              const imgs = []
+              for (const item of (s.included?.length ? s.included : s.includedImages.map((_, idx) => ({ name: String(idx) })))) {
+                const key = item.or_group != null ? `g${item.or_group}` : `s_${item.name}`
+                if (!seen.has(key)) {
+                  seen.add(key)
+                  const svc = svcs.find(x => x.name === item.name)
+                  const img = svc?.img || s.includedImages[imgs.length]
+                  if (img) imgs.push(img)
+                }
+              }
+              return imgs.map((img, ti) => (
+                <div key={ti} style={{ flex: 1, overflow: 'hidden', borderRight: ti < imgs.length - 1 ? '1px solid rgba(0,0,0,0.1)' : 'none' }}>
+                  <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))
+            })()
           ) : (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.2 }}>
               <span style={{ fontSize: 32 }}>📦</span>

@@ -5,28 +5,44 @@ import { kioskApi } from '../../../shared/api.js'
 const fmt  = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 const fmtK = n => n >= 1000 ? `${n / 1000}K` : String(n)
 
-const TIP_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
+const TIP_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['000','0','⌫']]
 const DEBOUNCE_MS = 150
 
 const TipNumpad = memo(function TipNumpad({ value, onChange }) {
   const [pressedKey, setPressedKey] = useState(null)
   const lastPressRef = useRef({})
+  const deleteTimerRef = useRef(null)
+  const deleteIntervalRef = useRef(null)
 
   const handleKey = (key) => {
     if (!key) return
     const now = Date.now()
     if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
     lastPressRef.current[key] = now
-    if (key === '⌫') { onChange(value.slice(0, -1)); return }
-    onChange(value + key)
+    if (key === '000') { onChange(prev => prev + '000'); return }
+    onChange(prev => prev + key)
   }
 
-  const press = (key) => ({
-    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
-    onPointerUp:     ()  => setPressedKey(null),
-    onPointerLeave:  ()  => setPressedKey(null),
-    onPointerCancel: ()  => setPressedKey(null),
-  })
+  const stopDelete = () => {
+    setPressedKey(null)
+    clearTimeout(deleteTimerRef.current)
+    clearInterval(deleteIntervalRef.current)
+  }
+
+  const press = (key) => {
+    if (key === '⌫') return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey('⌫'); onChange(prev => prev.slice(0, -1)); deleteTimerRef.current = setTimeout(() => { deleteIntervalRef.current = setInterval(() => onChange(prev => prev.slice(0, -1)), 80) }, 400) },
+      onPointerUp:     stopDelete,
+      onPointerLeave:  stopDelete,
+      onPointerCancel: stopDelete,
+    }
+    return {
+      onPointerDown:   (e) => { e.preventDefault(); stopDelete(); setPressedKey(key); handleKey(key) },
+      onPointerUp:     ()  => setPressedKey(null),
+      onPointerLeave:  ()  => setPressedKey(null),
+      onPointerCancel: ()  => setPressedKey(null),
+    }
+  }
 
   const displayVal = parseInt(value, 10) || 0
 
@@ -41,11 +57,12 @@ const TipNumpad = memo(function TipNumpad({ value, onChange }) {
         <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
           {row.map((key, ki) => {
             if (!key) return <div key={ki} style={{ flex:1 }} />
-            const isBs = key === '⌫'
-            const isP  = pressedKey === key
+            const isBs  = key === '⌫'
+            const is000 = key === '000'
+            const isP   = pressedKey === key
             return (
               <button key={ki} {...press(key)}
-                style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize: isBs ? 'clamp(16px,2vw,21px)' : 'clamp(18px,2.2vw,23px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: isP ? (isBs ? '#555' : C.accent) : (isBs ? '#333' : '#2a2a28'), color: isP ? (isBs ? '#FFF' : C.accentText) : '#FFF', boxShadow: isP ? 'inset 0 2px 4px rgba(0,0,0,0.4)' : '0 2px 3px rgba(0,0,0,0.3)', transform: isP ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+                style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize: isBs ? 'clamp(16px,2vw,21px)' : is000 ? 'clamp(13px,1.6vw,16px)' : 'clamp(18px,2.2vw,23px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: isP ? (isBs ? '#555' : C.accent) : (isBs || is000 ? '#333' : '#2a2a28'), color: isP ? (isBs ? '#FFF' : C.accentText) : '#FFF', boxShadow: isP ? 'inset 0 2px 4px rgba(0,0,0,0.4)' : '0 2px 3px rgba(0,0,0,0.3)', transform: isP ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
                 {key}
               </button>
             )

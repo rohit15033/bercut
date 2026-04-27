@@ -328,7 +328,7 @@ function KioskContent({ config }) {
   }
 
   return (
-    <div onClick={resetIdleTimer} onTouchStart={resetIdleTimer} onTouchMove={resetIdleTimer}>
+    <div onClick={resetIdleTimer} onPointerDown={resetIdleTimer} onTouchStart={resetIdleTimer} onTouchMove={resetIdleTimer}>
       <GS />
       {!isOnline && <OfflineBanner />}
       {idleCountdown !== null && <IdleOverlay seconds={idleCountdown} onDismiss={dismissIdle} />}

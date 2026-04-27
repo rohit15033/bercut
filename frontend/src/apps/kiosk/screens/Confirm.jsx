@@ -5,28 +5,161 @@ import { kioskApi } from '../../../shared/api.js'
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 
 const COUNTRIES = [
-  { flag:'🇮🇩', name:'Indonesia',      code:'+62', abbr:'ID' },
-  { flag:'🇦🇺', name:'Australia',      code:'+61', abbr:'AU' },
-  { flag:'🇬🇧', name:'United Kingdom', code:'+44', abbr:'GB' },
-  { flag:'🇺🇸', name:'United States',  code:'+1',  abbr:'US' },
-  { flag:'🇸🇬', name:'Singapore',      code:'+65', abbr:'SG' },
-  { flag:'🇲🇾', name:'Malaysia',       code:'+60', abbr:'MY' },
-  { flag:'🇯🇵', name:'Japan',          code:'+81', abbr:'JP' },
-  { flag:'🇨🇳', name:'China',          code:'+86', abbr:'CN' },
-  { flag:'🇩🇪', name:'Germany',        code:'+49', abbr:'DE' },
-  { flag:'🇫🇷', name:'France',         code:'+33', abbr:'FR' },
-  { flag:'🇳🇱', name:'Netherlands',    code:'+31', abbr:'NL' },
-  { flag:'🇷🇺', name:'Russia',         code:'+7',  abbr:'RU' },
-  { flag:'🇮🇳', name:'India',          code:'+91', abbr:'IN' },
-  { flag:'🇰🇷', name:'South Korea',    code:'+82', abbr:'KR' },
+  { name:'Indonesia',           code:'+62',  abbr:'ID' },
+  { name:'Australia',           code:'+61',  abbr:'AU' },
+  { name:'United Kingdom',      code:'+44',  abbr:'GB' },
+  { name:'United States',       code:'+1',   abbr:'US' },
+  { name:'Singapore',           code:'+65',  abbr:'SG' },
+  { name:'Malaysia',            code:'+60',  abbr:'MY' },
+  { name:'Japan',               code:'+81',  abbr:'JP' },
+  { name:'China',               code:'+86',  abbr:'CN' },
+  { name:'South Korea',         code:'+82',  abbr:'KR' },
+  { name:'India',               code:'+91',  abbr:'IN' },
+  { name:'Germany',             code:'+49',  abbr:'DE' },
+  { name:'France',              code:'+33',  abbr:'FR' },
+  { name:'Netherlands',         code:'+31',  abbr:'NL' },
+  { name:'Russia',              code:'+7',   abbr:'RU' },
+  { name:'New Zealand',         code:'+64',  abbr:'NZ' },
+  { name:'Canada',              code:'+1',   abbr:'CA' },
+  { name:'Brazil',              code:'+55',  abbr:'BR' },
+  { name:'Thailand',            code:'+66',  abbr:'TH' },
+  { name:'Philippines',         code:'+63',  abbr:'PH' },
+  { name:'Vietnam',             code:'+84',  abbr:'VN' },
+  { name:'Taiwan',              code:'+886', abbr:'TW' },
+  { name:'Hong Kong',           code:'+852', abbr:'HK' },
+  { name:'Macau',               code:'+853', abbr:'MO' },
+  { name:'Saudi Arabia',        code:'+966', abbr:'SA' },
+  { name:'United Arab Emirates',code:'+971', abbr:'AE' },
+  { name:'Qatar',               code:'+974', abbr:'QA' },
+  { name:'Kuwait',              code:'+965', abbr:'KW' },
+  { name:'Italy',               code:'+39',  abbr:'IT' },
+  { name:'Spain',               code:'+34',  abbr:'ES' },
+  { name:'Switzerland',         code:'+41',  abbr:'CH' },
+  { name:'Sweden',              code:'+46',  abbr:'SE' },
+  { name:'Norway',              code:'+47',  abbr:'NO' },
+  { name:'Denmark',             code:'+45',  abbr:'DK' },
+  { name:'Finland',             code:'+358', abbr:'FI' },
+  { name:'Belgium',             code:'+32',  abbr:'BE' },
+  { name:'Austria',             code:'+43',  abbr:'AT' },
+  { name:'Portugal',            code:'+351', abbr:'PT' },
+  { name:'Poland',              code:'+48',  abbr:'PL' },
+  { name:'Turkey',              code:'+90',  abbr:'TR' },
+  { name:'Israel',              code:'+972', abbr:'IL' },
+  { name:'South Africa',        code:'+27',  abbr:'ZA' },
+  { name:'Egypt',               code:'+20',  abbr:'EG' },
+  { name:'Nigeria',             code:'+234', abbr:'NG' },
+  { name:'Kenya',               code:'+254', abbr:'KE' },
+  { name:'Mexico',              code:'+52',  abbr:'MX' },
+  { name:'Argentina',           code:'+54',  abbr:'AR' },
+  { name:'Chile',               code:'+56',  abbr:'CL' },
+  { name:'Colombia',            code:'+57',  abbr:'CO' },
+  { name:'Papua New Guinea',    code:'+675', abbr:'PG' },
+  { name:'Timor-Leste',         code:'+670', abbr:'TL' },
 ]
 const PINNED = ['ID', 'AU', 'GB', 'US', 'SG']
 const pinnedCountries = COUNTRIES.filter(c => PINNED.includes(c.abbr))
 
+const DEBOUNCE_MS = 150
+
+const ALPHA_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['⇧','Z','X','C','V','B','N','M','⌫'],
+]
+
+const SearchKeyboard = memo(function SearchKeyboard({ value, onChange, onClose }) {
+  const [shifted, setShifted] = useState(false)
+  const [pressedKey, setPressedKey] = useState(null)
+  const lastPressRef = useRef({})
+  const deleteTimerRef = useRef(null)
+  const deleteIntervalRef = useRef(null)
+
+  const handleKey = (key) => {
+    if (!key) return
+    const now = Date.now()
+    if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
+    lastPressRef.current[key] = now
+    if (key === '⇧') { setShifted(s => !s); return }
+    if (key === ' ') { onChange(value + ' '); return }
+    const char = shifted ? key : key.toLowerCase()
+    onChange(value + char)
+    if (shifted) setShifted(false)
+  }
+
+  const stopDelete = () => {
+    setPressedKey(null)
+    clearTimeout(deleteTimerRef.current)
+    clearInterval(deleteIntervalRef.current)
+  }
+
+  const press = (key) => {
+    if (key === '⌫') return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey('⌫'); onChange(prev => prev.slice(0, -1)); deleteTimerRef.current = setTimeout(() => { deleteIntervalRef.current = setInterval(() => onChange(prev => prev.slice(0, -1)), 80) }, 400) },
+      onPointerUp:     stopDelete,
+      onPointerLeave:  stopDelete,
+      onPointerCancel: stopDelete,
+    }
+    return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
+      onPointerUp:     () => setPressedKey(null),
+      onPointerLeave:  () => setPressedKey(null),
+      onPointerCancel: () => setPressedKey(null),
+    }
+  }
+
+  const keyBg = (key) => {
+    const p = pressedKey === key
+    if (p) return key === '⇧' || key === '⌫' ? '#888' : C.accent
+    if (key === '⇧') return shifted ? C.topBg : '#C4C4C4'
+    if (key === '⌫') return '#C4C4C4'
+    return '#FFFFFF'
+  }
+  const keyColor = (key) => {
+    const p = pressedKey === key
+    if (p) return key === '⇧' || key === '⌫' ? '#FFF' : C.accentText
+    if (key === '⇧') return shifted ? '#FFF' : C.text
+    return C.text
+  }
+
+  return (
+    <div style={{ background:'#D1D5DB', borderTop:'1px solid #B2B6BB', padding:'clamp(6px,0.9vh,10px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)', flexShrink:0 }}>
+      {ALPHA_ROWS.map((row, ri) => (
+        <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,6px)', justifyContent:'center' }}>
+          {ri === 1 && <div style={{ flex:0.5 }} />}
+          {row.map((key, ki) => {
+            const isSpecial = key === '⇧' || key === '⌫'
+            const isPressed = pressedKey === key
+            return (
+              <button key={ki} {...press(key)}
+                style={{ flex:isSpecial ? 1.5 : 1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(14px,1.8vw,19px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background:keyBg(key), color:keyColor(key), boxShadow:isPressed ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform:isPressed ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+                {key === '⇧' ? (shifted ? '⇧' : '⇪') : key === '⌫' ? '⌫' : shifted ? key : key.toLowerCase()}
+              </button>
+            )
+          })}
+          {ri === 1 && <div style={{ flex:0.5 }} />}
+        </div>
+      ))}
+      <div style={{ display:'flex', gap:'clamp(4px,0.48vw,6px)' }}>
+        <button {...press(' ')}
+          style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(11px,1.3vw,14px)', fontWeight:700, fontFamily:"'DM Sans',sans-serif", cursor:'pointer', background:pressedKey === ' ' ? C.accent : '#FFFFFF', color:pressedKey === ' ' ? C.accentText : C.muted, boxShadow:pressedKey === ' ' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform:pressedKey === ' ' ? 'scale(0.96)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+          space
+        </button>
+        <button
+          onPointerDown={(e) => { e.preventDefault(); setPressedKey('__hide__') }}
+          onPointerUp={() => { setPressedKey(null); onClose() }}
+          onPointerLeave={() => setPressedKey(null)}
+          onPointerCancel={() => setPressedKey(null)}
+          style={{ width:'clamp(80px,9.5vw,112px)', height:'clamp(44px,5.9vh,56px)', flexShrink:0, borderRadius:8, border:'none', fontSize:'clamp(12px,1.4vw,15px)', fontWeight:800, fontFamily:"'Inter',sans-serif", cursor:'pointer', background:pressedKey === '__hide__' ? '#333' : C.topBg, color:'#FFF', boxShadow:pressedKey === '__hide__' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform:pressedKey === '__hide__' ? 'scale(0.94)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+          Hide ▼
+        </button>
+      </div>
+    </div>
+  )
+})
+
 function CountryPicker({ selected, onSelect, onClose }) {
   const [search, setSearch] = useState('')
-  const ref = useRef(null)
-  useEffect(() => { ref.current?.focus() }, [])
+  const [showKeyboard, setShowKeyboard] = useState(false)
   const q = search.toLowerCase().trim()
 
   const Row = ({ c }) => (
@@ -34,7 +167,7 @@ function CountryPicker({ selected, onSelect, onClose }) {
       style={{ display:'flex', alignItems:'center', gap:10, padding:'clamp(10px,1.4vh,13px) clamp(12px,1.6vw,16px)', cursor:'pointer', borderRadius:8, background:selected?.abbr === c.abbr ? C.surface : 'transparent', transition:'background 0.12s' }}
       onMouseEnter={e => e.currentTarget.style.background = C.surface}
       onMouseLeave={e => e.currentTarget.style.background = selected?.abbr === c.abbr ? C.surface : 'transparent'}>
-      <span style={{ fontSize:'clamp(18px,2.4vw,24px)', lineHeight:1, flexShrink:0 }}>{c.flag}</span>
+      <img src={`https://flagcdn.com/w40/${c.abbr.toLowerCase()}.png`} alt={c.abbr} width={28} height={20} style={{ borderRadius:3, objectFit:'cover', flexShrink:0, border:'1px solid #e0e0e0' }} />
       <span style={{ flex:1, fontSize:'clamp(13px,1.5vw,15px)', fontWeight:500, color:C.text }}>{c.name}</span>
       <span style={{ fontSize:'clamp(13px,1.5vw,15px)', fontWeight:700, color:C.muted, fontFamily:"'Inter',sans-serif" }}>{c.code}</span>
     </div>
@@ -46,7 +179,9 @@ function CountryPicker({ selected, onSelect, onClose }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', padding:'clamp(16px,2.4vw,28px)' }} onClick={onClose}>
-      <div className="si" style={{ background:C.white, borderRadius:18, width:'clamp(320px,48vw,520px)', maxHeight:'76vh', display:'flex', flexDirection:'column', overflow:'hidden' }} onClick={e => e.stopPropagation()}>
+      <div className="si" style={{ background:C.white, borderRadius:18, width:'min(680px, 90vw)', height:'86vh', display:'flex', flexDirection:'column', overflow:'hidden' }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
         <div style={{ padding:'clamp(14px,2vw,20px) clamp(16px,2.2vw,22px)', borderBottom:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
           <div>
             <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(15px,2vw,19px)', fontWeight:800, color:C.text }}>Select Country Code</div>
@@ -54,10 +189,14 @@ function CountryPicker({ selected, onSelect, onClose }) {
           </div>
           <button onClick={onClose} style={{ background:C.surface2, border:'none', borderRadius:8, width:34, height:34, fontSize:18, cursor:'pointer', color:C.text2, display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
-        <div style={{ padding:'clamp(10px,1.4vw,14px) clamp(16px,2.2vw,22px)', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-          <input ref={ref} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search country or code…"
-            style={{ width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:'clamp(13px,1.5vw,15px)', background:C.surface, fontFamily:"'DM Sans',sans-serif", color:C.text }} />
+
+        {/* Search display — readOnly, driven by SearchKeyboard below */}
+        <div style={{ padding:'clamp(10px,1.4vw,14px) clamp(16px,2.2vw,22px)', borderBottom:`1px solid ${C.border}`, flexShrink:0 }} onClick={() => setShowKeyboard(true)}>
+          <input readOnly value={search} placeholder="🔍  Tap to search country or code…"
+            style={{ width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:9, border:`1.5px solid ${showKeyboard ? C.topBg : C.border}`, fontSize:'clamp(13px,1.5vw,15px)', background:C.surface, fontFamily:"'DM Sans',sans-serif", color:search ? C.text : C.muted, cursor:'pointer', transition:'border-color 0.15s' }} />
         </div>
+
+        {/* Country list */}
         <div style={{ overflowY:'auto', flex:1, WebkitOverflowScrolling:'touch' }}>
           {!q && (
             <>
@@ -74,6 +213,9 @@ function CountryPicker({ selected, onSelect, onClose }) {
               : <div style={{ padding:'clamp(20px,3vw,28px)', textAlign:'center', color:C.muted, fontSize:'clamp(12px,1.4vw,14px)' }}>No countries found</div>
           )}
         </div>
+
+        {/* On-screen keyboard — shown only after tapping search bar */}
+        {showKeyboard && <SearchKeyboard value={search} onChange={setSearch} onClose={() => setShowKeyboard(false)} />}
       </div>
     </div>
   )
@@ -81,24 +223,18 @@ function CountryPicker({ selected, onSelect, onClose }) {
 
 const NUM_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
 
-const ALPHA_ROWS = [
-  ['Q','W','E','R','T','Y','U','I','O','P'],
-  ['A','S','D','F','G','H','J','K','L'],
-  ['⇧','Z','X','C','V','B','N','M','⌫'],
-]
-const DEBOUNCE_MS = 150
-
 const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
   const [shifted, setShifted] = useState(true)
   const [pressedKey, setPressedKey] = useState(null)
   const lastPressRef = useRef({})
+  const deleteTimerRef = useRef(null)
+  const deleteIntervalRef = useRef(null)
 
   const handleKey = (key) => {
     if (!key) return
     const now = Date.now()
     if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
     lastPressRef.current[key] = now
-    if (key === '⌫') { onChange(value.slice(0, -1)); return }
     if (key === '⇧') { setShifted(s => !s); return }
     if (key === ' ') { onChange(value + ' '); return }
     const char = !shifted ? key.toLowerCase() : key
@@ -106,12 +242,26 @@ const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
     if (shifted) setShifted(false)
   }
 
-  const press = (key) => ({
-    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
-    onPointerUp:     ()  => setPressedKey(null),
-    onPointerLeave:  ()  => setPressedKey(null),
-    onPointerCancel: ()  => setPressedKey(null),
-  })
+  const stopDelete = () => {
+    setPressedKey(null)
+    clearTimeout(deleteTimerRef.current)
+    clearInterval(deleteIntervalRef.current)
+  }
+
+  const press = (key) => {
+    if (key === '⌫') return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey('⌫'); onChange(prev => prev.slice(0, -1)); deleteTimerRef.current = setTimeout(() => { deleteIntervalRef.current = setInterval(() => onChange(prev => prev.slice(0, -1)), 80) }, 400) },
+      onPointerUp:     stopDelete,
+      onPointerLeave:  stopDelete,
+      onPointerCancel: stopDelete,
+    }
+    return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
+      onPointerUp:     ()  => setPressedKey(null),
+      onPointerLeave:  ()  => setPressedKey(null),
+      onPointerCancel: ()  => setPressedKey(null),
+    }
+  }
 
   const keyBg = (key) => {
     const p = pressedKey === key
@@ -167,22 +317,37 @@ const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
 const InlineNumpad = memo(function InlineNumpad({ value, onChange, country, onDone }) {
   const [pressedKey, setPressedKey] = useState(null)
   const lastPressRef = useRef({})
+  const deleteTimerRef = useRef(null)
+  const deleteIntervalRef = useRef(null)
 
   const handleKey = (key) => {
     if (!key) return
     const now = Date.now()
     if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
     lastPressRef.current[key] = now
-    if (key === '⌫') { onChange(value.slice(0, -1)); return }
     onChange(value + key)
   }
 
-  const press = (key) => ({
-    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
-    onPointerUp:     ()  => setPressedKey(null),
-    onPointerLeave:  ()  => setPressedKey(null),
-    onPointerCancel: ()  => setPressedKey(null),
-  })
+  const stopDelete = () => {
+    setPressedKey(null)
+    clearTimeout(deleteTimerRef.current)
+    clearInterval(deleteIntervalRef.current)
+  }
+
+  const press = (key) => {
+    if (key === '⌫') return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey('⌫'); onChange(prev => prev.slice(0, -1)); deleteTimerRef.current = setTimeout(() => { deleteIntervalRef.current = setInterval(() => onChange(prev => prev.slice(0, -1)), 80) }, 400) },
+      onPointerUp:     stopDelete,
+      onPointerLeave:  stopDelete,
+      onPointerCancel: stopDelete,
+    }
+    return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
+      onPointerUp:     ()  => setPressedKey(null),
+      onPointerLeave:  ()  => setPressedKey(null),
+      onPointerCancel: ()  => setPressedKey(null),
+    }
+  }
 
   return (
     <div style={{ background:'#D1D5DB', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)' }}>
@@ -352,11 +517,9 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
                 style={{ width:'100%', padding:'clamp(10px,1.4vh,13px) 14px', borderRadius:10, border:`2px solid ${activeField === 'name' ? C.topBg : name.trim().length > 0 ? C.topBg : C.accent}`, fontSize:'clamp(14px,1.6vw,16px)', background:activeField === 'name' ? '#FFFDE7' : C.white, fontFamily:"'DM Sans',sans-serif", animation:name.trim().length === 0 && activeField !== 'name' ? 'namePulse 1.4s ease 3' : 'none', transition:'border-color 0.15s, background 0.15s', cursor:'pointer' }}
                 onClick={() => setActiveField('name')}
               />
-              {name.trim().length > 0 && name.trim().length < 2 && (
-                <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:C.danger, marginTop:4 }}>
-                  Name must be at least 2 characters · Minimal 2 karakter
-                </div>
-              )}
+              <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:C.danger, marginTop:4, minHeight:'clamp(14px,1.6vw,16px)' }}>
+                {name.trim().length > 0 && name.trim().length < 2 ? 'Name must be at least 2 characters · Minimal 2 karakter' : ''}
+              </div>
             </div>
 
             {/* WhatsApp — optional */}
@@ -369,7 +532,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
                   style={{ display:'flex', alignItems:'center', gap:'clamp(4px,0.6vw,7px)', padding:'0 clamp(10px,1.4vw,14px)', borderRadius:10, border:`1.5px solid ${phone.trim().length > 0 ? C.topBg : C.border}`, background:C.white, cursor:'pointer', flexShrink:0, minHeight:'clamp(40px,5.2vh,48px)', transition:'border-color 0.15s, background 0.12s', whiteSpace:'nowrap' }}
                   onMouseEnter={e => e.currentTarget.style.background = C.surface}
                   onMouseLeave={e => e.currentTarget.style.background = C.white}>
-                  <span style={{ fontSize:'clamp(16px,2vw,20px)', lineHeight:1 }}>{country.flag}</span>
+                  <img src={`https://flagcdn.com/w40/${country.abbr.toLowerCase()}.png`} alt={country.abbr} width={24} height={17} style={{ borderRadius:2, objectFit:'cover', border:'1px solid #e0e0e0' }} />
                   <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:C.text }}>{country.code}</span>
                   <span style={{ fontSize:'clamp(9px,1vw,10px)', color:C.muted, marginLeft:1 }}>▾</span>
                 </button>
@@ -381,34 +544,6 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
               </div>
             </div>
 
-            {/* Loyalty states */}
-            {customer && points > 0 && (
-              <div className="fi" style={{ background:'#f0faf0', border:'1.5px solid #a8d5a8', borderRadius:10, padding:'clamp(6px,0.8vw,9px)', display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:18 }}>⭐</span>
-                <div>
-                  <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>
-                    Welcome back, {customer.name}! · Selamat datang kembali!
-                  </div>
-                  <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#2e7d32' }}>
-                    You have <strong>{points} points</strong> — tap services on the right to redeem · Tekan layanan untuk gunakan poin
-                  </div>
-                </div>
-              </div>
-            )}
-            {customer && points === 0 && (
-              <div className="fi" style={{ background:C.surface, borderRadius:10, padding:'clamp(6px,0.8vw,9px)' }}>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>⭐ Welcome back, {customer.name}! You have 0 points. Earn points today. · Kamu belum punya poin.</div>
-              </div>
-            )}
-            {!customer && !phone.trim() && (
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(6px,0.8vw,9px) clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:14 }}>⭐</span>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.text2 }}>
-                  Have points? Enter your WhatsApp number to redeem.
-                  <span style={{ color:C.muted }}> · Punya poin? Masukkan nomor WhatsApp.</span>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Inline keyboards — part of left column flow */}
@@ -434,6 +569,30 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
         <div>
           <div className="fu" style={{ animationDelay:'0.08s', background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14, padding:'clamp(8px,1.2vw,12px)' }}>
             <div style={{ fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, letterSpacing:'0.12em', color:C.muted, textTransform:'uppercase', marginBottom:6 }}>Order Summary · Ringkasan</div>
+
+            {/* Loyalty state — lives here so it never shifts the keyboard */}
+            {customer && points > 0 && (
+              <div className="fi" style={{ background:'#f0faf0', border:'1.5px solid #a8d5a8', borderRadius:10, padding:'clamp(6px,0.8vw,9px)', display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span style={{ fontSize:18 }}>⭐</span>
+                <div>
+                  <div style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:'#1a7a1a' }}>Welcome back, {customer.name}! · Selamat datang kembali!</div>
+                  <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#2e7d32' }}>You have <strong>{points} points</strong> — tap a service below to redeem · Tekan layanan untuk gunakan poin</div>
+                </div>
+              </div>
+            )}
+            {customer && points === 0 && (
+              <div className="fi" style={{ background:C.surface, borderRadius:10, padding:'clamp(6px,0.8vw,9px)', marginBottom:8 }}>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>⭐ Welcome back, {customer.name}! You have 0 points. Earn points today. · Kamu belum punya poin.</div>
+              </div>
+            )}
+            {!customer && !phone.trim() && (
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(6px,0.8vw,9px) clamp(10px,1.4vw,14px)', display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span style={{ fontSize:14 }}>⭐</span>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.text2 }}>
+                  Have points? Enter your WhatsApp number to redeem. <span style={{ color:C.muted }}>· Punya poin? Masukkan nomor WhatsApp.</span>
+                </div>
+              </div>
+            )}
 
             {/* Services with per-service points toggle */}
             {selectedServices.map(svc => {

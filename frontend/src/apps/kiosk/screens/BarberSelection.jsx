@@ -62,7 +62,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
   const anyCanNow = sortedBarbers.some(b => {
     if (['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(b.status)) return false
     const slotMin = toMin(nextSlots[b.id])
-    return slotMin !== null && slotMin <= nowMin + 1
+    return slotMin !== null && slotMin <= nowMin + 4
   })
 
   return (
@@ -157,7 +157,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                 const bSlot = nextSlots[data.id]
                 const bSlotMin = toMin(bSlot)
                 const bCanNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(data.status)
-                  && bSlotMin !== null && bSlotMin <= nowMin + 1
+                  && bSlotMin !== null && bSlotMin <= nowMin + 4
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>

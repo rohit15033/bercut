@@ -51,9 +51,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, services, menuI
   // doesn't overlap any taken slot (first available slot is at or before now)
   const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
   const barberAvailableNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(barber?.status)
-  const canNow = isAnyAvailable
-    ? firstSlotMin !== null && firstSlotMin <= nowMin + 4
-    : barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + 1
+  const canNow = barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + 4
 
   // If barber busy but slots available, offer first slot as "Next"
   const nextSlot = !canNow && slots.length > 0 ? slots[0] : null

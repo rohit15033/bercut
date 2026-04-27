@@ -88,6 +88,16 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
   }
 
   const slots = []
+
+  // Bonus: if barber is free right now, add current time as first slot (same as getUnionSlots)
+  if (isToday && nowMin >= openTime) {
+    const nowRounded = roundUpTo5(nowMin)
+    const freeNow = !blocked.some(b => nowRounded < b.end && nowRounded + durationMin > b.start)
+    if (freeNow && nowRounded <= lastOrderStart && nowRounded + durationMin <= closeTime) {
+      slots.push(minutesToTime(nowRounded))
+    }
+  }
+
   let cursor = gridStart
 
   for (const b of blocked) {

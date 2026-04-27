@@ -356,6 +356,7 @@ const WA_TEMPLATES = [
   { key: 'tpl_booking_reminder',  label: 'Late Customer Reminder', icon: '⏰', trigger: 'Auto — sent once when customer hasn\'t arrived by scheduled time', vars: 'name, barber, time' },
   { key: 'tpl_feedback_request',  label: 'Feedback Request', icon: '⭐', trigger: 'Auto — sent after service completion', vars: 'name, barber' },
   { key: 'tpl_kasbon_deducted',   label: 'Kasbon Deducted', icon: '💸', trigger: 'Auto — when kasbon is deducted from barber payroll', vars: 'name, amount' },
+  { key: 'tpl_autoreply',         label: 'Inbound Auto-Reply', icon: '🤖', trigger: 'Once per contact — sent when someone messages the system number (requires Fonnte webhook)', vars: '' },
 ]
 
 const DEFAULT_TEMPLATES = {
@@ -364,6 +365,7 @@ const DEFAULT_TEMPLATES = {
   tpl_points_earned: 'Hai {{name}}! 🎁\n\nAnda mendapat {{points}} poin dari kunjungan hari ini!\n⭐ Total poin: {{total}}\n\nKumpulkan poin dan tukarkan di kunjungan berikutnya!',
   tpl_barber_new_booking: 'Hai {{barber}}! 💇\n\nBooking baru masuk:\n👤 Customer: {{customer}}\n⏰ Jam: {{time}}\n📅 Tanggal: {{date}}\n🎫 No: {{queue_no}}\n✂️ Layanan: {{service}}\n\nSiap-siap ya! 💪',
   tpl_barber_escalation: '⚠️ {{barber}}, customer {{customer}} ({{queue_no}}) sudah menunggu sejak jam {{time}}.\n\nSegera mulai layanan! (Pengingat ke-{{count}})',
+  tpl_autoreply: 'Hi! This number is automated and cannot reply to messages. For directions or to find us, visit: https://maps.app.goo.gl/nheFJ1Mxm76xLaPD6 — Bercut Barbershop Kerobokan',
 }
 
 function WhatsAppTab() {
@@ -426,7 +428,7 @@ function WhatsAppTab() {
 
       {/* Fonnte credentials */}
       <div style={{ marginBottom: 28 }}>
-        <SectionTitle title="Fonnte Credentials" sub="API key from fonnte.com. Keep it secret — it authorises all sends from your WhatsApp number." />
+        <SectionTitle title="Fonnte Credentials" sub={<>API key from fonnte.com. Keep it secret — it authorises all sends from your WhatsApp number. For the inbound auto-reply to work, set your Fonnte webhook URL to <code style={{ fontFamily: 'monospace', fontSize: 11, background: '#f3f4f6', padding: '1px 5px', borderRadius: 3 }}>{window.location.origin}/api/webhook/fonnte</code></>} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 640 }}>
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>API Key (Fonnte Token)</label>

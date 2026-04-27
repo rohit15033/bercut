@@ -76,7 +76,7 @@ router.patch('/whatsapp', requireAdmin, requireOwner, async (req, res) => {
     const allowed = ['enabled','fonnte_token',
       'tpl_booking_confirmed','tpl_booking_reminder','tpl_payment_receipt',
       'tpl_feedback_request','tpl_points_earned','tpl_kasbon_deducted',
-      'tpl_barber_new_booking','tpl_barber_escalation']
+      'tpl_barber_new_booking','tpl_barber_escalation','tpl_autoreply']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }

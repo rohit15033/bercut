@@ -5,14 +5,18 @@ const pool = require('../config/db')
 // Barbers who are in_service, on_break, clocked_out, or off are excluded entirely.
 async function getActiveBarbers(client, branchId) {
   const { rows } = await client.query(
-    `SELECT b.id, b.name, MAX(bk.completed_at) AS last_completed_at
+    `SELECT b.id, b.name,
+            MAX(bk.completed_at) AS last_completed_at,
+            MIN(a.clock_in_at) AS clocked_in_at
      FROM barbers b
      LEFT JOIN bookings bk ON bk.barber_id = b.id
        AND bk.status IN ('pending_payment','completed')
        AND DATE(bk.completed_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')
+     LEFT JOIN attendance a ON a.barber_id = b.id
+       AND DATE(a.clock_in_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')
      WHERE b.branch_id = $1 AND b.is_active = true AND b.status = 'available'
      GROUP BY b.id, b.name
-     ORDER BY last_completed_at ASC NULLS FIRST, b.name ASC`,
+     ORDER BY last_completed_at ASC NULLS FIRST, clocked_in_at ASC NULLS LAST, b.name ASC`,
     [branchId]
   )
   return rows

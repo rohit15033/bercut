@@ -5,24 +5,17 @@
 
 ## Your Role
 
-You are the **primary brain** for the Bercut project. You do everything except physically run
-the app. Antigravity (Google IDE AI agent) is the executor — it reads your output, runs it on
-localhost, and wires it to a real backend.
+You are the **sole engineer** for the Bercut project. You own everything: planning, mockups, shared frontend, production screens, backend, and deploy config. There is no other agent.
 
-**You own:**
+**You build:**
 - Feature planning and technical specs
 - Architecture decisions
-- Visual mockups (`mockups/`)
+- Visual mockups (`mockups/`) — frozen; change only if Bercut requests it
 - Shared frontend foundation (`frontend/src/shared/`, `frontend/src/App.jsx`)
+- Production screens (`frontend/src/apps/`)
+- Entire backend (`backend/`)
 - Deploy configuration (`deploy/`)
-- Reviewing and correcting Antigravity's output when needed
-- Keeping `_ai/decisions-log.md` updated after every session
-
-**Antigravity owns:**
-- Building production screens in `frontend/src/apps/`
-- Building the entire `backend/`
-- Running the app on localhost and verifying it looks and works correctly
-- Wiring real API calls into the screens you prototyped
+- `_ai/decisions-log.md` — update after every session where a decision is made
 
 ---
 
@@ -31,14 +24,14 @@ localhost, and wires it to a real backend.
 **Pre-build audit completed 2026-04-20. All 28 checklist items PASS.**
 See `_ai/pre-build-audit.md` for the full audit.
 
-The current phase is: **PRODUCTION BUILD**.
-- Mockups in `mockups/` are frozen — they are the approved visual contract
-- `backend/` and `frontend/src/apps/` are now actively being built by Antigravity
-- Any mockup changes require re-audit of affected sections
+Current phase: **PRODUCTION BUILD**
+- Mockups in `mockups/` are the approved visual contract — frozen unless Bercut requests a change
+- `backend/` and `frontend/src/apps/` are actively being built
+- Any mockup change requires re-audit of affected schema/API sections
 
-If Bercut requests changes during production build:
-1. Check whether the change affects DB schema or API contract in `_ai/system-plan.md`
-2. If it does, update `system-plan.md` and `decisions-log.md` first
+If Bercut requests a UI change during build:
+1. Check whether it affects DB schema or API contract in `_ai/system-plan.md`
+2. If yes → update `system-plan.md` and `decisions-log.md` first
 3. Then update the mockup for visual reference
 4. Then update the production code
 
@@ -47,32 +40,30 @@ If Bercut requests changes during production build:
 ## Workflow — Production Build Phase
 
 ```
-Step 1 — PLAN
-  Read _ai/system-plan.md, _ai/decisions-log.md, and _ai/pre-build-audit.md
-  Identify which module/phase to build next (see prompting-guide.md Section 03)
-  Check for known gaps in pre-build-audit.md Section F2
+Step 1 — READ
+  decisions-log.md (ground truth — read this first, every session)
+  system-plan.md (schema, API contracts, business rules)
+  prompting-guide.md (build phases, per-screen handoff, route specs)
+  pre-build-audit.md (known gaps in Section F2)
 
-Step 2 — BUILD (Antigravity)
+Step 2 — BUILD
   Follow prompting-guide.md build phases in order:
     Phase 0: Foundation (schema, backend skeleton, frontend foundation, SSE)
     Phase 1: Kiosk booking flow (services → confirm → queue → payment → barber panel)
     Phase 2: Admin dashboard (all 16 screens)
     Phase 3: Services layer (background jobs, escalation, payroll calculator)
     Phase 4: Deployment config (nginx, PM2, setup script)
+
   For each screen:
-    a. Read the mockup file as visual reference
-    b. Build the production screen in frontend/src/apps/
-    c. Build the backend route(s) it needs
-    d. Replace mock data with real API calls
-    e. Test on localhost, verify visually against mockup
+    a. Read the mockup file as the visual contract
+    b. Read the matching section in prompting-guide.md for API + logic
+    c. Build the production screen in frontend/src/apps/[app]/screens/
+    d. Build the backend route(s) it needs
+    e. Use shared/api.js for all fetch calls, shared/useSSE.js for real-time
+    f. Wire real API calls; remove mock data
 
-Step 3 — REVIEW (Claude Code, when needed)
-  If Antigravity's output has structural or logic problems, review and correct
-  Update _ai/decisions-log.md with anything that changed
-
-Step 4 — DEPLOY
-  Build frontend: cd frontend && npm run build → outputs to backend/public/
-  Transfer to VPS, run schema + seed, start with PM2
+Step 3 — LOG
+  Append to decisions-log.md for any decision made this session
 ```
 
 ---
@@ -85,9 +76,9 @@ Two PWA apps in one Vite build: **Kiosk** (includes BarberPanel) and **Admin Das
 One Node.js + Express backend. Self-hosted on Rumahweb VPS.
 
 **Always read before starting any session:**
+- `_ai/decisions-log.md` — ground truth for all decisions (read first)
 - `_ai/system-plan.md` — full system design, DB schema, user flows, business rules
 - `_ai/prompting-guide.md` — build phases, per-screen handoff, API contracts
-- `_ai/decisions-log.md` — running log of all decisions (most recent = ground truth)
 - `_ai/pre-build-audit.md` — gap analysis, known issues, checklist
 
 ---
@@ -97,15 +88,17 @@ One Node.js + Express backend. Self-hosted on Rumahweb VPS.
 ```
 bercut-kiosk/
 │
-├── _ai/                              ← Read every session
-│   ├── CLAUDE.md                     ← This file
+├── CLAUDE.md                             ← Root pointer (auto-loaded)
+├── _ai/                                  ← Read every session
+│   ├── CLAUDE.md                         ← This file (full context)
 │   ├── system-plan.md
 │   ├── prompting-guide.md
-│   └── decisions-log.md
+│   ├── decisions-log.md
+│   └── pre-build-audit.md
 │
-├── mockups/                          ← Claude Code builds here
+├── mockups/                              ← Frozen visual contract
 │   ├── kiosk/
-│   │   ├── BercutKiosk.jsx           ← main kiosk router
+│   │   ├── BercutKiosk.jsx
 │   │   ├── Welcome.jsx
 │   │   ├── ServiceSelection.jsx
 │   │   ├── BarberSelection.jsx
@@ -114,11 +107,10 @@ bercut-kiosk/
 │   │   ├── QueueNumber.jsx
 │   │   ├── PaymentTakeover.jsx
 │   │   ├── StaffPanel.jsx
-│   │   ├── BarberPanel.jsx           ← kiosk barber mode (PIN-protected)
-│   │   └── AdminPanel.jsx            ← kiosk admin mode (password-protected)
-│   │   NOTE: No barber-app/ folder — barber functions live inside kiosk panels (Meeting 2)
+│   │   ├── BarberPanel.jsx
+│   │   └── AdminPanel.jsx
 │   └── admin/
-│       ├── BercutAdmin.jsx           ← main admin router + sidebar (14 nav items)
+│       ├── BercutAdmin.jsx
 │       ├── Overview.jsx
 │       ├── LiveMonitor.jsx
 │       ├── BranchDetail.jsx
@@ -134,22 +126,17 @@ bercut-kiosk/
 │       ├── OnlineBooking.jsx
 │       ├── KioskConfig.jsx
 │       ├── Settings.jsx
-│       └── data.js                  ← mock data (frozen, reference only)
+│       └── data.js                       ← Mock data (reference only)
 │
-├── frontend/                         ← Antigravity builds here (production)
+├── frontend/                             ← Production frontend
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── package.json
-│   ├── .env
-│   ├── .env.example
-│   ├── public/
-│   │   ├── manifest.json
-│   │   ├── sw.js
-│   │   └── icons/
+│   ├── .env / .env.example
 │   └── src/
 │       ├── main.jsx
-│       ├── App.jsx                   ← Claude Code writes this
-│       ├── shared/                   ← Claude Code owns this entirely
+│       ├── App.jsx                       ← Root router
+│       ├── shared/                       ← Shared infrastructure
 │       │   ├── tokens.js
 │       │   ├── api.js
 │       │   ├── useSSE.js
@@ -157,48 +144,27 @@ bercut-kiosk/
 │       │       ├── Topbar.jsx
 │       │       ├── Button.jsx
 │       │       └── Card.jsx
-│       └── apps/                     ← Antigravity builds here
+│       └── apps/                         ← Production screens
 │           ├── kiosk/
-│           │   ├── KioskApp.jsx     ← shell: device setup, idle, offline, panels
-│           │   ├── screens/         ← all kiosk screens (11 files)
+│           │   ├── KioskApp.jsx
+│           │   ├── screens/
 │           │   └── components/
 │           └── admin/
-│               ├── AdminApp.jsx     ← shell: sidebar, auth, permissions
-│               ├── screens/         ← all admin screens (16 files)
+│               ├── AdminApp.jsx
+│               ├── screens/
 │               └── components/
 │
-├── backend/                          ← Antigravity builds here
-│   ├── package.json
-│   ├── .env
-│   ├── .env.example
+├── backend/                              ← Production backend
 │   ├── server.js
-│   ├── config/
-│   │   └── db.js                     ← PostgreSQL pool (node-postgres)
-│   ├── routes/
-│   │   ├── auth.js
-│   │   ├── branches.js
-│   │   ├── services.js
-│   │   ├── barbers.js
-│   │   ├── slots.js
-│   │   ├── bookings.js
-│   │   ├── payments.js
-│   │   ├── attendance.js
-│   │   ├── expenses.js
-│   │   ├── inventory.js
-│   │   ├── reports.js
-│   │   └── events.js                 ← SSE endpoint GET /api/events?branch_id=
-│   ├── middleware/
-│   │   ├── auth.js                   ← JWT verification
-│   │   └── branchScope.js            ← Enforces branch_id on every query
-│   ├── services/
-│   │   ├── slotGenerator.js          ← Slot availability logic (pure, testable)
-│   │   ├── notifications.js          ← SSE emit + Web Push Phase 2
-│   │   └── escalation.js             ← Acknowledgement timer + escalation
+│   ├── config/db.js
+│   ├── routes/                           ← One file per resource
+│   ├── middleware/auth.js + branchScope.js
+│   ├── services/                         ← slotGenerator, notifications, escalation
 │   └── db/
-│       ├── schema.sql                ← Full PostgreSQL schema (run once on VPS)
-│       └── seed.sql                  ← Dev seed data
+│       ├── schema.sql
+│       └── seed.sql
 │
-└── deploy/                           ← Claude Code builds here
+└── deploy/
     ├── nginx.conf
     ├── ecosystem.config.js
     └── setup.sh
@@ -206,73 +172,29 @@ bercut-kiosk/
 
 ---
 
-## What Claude Code Builds In Detail
+## Mockup File Rules
 
-### mockups/
-Every screen gets a mockup before Antigravity touches production code. No exceptions.
-
-Rules for every mockup file:
-- One screen per file
-- Hardcoded realistic mock data at the top (IDR prices, Indonesian names, real bilingual copy)
-- All state self-contained with `useState` — must run with zero props passed in
-- Inline styles only — no Tailwind, no CSS modules, no imports from `src/`
-- No API calls whatsoever
-- Follow every design token and rule in this file exactly
+Every mockup file must:
+- Cover one screen
+- Use hardcoded realistic mock data at the top (IDR prices, Indonesian names, bilingual copy)
+- Be fully self-contained with `useState` — zero props required
+- Use inline styles only — no Tailwind, no CSS modules, no imports from `src/`
+- Make no API calls
 
 Required header on every mockup:
 ```jsx
 /**
- * MOCKUP — Bercut [Kiosk | Barber App | Admin]: [Screen Name]
+ * MOCKUP — Bercut [Kiosk | Admin]: [Screen Name]
  *
  * What it does: [one sentence]
- * State managed: [useState variables this screen owns]
- * Production API: [the real endpoint Antigravity will connect]
- * Feeds into: [what screen or event comes next]
+ * State managed: [useState variables]
+ * Production API: [real endpoint]
+ * Feeds into: [next screen or event]
+ * Production file: frontend/src/apps/[kiosk|admin]/screens/[ScreenName].jsx
  *
  * VISUAL PROTOTYPE — no backend calls.
- * Antigravity: build production version at
- * frontend/src/apps/[kiosk|barber|admin]/screens/[ScreenName].jsx
- * Reference prompt: _ai/prompting-guide.md Section [N]
  */
 ```
-
-### frontend/src/shared/
-You write and own all shared infrastructure:
-
-```js
-// tokens.js — single source of truth for all design tokens
-// api.js — base fetch wrapper, reads VITE_API_URL from env
-// useSSE.js — EventSource hook, auto-reconnects, accepts branch_id param
-// App.jsx — root router: /kiosk → KioskApp, /barber → BarberApp, /admin → AdminApp
-// shared/components/ — Topbar, Button, Card base components used across all three apps
-```
-
-### deploy/
-```
-nginx.conf         — reverse proxy config, SSE buffering off, SPA fallback
-ecosystem.config.js — PM2 config, single instance (required for SSE)
-setup.sh           — one-time VPS setup: Node, Postgres, Nginx, PM2, firewall rules
-```
-
----
-
-## What Antigravity Builds In Detail
-
-### frontend/src/apps/
-For each screen, Antigravity:
-1. Opens the mockup from `mockups/` as visual reference
-2. Reads the matching section in `_ai/prompting-guide.md` for API and logic details
-3. Builds the screen in `frontend/src/apps/[app]/screens/`
-4. Uses `shared/api.js` for all fetch calls
-5. Uses `shared/useSSE.js` for real-time subscriptions
-6. Opens localhost in the IDE browser, verifies it matches the mockup visually
-
-### backend/
-1. Reads `_ai/system-plan.md` Sections 06–09 for schema, business rules, and API contracts
-2. Reads `_ai/prompting-guide.md` Sections 08–09 for schema SQL and endpoint logic
-3. Creates `backend/db/schema.sql` and runs it on Postgres
-4. Builds each route file in `backend/routes/`
-5. Tests each endpoint before moving to the next
 
 ---
 
@@ -280,33 +202,36 @@ For each screen, Antigravity:
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Frontend | React + Vite PWA | Single app, three routes |
+| Frontend | React + Vite PWA | Single app, two routes: /kiosk and /admin |
 | Styling | Inline styles in mockups, tokens.js in production | No Tailwind |
 | Backend | Node.js + Express | REST + SSE |
 | Database | PostgreSQL | Self-hosted on VPS |
 | Real-time | Server-Sent Events | `GET /api/events?branch_id=` |
-| Payment | Xendit Terminal H2H | REST API from backend → terminal → webhook confirm. No BCA EDC, no Midtrans. |
-| Notifications P1 | Web Speech API | Kiosk speaker, free, zero setup |
-| Notifications P2 | Web Push PWA | Free, Android Chrome |
+| Payment — Card | Xendit Terminal H2H | REST API: backend → terminal → webhook confirm |
+| Payment — QRIS | Xendit QR Codes v2 | `POST /v2/qr_codes` on api.xendit.co; QR rendered on kiosk screen |
+| Notifications P1 | Web Speech API | Kiosk speaker, zero setup |
+| Notifications P2 | Web Push PWA | Android Chrome |
+| WhatsApp | Fonnte (P2) | Customer confirmations; abstracted in notifications.js |
 | Receipts | ESC/POS thermal printer | Epson TM-T82 or equivalent |
 | Hosting | Rumahweb VPS | Nginx + PM2 + PostgreSQL self-hosted |
+| Kiosk device | Windows touchscreen | Assigned Access for browser lockdown |
 
 ### Key Vite config
 ```js
 server: { proxy: { '/api': 'http://localhost:3000' } },  // dev only
-build: { outDir: '../backend/public' }  // Nginx serves from here in production
+build: { outDir: '../backend/public' }                   // Nginx serves from here
 ```
 
 ### Key Nginx rules
 ```nginx
 location /api/ {
   proxy_pass http://localhost:3000;
-  proxy_buffering off;    # CRITICAL — never remove, SSE breaks without this
+  proxy_buffering off;    # CRITICAL — SSE breaks without this
   proxy_cache off;
   chunked_transfer_encoding on;
 }
 location / {
-  try_files $uri $uri/ /index.html;   # SPA fallback for React Router
+  try_files $uri $uri/ /index.html;  # SPA fallback
 }
 ```
 
@@ -315,7 +240,7 @@ location / {
 ## Design Tokens
 
 ```js
-// frontend/src/shared/tokens.js — use these exact values everywhere
+// frontend/src/shared/tokens.js
 export const tokens = {
   bg:         '#FAFAF8',  // warm off-white page background
   surface:    '#F2F0EB',  // input fields, secondary surfaces
@@ -337,9 +262,9 @@ export const tokens = {
 
 ## Colour Rules — Critical
 
-1. **Yellow (`#F5E200`) is NEVER text on white or light backgrounds.** Contrast fails. Yellow is a filled background only.
+1. **Yellow (`#F5E200`) is NEVER text on white or light backgrounds.** Yellow is a filled background only.
 2. **Text ON yellow must always be `#111110`.**
-3. **Selected card state:** background → `#F5E200`, ALL text inside including muted labels, durations, prices → `#111110`. No exceptions.
+3. **Selected card state:** background → `#F5E200`, ALL text inside → `#111110`. No exceptions.
 4. **`#111110` is the primary button colour** — dark button, white text. Not yellow.
 5. **Yellow on dark topbar** = valid. Logo and topText use this.
 
@@ -361,22 +286,26 @@ export const tokens = {
 
 ## Business Rules
 
-- **POSTPAID.** Customers never pay during or after the booking flow. Payment is a separate mode triggered when barber taps Complete.
-- **Cashless only.** QRIS and card via Xendit Terminal H2H. No cash.
-- **Tip** is shown on PaymentTakeover — never on booking confirmation.
+- **POSTPAID.** Payment triggered after barber taps Complete — never during booking.
+- **Cashless only.** QRIS (on kiosk screen) and card (via Xendit Terminal). No cash.
+- **Tip** is shown on PaymentTakeover only — never on booking confirmation.
 - **Barber taps Complete** → backend emits SSE `payment_trigger` → kiosk opens PaymentTakeover.
-- **Staff panel** → triple-tap top-right corner of kiosk topbar. No PIN, no visual indicator.
+- **Staff panel** → tap Topbar logo → password modal (Admin) or PIN modal (Barber).
 - **All data is branch-scoped.** Every DB query includes `branch_id`. Every API call filters by branch.
 - **Booking lifecycle:** `confirmed → in_progress → pending_payment → completed | no_show | cancelled`
+- **Kiosk device auth:** permanent device token in localStorage, sent as `X-Kiosk-Token` header.
+- **Any Available assignment:** fewest any-available bookings today, tiebreak by sort_order.
+- **No-show / cancel:** admin-only actions via Live Queue Management. Barbers use "Belum Datang" alert only.
+- **Escalation:** auto WA to barber on new booking; recurring WA if barber hasn't started by threshold.
 
 ---
 
-## Languages
+## Language Rules
 
-| App | Language rule |
+| App | Rule |
 |---|---|
 | Kiosk | English primary label + Bahasa Indonesia subtitle below every label |
-| Barber App | Bahasa Indonesia only — no English anywhere |
+| Barber Panel | Bahasa Indonesia only |
 | Admin Dashboard | English primary |
 
 ---
@@ -389,6 +318,7 @@ export const tokens = {
 - **`overscroll-behavior: none`** on body
 - **`-webkit-overflow-scrolling: touch`** on scrollable containers
 - No hover-only states
+- Kiosk screen: **30-inch landscape**
 
 ---
 
@@ -397,15 +327,17 @@ export const tokens = {
 | Mistake | Correct |
 |---|---|
 | Yellow as text on white/light background | Yellow is a background only — text on yellow is `#111110` |
-| Grey/muted text left on selected yellow card | All text flips to `#111110` on yellow background |
+| Muted/grey text on selected yellow card | All text flips to `#111110` on yellow |
 | `onTouchStart` for interactions | Always `onClick` |
 | Fixed pixel widths for layout | Use `clamp(min, fluid, max)` |
 | Payment step inside the booking flow | PaymentTakeover only — triggered post-service via SSE |
-| Tip on booking confirmation screen | Tip is on PaymentTakeover only |
-| English copy in barber app | Bahasa Indonesia only |
+| Tip on booking confirmation | Tip is on PaymentTakeover only |
+| English copy in barber panel | Bahasa Indonesia only |
 | DB query without `branch_id` filter | Every query must be branch-scoped |
 | `useState` for triple-tap counter | Use `useRef` — re-renders break tap timing |
 | `proxy_buffering on` in Nginx for SSE | Always `proxy_buffering off` |
+| Single commission rate per barber | Commission is per-service; barbers.commission_rate is fallback only |
+| Kasbon in payroll adjustments | Kasbon flows from Expenses (type=kasbon) — auto-imported, read-only in payroll |
 
 ---
 
@@ -415,14 +347,6 @@ Append one line after every session where a decision is made:
 
 ```
 YYYY-MM-DD | [decision] | [reason]
-```
-
-```
-2026-03-25 | Single Vite app with routing — not monorepo | simpler for one dev, one VPS
-2026-03-25 | Rumahweb VPS self-hosted | client already has VPS, avoids Railway/Render cost
-2026-03-25 | SSE for real-time — not WebSockets | zero extra infra, sufficient for queue updates
-2026-04-04 | Xendit Terminal H2H — replaces BCA EDC entirely | Android kiosk is half the cost of Windows; Xendit is internet-based REST so no platform constraint; internet dependency on payments accepted by Bercut
-2026-03-25 | Web Speech API for P1 notifications — no Fonnte/Zenziva | free, zero setup, barbers on premises
 ```
 
 This file is read first every session. It is the ground truth for what has been decided.

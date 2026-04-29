@@ -1,0 +1,7 @@
+scratch/
+deploy/
+backend/public/
+frontend/public/
+graphify-out/
+.git/
+node_modules/

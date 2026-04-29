@@ -6,3 +6,14 @@ backend/public/
 .env
 .env.local
 frontend/package-lock.json
+
+# Graphify
+graphify-out/
+.graphify_*
+/.obsidian
+/.claude
+/_ai
+/_ai
+*.md
+*.md
+_ai/CLAUDE.md

@@ -134,7 +134,7 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
   const barberIds = barbers.map(b => b.id)
 
   const { rows: bookingRows } = await pool.query(
-    `SELECT bk.barber_id,
+    `SELECT bk.barber_id, bk.status,
             TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
             SUM(s.duration_minutes) AS total_duration
      FROM bookings bk
@@ -143,7 +143,7 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
      WHERE bk.barber_id = ANY($1::uuid[])
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
        AND bk.status IN ('confirmed','in_progress')
-     GROUP BY bk.barber_id, bk.id, bk.scheduled_at`,
+     GROUP BY bk.barber_id, bk.id, bk.scheduled_at, bk.status`,
     [barberIds, date]
   )
 
@@ -157,13 +157,21 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
     [barberIds, date]
   )
 
+  const { rows: timeRows } = await pool.query(
+    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
+  )
+  const nowMin   = minutesFromMidnight(timeRows[0].t)
+  const isToday  = timeRows[0].d === date
+
   // Build per-barber blocked intervals
   const blockedMap = {}
   for (const b of barbers) blockedMap[b.id] = []
   for (const bk of bookingRows) {
     if (!bk.slot_time) continue
-    const start = minutesFromMidnight(bk.slot_time)
-    blockedMap[bk.barber_id].push({ start, end: start + parseInt(bk.total_duration || 30) + BUFFER_MIN })
+    const start        = minutesFromMidnight(bk.slot_time)
+    const estimatedEnd = start + parseInt(bk.total_duration || 30)
+    const isOverrun    = bk.status === 'in_progress' && isToday && nowMin > estimatedEnd
+    blockedMap[bk.barber_id].push({ start, end: isOverrun ? nowMin + 5 : estimatedEnd + BUFFER_MIN })
   }
   for (const br of breakRows) {
     blockedMap[br.barber_id].push({
@@ -171,12 +179,6 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
       end:   minutesFromMidnight(br.end_time),
     })
   }
-
-  const { rows: timeRows } = await pool.query(
-    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
-  )
-  const nowMin   = minutesFromMidnight(timeRows[0].t)
-  const isToday  = timeRows[0].d === date
   const gridStart = Math.max(openTime, isToday ? Math.ceil(nowMin / GRID) * GRID : openTime)
 
   const isFreeAt = (t) => barbers.some(b => !blockedMap[b.id].some(bk => t < bk.end && t + durationMin > bk.start))

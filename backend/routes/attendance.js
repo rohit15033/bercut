@@ -2,6 +2,7 @@ const router = require('express').Router()
 const pool   = require('../config/db')
 const { requireAdmin, requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
+const { tryAssignDeferred } = require('../services/barberAssignment')
 
 // GET /api/attendance?branch_id=&barber_id=&month=&year=
 router.get('/', requireAdmin, async (req, res) => {
@@ -42,6 +43,20 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
     await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [barber_id])
     emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
     res.status(201).json(rows[0])
+
+    // Assign any deferred any_available booking to this newly clocked-in barber
+    tryAssignDeferred(branch_id, barber_id).then(assigned => {
+      if (!assigned) return
+      pool.query(
+        `SELECT bk.*, COALESCE(bk.guest_name, c.name) AS customer_name, bar.name AS barber_name
+         FROM bookings bk
+         LEFT JOIN customers c ON c.id = bk.customer_id
+         LEFT JOIN barbers bar ON bar.id = bk.barber_id
+         WHERE bk.id = $1`, [assigned.bookingId]
+      ).then(r => {
+        if (r.rows[0]) emitEvent(branch_id, 'booking_updated', r.rows[0])
+      }).catch(() => {})
+    }).catch(e => console.error('[ClockIn] tryAssignDeferred failed:', e))
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 

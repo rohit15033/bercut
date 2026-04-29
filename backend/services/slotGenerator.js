@@ -33,6 +33,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
 
   const bookings = await pool.query(
     `SELECT TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
+            TO_CHAR(bk.started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS started_time,
             bk.status,
             SUM(s.duration_minutes) AS total_duration
      FROM bookings bk
@@ -41,7 +42,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
      WHERE bk.barber_id = $1
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
        AND bk.status IN ('confirmed','in_progress')
-     GROUP BY bk.id, bk.scheduled_at, bk.status`,
+     GROUP BY bk.id, bk.scheduled_at, bk.started_at, bk.status`,
     [barberId, date])
 
   const breaks = await pool.query(
@@ -62,7 +63,11 @@ async function getAvailableSlots(barberId, date, durationMin = 30) {
   for (const bk of bookings.rows) {
     if (!bk.slot_time) continue
     const start        = minutesFromMidnight(bk.slot_time)
-    const estimatedEnd = start + parseInt(bk.total_duration || 30)
+    // Use actual started_at for in_progress bookings — barber may have started early
+    const effectiveStart = bk.status === 'in_progress' && bk.started_time
+      ? minutesFromMidnight(bk.started_time)
+      : start
+    const estimatedEnd = effectiveStart + parseInt(bk.total_duration || 30)
     const isOverrun    = bk.status === 'in_progress' && isToday && nowMin > estimatedEnd
     blocked.push({ start, end: isOverrun ? nowMin + 5 : estimatedEnd + BUFFER_MIN })
   }
@@ -136,6 +141,7 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
   const { rows: bookingRows } = await pool.query(
     `SELECT bk.barber_id, bk.status,
             TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
+            TO_CHAR(bk.started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS started_time,
             SUM(s.duration_minutes) AS total_duration
      FROM bookings bk
      JOIN booking_services bsv ON bsv.booking_id = bk.id
@@ -143,7 +149,7 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
      WHERE bk.barber_id = ANY($1::uuid[])
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
        AND bk.status IN ('confirmed','in_progress')
-     GROUP BY bk.barber_id, bk.id, bk.scheduled_at, bk.status`,
+     GROUP BY bk.barber_id, bk.id, bk.scheduled_at, bk.started_at, bk.status`,
     [barberIds, date]
   )
 
@@ -169,7 +175,10 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
   for (const bk of bookingRows) {
     if (!bk.slot_time) continue
     const start        = minutesFromMidnight(bk.slot_time)
-    const estimatedEnd = start + parseInt(bk.total_duration || 30)
+    const effectiveStart = bk.status === 'in_progress' && bk.started_time
+      ? minutesFromMidnight(bk.started_time)
+      : start
+    const estimatedEnd = effectiveStart + parseInt(bk.total_duration || 30)
     const isOverrun    = bk.status === 'in_progress' && isToday && nowMin > estimatedEnd
     blockedMap[bk.barber_id].push({ start, end: isOverrun ? nowMin + 5 : estimatedEnd + BUFFER_MIN })
   }

@@ -681,7 +681,11 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         const { type, data } = JSON.parse(e.data)
         if (data?.booking_id !== bookingId) return
         if (type === 'payment_complete') { setPhase('receipt') }
-        else if (type === 'payment_failed') { setSessionId(null); setSessionMethod(null); setPhase('failed') }
+        else if (type === 'payment_failed') {
+          // Ignore failures from old/stale sessions — late webhook delivery
+          if (data.session_id && data.session_id !== sessionId) return
+          setSessionId(null); setSessionMethod(null); setPhase('failed')
+        }
       } catch {}
     }
     return () => es.close()

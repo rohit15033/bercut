@@ -104,10 +104,21 @@ router.post('/terminal/session', requireKiosk, async (req, res) => {
       metadata: { booking_id, branch_id: booking.branch_id, tip_amount: parseFloat(tip_amount || 0) }
     }
 
+    // If this booking already has a session ref, try retrying it first
+    // (Xendit rejects new session creation when one is still active for the same reference_id)
+    if (booking.payment_ref) {
+      const retried = await xenditPost(`/v1/terminal/sessions/${booking.payment_ref}/retry`, {})
+      if (!retried.error_code) {
+        console.log('[Terminal] Reused existing session via retry:', booking.payment_ref)
+        return res.json({ session_id: booking.payment_ref, status: retried.status || 'ACTIVE' })
+      }
+      console.log('[Terminal] Retry of existing session failed, creating new session. error_code:', retried.error_code)
+    }
+
     const idempotencyKey = `bercut-${booking_id}-${Date.now()}`
     const session = await xenditPost('/v1/terminal/sessions', payload, idempotencyKey)
     if (session.error_code) {
-      console.error('[Terminal] Xendit error:', JSON.stringify(session))
+      console.error('[Terminal] Xendit error creating session:', JSON.stringify(session))
       return res.status(502).json({ message: session.message || 'Xendit error', error_code: session.error_code })
     }
 
@@ -232,7 +243,7 @@ router.post('/webhook', async (req, res) => {
       const bookingId = resolveBookingId(data)
       if (bookingId) {
         const bk = await pool.query('SELECT branch_id FROM bookings WHERE id=$1', [bookingId])
-        if (bk.rows[0]) emitEvent(bk.rows[0].branch_id, 'payment_failed', { booking_id: bookingId, reason: event })
+        if (bk.rows[0]) emitEvent(bk.rows[0].branch_id, 'payment_failed', { booking_id: bookingId, session_id: data.payment_session_id, reason: event })
       }
     } else if (event === 'qr.payment') {
       // QRIS on-screen payment confirmed

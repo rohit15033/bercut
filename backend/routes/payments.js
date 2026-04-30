@@ -128,7 +128,9 @@ router.get('/terminal/session/:id/status', requireKiosk, async (req, res) => {
       if (bookingId) {
         const amount = parseFloat(session.amount || 0)
         const payMethod = mapXenditPaymentMethod(session.payment_details?.payment_method)
-        await markPaidIfNeeded(bookingId, amount, payMethod, session.payment_session_id).catch(e => console.error('[Poll] markPaid failed:', e))
+        await markPaidIfNeeded(bookingId, amount, payMethod, session.payment_session_id)
+      } else {
+        console.error('[Poll] COMPLETED session but could not resolve booking_id. session_id:', req.params.id, 'reference_id:', session.reference_id)
       }
     }
 

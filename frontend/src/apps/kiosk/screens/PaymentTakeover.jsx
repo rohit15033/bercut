@@ -331,46 +331,70 @@ function QRISScreen({ qrString, qrId, bookingId, grand, expiresAt, onSuccess, on
   )
 }
 
-// ── Awaiting Terminal Screen ───────────────────────────────────────────────────
-function AwaitingTerminalScreen({ sessionId, method, grand, onSuccess, onFail, onCancel }) {
-  const [elapsed, setElapsed] = useState(0)
+// ── PIN Overlay — staff-only gate ─────────────────────────────────────────────
+function PinOverlay({ adminPin, onSuccess, onClose }) {
+  const [pin, setPin] = useState('')
+  const [error, setError] = useState(false)
+  const KEYS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
 
-  useEffect(() => {
-    const t = setInterval(() => setElapsed(s => s + 1), 1000)
-    return () => clearInterval(t)
-  }, [])
+  const press = (k) => {
+    if (k === '⌫') { setError(false); setPin(p => p.slice(0, -1)); return }
+    if (!k) return
+    const next = pin + k
+    setPin(next)
+    setError(false)
+    if (next.length === 4) {
+      if (next === String(adminPin)) { onSuccess() }
+      else { setError(true); setTimeout(() => { setPin(''); setError(false) }, 600) }
+    }
+  }
 
-  useEffect(() => {
-    if (!sessionId) return
-    const poll = setInterval(async () => {
-      try {
-        const data = await kioskApi.get(`/payments/terminal/session/${sessionId}/status`)
-        if (data.status === 'COMPLETED') { clearInterval(poll); onSuccess() }
-        else if (data.status === 'FAILED' || data.status === 'CANCELED') { clearInterval(poll); onFail() }
-      } catch { /* keep polling on network error */ }
-    }, 3000)
-    return () => clearInterval(poll)
-  }, [sessionId, onSuccess, onFail])
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:9000, background:'rgba(0,0,0,0.7)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:C.white, borderRadius:20, padding:'clamp(24px,3.5vw,36px)', width:'clamp(280px,36vw,340px)', textAlign:'center' }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:'clamp(16px,2.2vw,20px)', color:C.text, marginBottom:6 }}>Staff PIN</div>
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:20 }}>Enter admin PIN to continue</div>
+        <div style={{ display:'flex', justifyContent:'center', gap:10, marginBottom:20 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{ width:14, height:14, borderRadius:'50%', background: i < pin.length ? (error ? '#ef5350' : C.accent) : C.border, transition:'background 0.15s' }} />
+          ))}
+        </div>
+        {KEYS.map((row, ri) => (
+          <div key={ri} style={{ display:'flex', gap:8, marginBottom:8 }}>
+            {row.map((k, ki) => (
+              <button key={ki} onClick={() => press(k)} disabled={!k}
+                style={{ flex:1, height:'clamp(44px,6vh,56px)', borderRadius:10, border:'none', fontSize:k === '⌫' ? 18 : 'clamp(18px,2.4vw,24px)', fontWeight:700, fontFamily:"'Inter',sans-serif", background:k ? C.surface : 'transparent', color:k ? C.text : 'transparent', cursor:k ? 'pointer' : 'default', opacity:k ? 1 : 0 }}>
+                {k}
+              </button>
+            ))}
+          </div>
+        ))}
+        <button onClick={onClose} style={{ marginTop:8, width:'100%', background:'none', border:'none', color:C.muted, fontSize:'clamp(12px,1.4vw,14px)', cursor:'pointer', padding:'8px' }}>
+          Batal · Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
 
-  const isQris = method === 'qris'
-
+// ── Awaiting Terminal Screen — display only, polling lives in parent ───────────
+function AwaitingTerminalScreen({ method, grand, elapsed, onBack, onManualOverride }) {
   return (
     <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(24px,4vw,56px)', textAlign:'center' }}>
       <div style={{ maxWidth:460, width:'100%' }}>
         <div style={{ width:80, height:80, borderRadius:'50%', background:C.surface, border:`2px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, margin:'0 auto 28px' }}>
-          {isQris ? '⬛' : '💳'}
+          💳
         </div>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(22px,3.2vw,30px)', fontWeight:800, color:C.text, marginBottom:8 }}>
-          {isQris ? 'Scan QRIS at the Counter' : 'Use Terminal at the Counter'}
+          Use Terminal at the Counter
         </div>
         <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:C.text2, marginBottom:6 }}>
-          {isQris ? 'Tap atau scan QR code pada terminal' : 'Tap atau masukkan kartu pada terminal'}
+          Tap atau masukkan kartu pada terminal
         </div>
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(28px,4.5vw,40px)', fontWeight:800, color:C.text, margin:'28px 0 32px' }}>
           {fmt(grand)}
         </div>
 
-        {/* Animated waiting indicator */}
         <div style={{ display:'flex', justifyContent:'center', gap:8, marginBottom:32 }}>
           {[0,1,2].map(i => (
             <div key={i} style={{ width:10, height:10, borderRadius:'50%', background:C.accent, animation:`pulse 1.2s ease-in-out ${i*0.4}s infinite` }} />
@@ -382,8 +406,15 @@ function AwaitingTerminalScreen({ sessionId, method, grand, onSuccess, onFail, o
           Waiting for payment confirmation… {elapsed > 0 ? `(${elapsed}s)` : ''}
         </div>
 
-        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>
-          Need help? Please ask our staff · Butuh bantuan? Hubungi staff kami
+        <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
+          <button onClick={onBack}
+            style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(10px,1.4vh,13px) clamp(20px,2.8vw,28px)', color:C.text2, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer' }}>
+            ← Kembali · Back
+          </button>
+          <button onClick={onManualOverride}
+            style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(10px,1.4vh,13px) clamp(20px,2.8vw,28px)', color:C.text2, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer' }}>
+            Bayar Manual · Staff Override
+          </button>
         </div>
       </div>
     </div>
@@ -391,31 +422,47 @@ function AwaitingTerminalScreen({ sessionId, method, grand, onSuccess, onFail, o
 }
 
 // ── Payment Failed Screen ──────────────────────────────────────────────────────
-function PaymentFailedScreen({ method, onRetry, onSwitchMethod }) {
-  const [notified, setNotified] = useState(false)
+function PaymentFailedScreen({ method, onRetry, onSwitchMethod, adminPin, onManualOverride }) {
+  const [notified,  setNotified]  = useState(false)
+  const [showPin,   setShowPin]   = useState(false)
   return (
-    <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(24px,4vw,56px)', textAlign:'center' }}>
-      <div style={{ width:80, height:80, borderRadius:'50%', background:'#fdecea', border:'2px solid #ef9a9a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, marginBottom:28 }}>✕</div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(22px,3.2vw,30px)', fontWeight:800, color:C.text, marginBottom:8 }}>Payment Unsuccessful</div>
-      <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:C.text2, marginBottom:6 }}>Pembayaran tidak berhasil</div>
-      <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:40, maxWidth:380 }}>
-        {method === 'qris' ? 'QRIS transaction could not be completed.' : 'Card terminal did not confirm payment.'} Your booking is still held.
+    <>
+      <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(24px,4vw,56px)', textAlign:'center' }}>
+        <div style={{ width:80, height:80, borderRadius:'50%', background:'#fdecea', border:'2px solid #ef9a9a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, marginBottom:28 }}>✕</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(22px,3.2vw,30px)', fontWeight:800, color:C.text, marginBottom:8 }}>Payment Unsuccessful</div>
+        <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:C.text2, marginBottom:6 }}>Pembayaran tidak berhasil</div>
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:40, maxWidth:380 }}>
+          {method === 'qris' ? 'QRIS transaction could not be completed.' : 'Card terminal did not confirm payment.'} Your booking is still held.
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:400 }}>
+          <button onClick={onRetry}
+            style={{ width:'100%', padding:'clamp(15px,2.2vh,19px)', borderRadius:14, background:C.accent, color:C.accentText, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(15px,1.8vw,18px)', fontWeight:700, border:'none', cursor:'pointer' }}>
+            Try Again · Coba Lagi
+          </button>
+          <button onClick={onSwitchMethod}
+            style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:C.white, color:C.text, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:600, border:`1.5px solid ${C.border}`, cursor:'pointer' }}>
+            {method === 'qris' ? 'Try Card Instead · Coba Kartu' : 'Try QRIS Instead · Coba QRIS'}
+          </button>
+          {onManualOverride && (
+            <button onClick={() => setShowPin(true)}
+              style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:'#fff8e1', color:'#7c5800', fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:700, border:'1.5px solid #f9a825', cursor:'pointer', transition:'all 0.2s' }}>
+              🔑 Staff Override · Konfirmasi Staff
+            </button>
+          )}
+          <button onClick={() => setNotified(true)} disabled={notified}
+            style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:notified ? '#f0faf4' : '#fdecea', color:notified ? '#2e7d32' : '#c62828', fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:700, border:`1.5px solid ${notified ? '#a5d6a7' : '#ef9a9a'}`, cursor:notified ? 'default' : 'pointer', transition:'all 0.2s' }}>
+            {notified ? '✓ Staff Notified — Please Wait' : '⚠ Contact Staff · Hubungi Staff'}
+          </button>
+        </div>
       </div>
-      <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:400 }}>
-        <button onClick={onRetry}
-          style={{ width:'100%', padding:'clamp(15px,2.2vh,19px)', borderRadius:14, background:C.accent, color:C.accentText, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(15px,1.8vw,18px)', fontWeight:700, border:'none', cursor:'pointer' }}>
-          Try Again · Coba Lagi
-        </button>
-        <button onClick={onSwitchMethod}
-          style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:C.white, color:C.text, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:600, border:`1.5px solid ${C.border}`, cursor:'pointer' }}>
-          {method === 'qris' ? 'Try Card Instead · Coba Kartu' : 'Try QRIS Instead · Coba QRIS'}
-        </button>
-        <button onClick={() => setNotified(true)} disabled={notified}
-          style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:notified ? '#f0faf4' : '#fdecea', color:notified ? '#2e7d32' : '#c62828', fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:700, border:`1.5px solid ${notified ? '#a5d6a7' : '#ef9a9a'}`, cursor:notified ? 'default' : 'pointer', transition:'all 0.2s' }}>
-          {notified ? '✓ Staff Notified — Please Wait' : '⚠ Contact Staff · Hubungi Staff'}
-        </button>
-      </div>
-    </div>
+      {showPin && (
+        <PinOverlay
+          adminPin={adminPin}
+          onSuccess={() => { setShowPin(false); onManualOverride() }}
+          onClose={() => setShowPin(false)}
+        />
+      )}
+    </>
   )
 }
 
@@ -489,7 +536,27 @@ function GroupTipRow({ bk, tipPresets, groupTips, setGroupTips }) {
 }
 
 // ── Payment Method Panel (shared) ─────────────────────────────────────────────
-function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCovered, onConfirm, confirmLabel }) {
+function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCovered, onConfirm, confirmLabel, terminalSession }) {
+  const [timeLeft, setTimeLeft] = useState(null)
+
+  useEffect(() => {
+    if (!terminalSession?.expiresAt) { setTimeLeft(null); return }
+    const tick = () => {
+      const left = Math.max(0, Math.round((terminalSession.expiresAt - Date.now()) / 1000))
+      setTimeLeft(left)
+    }
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [terminalSession?.expiresAt])
+
+  const sessionActive = terminalSession && timeLeft !== null && timeLeft > 0
+  const sessionMethod = terminalSession?.method
+  const sessionMins   = timeLeft != null ? Math.floor(timeLeft / 60) : 0
+  const sessionSecs   = timeLeft != null ? String(timeLeft % 60).padStart(2, '0') : '00'
+
+  const isBlocked = (m) => sessionActive && m !== sessionMethod
+
   return (
     <div style={{ width:'clamp(260px,30vw,370px)', borderLeft:`1px solid ${C.border}`, background:C.white, padding:'clamp(18px,2.6vw,28px)', display:'flex', flexDirection:'column', flexShrink:0 }}>
       {isPointsCovered ? (
@@ -502,7 +569,7 @@ function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCove
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', marginBottom:14 }}>
           <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:C.muted, textTransform:'uppercase', marginBottom:14 }}>Payment Method</div>
 
-          {/* QRIS */}
+          {/* QRIS — always available */}
           <div onClick={() => setMethod('qris')} style={{ background:method === 'qris' ? C.surface : C.bg, border:`2px solid ${method === 'qris' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', marginBottom:10, transition:'all 0.18s' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <div style={{ width:42, height:42, background:method === 'qris' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⬛</div>
@@ -515,24 +582,32 @@ function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCove
           </div>
 
           {/* Card — insert */}
-          <div onClick={() => setMethod('card')} style={{ background:method === 'card' ? C.surface : C.bg, border:`2px solid ${method === 'card' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', marginBottom:10, transition:'all 0.18s' }}>
+          <div onClick={() => !isBlocked('card') && setMethod('card')}
+            style={{ background:method === 'card' ? C.surface : C.bg, border:`2px solid ${method === 'card' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:isBlocked('card') ? 'not-allowed' : 'pointer', marginBottom:10, transition:'all 0.18s', opacity:isBlocked('card') ? 0.38 : 1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <div style={{ width:42, height:42, background:method === 'card' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>💳</div>
               <div style={{ flex:1 }}>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>Card</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>Insert or Swipe</div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
+                  {isBlocked('card') ? 'Mohon tunggu · Please wait' : 'Insert or Swipe'}
+                </div>
               </div>
               {method === 'card' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
             </div>
           </div>
 
           {/* Tap — contactless */}
-          <div onClick={() => setMethod('tap')} style={{ background:method === 'tap' ? C.surface : C.bg, border:`2px solid ${method === 'tap' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', transition:'all 0.18s' }}>
+          <div onClick={() => !isBlocked('tap') && setMethod('tap')}
+            style={{ background:method === 'tap' ? C.surface : C.bg, border:`2px solid ${method === 'tap' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:isBlocked('tap') ? 'not-allowed' : 'pointer', transition:'all 0.18s', opacity:isBlocked('tap') ? 0.38 : 1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <div style={{ width:42, height:42, background:method === 'tap' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📲</div>
               <div style={{ flex:1 }}>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>Tap</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>Contactless card · Phone · Watch</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>
+                  Tap {sessionActive && sessionMethod === 'tap' ? <span style={{ fontSize:'clamp(12px,1.4vw,14px)', color: timeLeft < 20 ? C.danger : C.muted, fontWeight:600 }}>({sessionMins}:{sessionSecs})</span> : null}
+                </div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
+                  {isBlocked('tap') ? 'Mohon tunggu · Please wait' : 'Contactless card · Phone · Watch'}
+                </div>
               </div>
               {method === 'tap' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
             </div>
@@ -562,16 +637,50 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
   const groupId   = bookingData?.group_id
   const bookingId = bookingData?.booking_id || bookingData?.id
 
-  const [booking,    setBooking]    = useState(null)
-  const [groupBks,   setGroupBks]   = useState([])
-  const [phase,      setPhase]      = useState('loading')
-  const [method,     setMethod]     = useState(null)
-  const [tip,        setTip]        = useState(null)
-  const [customTip,  setCustomTip]  = useState('')
-  const [groupTips,  setGroupTips]  = useState({})
-  const [confirming, setConfirming] = useState(false)
-  const [sessionId,  setSessionId]  = useState(null)
-  const [qrData,     setQrData]     = useState(null)   // { qr_id, qr_string, expires_at }
+  const [booking,          setBooking]          = useState(null)
+  const [groupBks,         setGroupBks]         = useState([])
+  const [phase,            setPhase]            = useState('loading')
+  const [method,           setMethod]           = useState(null)
+  const [tip,              setTip]              = useState(null)
+  const [customTip,        setCustomTip]        = useState('')
+  const [groupTips,        setGroupTips]        = useState({})
+  const [confirming,       setConfirming]       = useState(false)
+  const [sessionId,        setSessionId]        = useState(null)
+  const [sessionMethod,    setSessionMethod]    = useState(null)   // 'card' | 'tap'
+  const [sessionExpiresAt, setSessionExpiresAt] = useState(null)  // timestamp ms
+  const [sessionElapsed,   setSessionElapsed]   = useState(0)
+  const [qrData,           setQrData]           = useState(null)
+  const [showPin,          setShowPin]          = useState(false)
+
+  const phaseRef = useRef(phase)
+  useEffect(() => { phaseRef.current = phase }, [phase])
+
+  // Elapsed timer for awaiting_terminal display
+  useEffect(() => {
+    if (phase !== 'awaiting_terminal') { setSessionElapsed(0); return }
+    const t = setInterval(() => setSessionElapsed(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [phase])
+
+  // Terminal session polling — lives here so it continues even when user goes back
+  useEffect(() => {
+    if (!sessionId) return
+    const poll = setInterval(async () => {
+      try {
+        const data = await kioskApi.get(`/payments/terminal/session/${sessionId}/status`)
+        if (data.status === 'COMPLETED') {
+          clearInterval(poll)
+          setPhase('receipt')
+        } else if (data.status === 'FAILED' || data.status === 'CANCELED') {
+          clearInterval(poll)
+          setSessionId(null); setSessionMethod(null); setSessionExpiresAt(null)
+          if (phaseRef.current === 'awaiting_terminal') setPhase('failed')
+          // if on payment screen (user went back), just silently clear so methods unlock
+        }
+      } catch { /* keep polling on network error */ }
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tipPresets = settings.tipPresets || [10000, 20000, 50000, 100000]
 
@@ -623,13 +732,19 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         return
       }
 
-      // Card → Xendit terminal session (EDC)
+      // Card / Tap → Xendit terminal session (EDC)
       const terminalId = settings.xenditTerminalId
       if (!terminalId) {
         await kioskApi.post('/payments/manual-confirm', {
           booking_id: bookingId, payment_method: 'card', tip_amount: tipAmount || undefined
         })
         setPhase('receipt')
+        return
+      }
+
+      // Resume existing active session if same method — no API call needed
+      if (sessionId && sessionMethod === method && sessionExpiresAt && Date.now() < sessionExpiresAt) {
+        setPhase('awaiting_terminal')
         return
       }
 
@@ -640,8 +755,13 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         terminal_id:    terminalId
       })
       setSessionId(res.session_id)
+      setSessionMethod(method)
+      setSessionExpiresAt(Date.now() + 60 * 1000)
       setPhase('awaiting_terminal')
-    } catch { setPhase('failed') }
+    } catch (err) {
+      if (err?.status === 409) setPhase('receipt')
+      else setPhase('failed')
+    }
     finally { setConfirming(false) }
   }
 
@@ -655,7 +775,27 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
         tip_amounts:    groupTips,
       })
       setPhase('receipt')
-    } catch { setPhase('failed') }
+    } catch (err) {
+      if (err?.status === 409) setPhase('receipt')
+      else setPhase('failed')
+    }
+    finally { setConfirming(false) }
+  }
+
+  const handleManualOverridePinSuccess = async () => {
+    setShowPin(false)
+    setConfirming(true)
+    try {
+      await kioskApi.post('/payments/manual-confirm', {
+        booking_id:     bookingId,
+        payment_method: 'manual_card',
+        tip_amount:     undefined
+      })
+      setPhase('receipt')
+    } catch (err) {
+      if (err?.status === 409) setPhase('receipt')
+      else setPhase('failed')
+    }
     finally { setConfirming(false) }
   }
 
@@ -678,20 +818,30 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     />
   )
   if (phase === 'awaiting_terminal') return (
-    <AwaitingTerminalScreen
-      sessionId={sessionId}
-      method={method}
-      grand={isGroup ? groupGrand : grand}
-      onSuccess={() => setPhase('receipt')}
-      onFail={() => setPhase('failed')}
-      onCancel={() => { setSessionId(null); setPhase('payment') }}
-    />
+    <>
+      <AwaitingTerminalScreen
+        method={method}
+        grand={isGroup ? groupGrand : grand}
+        elapsed={sessionElapsed}
+        onBack={() => setPhase('payment')}
+        onManualOverride={() => setShowPin(true)}
+      />
+      {showPin && (
+        <PinOverlay
+          adminPin={settings.kioskAdminPin || '1234'}
+          onSuccess={handleManualOverridePinSuccess}
+          onClose={() => setShowPin(false)}
+        />
+      )}
+    </>
   )
   if (phase === 'failed')  return (
     <PaymentFailedScreen
       method={method}
       onRetry={() => setPhase('payment')}
       onSwitchMethod={() => { setMethod(method === 'qris' ? 'card' : 'qris'); setPhase('payment') }}
+      adminPin={settings.kioskAdminPin || '1234'}
+      onManualOverride={handleManualOverridePinSuccess}
     />
   )
 
@@ -751,6 +901,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             isPointsCovered={false}
             onConfirm={handleConfirmGroup}
             confirmLabel={method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : method === 'tap' ? 'Confirm Tap Payment ✓' : 'Select Payment Method'}
+            terminalSession={sessionId ? { method: sessionMethod, expiresAt: sessionExpiresAt } : null}
           />
         </div>
       )}
@@ -871,6 +1022,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             confirming={confirming}
             isPointsCovered={isPointsCovered}
             onConfirm={handleConfirmSingle}
+            terminalSession={sessionId ? { method: sessionMethod, expiresAt: sessionExpiresAt } : null}
           />
         </div>
       )}

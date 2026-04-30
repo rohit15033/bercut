@@ -68,31 +68,35 @@ async function tryAssignDeferred(branchId, _completingBarberId) {
   try {
     await client.query('BEGIN')
     const { rows: deferred } = await client.query(
-      `WITH candidate AS (
-         SELECT bk.id, bk.scheduled_at
-         FROM bookings bk
-         WHERE bk.branch_id = $1
-           AND bk.barber_id IS NULL
-           AND bk.status = 'confirmed'
-           AND bk.scheduled_at <= NOW() + INTERVAL '30 minutes'
-         ORDER BY bk.scheduled_at ASC, bk.created_at ASC
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED
-       )
-       SELECT c.id, c.scheduled_at, COALESCE(d.total_dur, 30) AS total_dur
-       FROM candidate c
-       LEFT JOIN (
-         SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
-         FROM booking_services bsv
-         JOIN services s ON s.id = bsv.service_id
-         GROUP BY bsv.booking_id
-       ) d ON d.booking_id = c.id`,
+      `SELECT bk.id, bk.scheduled_at
+       FROM bookings bk
+       WHERE bk.branch_id = $1
+         AND bk.barber_id IS NULL
+         AND bk.status = 'confirmed'
+         AND bk.scheduled_at <= NOW() + INTERVAL '15 minutes'
+       ORDER BY bk.scheduled_at ASC, bk.created_at ASC
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED`,
       [branchId]
     )
     if (!deferred.length) { await client.query('ROLLBACK'); return null }
 
     const booking = deferred[0]
-    const freeIds = await getFreeBarberIds(client, branchId, booking.scheduled_at.toISOString(), booking.total_dur)
+    // Only assign to barbers who are available now and have no confirmed booking in the next 15 minutes
+    const { rows: eligibleRows } = await client.query(
+      `SELECT b.id FROM barbers b
+       WHERE b.branch_id = $1
+         AND b.is_active = true
+         AND b.status = 'available'
+         AND NOT EXISTS (
+           SELECT 1 FROM bookings bk
+           WHERE bk.barber_id = b.id
+             AND bk.status = 'confirmed'
+             AND bk.scheduled_at BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
+         )`,
+      [branchId]
+    )
+    const freeIds = new Set(eligibleRows.map(r => r.id))
     const assignedId = await pickIdleBarber(client, branchId, freeIds)
     if (!assignedId) { await client.query('ROLLBACK'); return null }
 

@@ -21,7 +21,8 @@ function xenditHeaders(idempotencyKey) {
 // Terminal H2H helpers (terminal.xendit.co)
 async function xenditPost(path, body, idempotencyKey) {
   const r = await fetch(`${TERMINAL_URL}${path}`, {
-    method: 'POST', headers: xenditHeaders(idempotencyKey), body: JSON.stringify(body)
+    method: 'POST', headers: xenditHeaders(idempotencyKey), body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
   })
   const json = await r.json()
   if (!r.ok) console.error('[Xendit Terminal] POST', path, r.status, json?.error_code, json?.message)
@@ -29,7 +30,10 @@ async function xenditPost(path, body, idempotencyKey) {
 }
 
 async function xenditGet(path) {
-  const r = await fetch(`${TERMINAL_URL}${path}`, { method: 'GET', headers: xenditHeaders() })
+  const r = await fetch(`${TERMINAL_URL}${path}`, {
+    method: 'GET', headers: xenditHeaders(),
+    signal: AbortSignal.timeout(8000),
+  })
   const json = await r.json()
   if (!r.ok) console.error('[Xendit Terminal] GET', path, r.status, json?.error_code)
   return json
@@ -45,7 +49,8 @@ function xenditApiHeaders(idempotencyKey) {
 
 async function xenditApiPost(path, body, idempotencyKey) {
   const r = await fetch(`${XENDIT_API_URL}${path}`, {
-    method: 'POST', headers: xenditApiHeaders(idempotencyKey), body: JSON.stringify(body)
+    method: 'POST', headers: xenditApiHeaders(idempotencyKey), body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
   })
   const json = await r.json()
   if (!r.ok) console.error('[Xendit API] POST', path, r.status, json?.error_code, json?.message)
@@ -53,7 +58,10 @@ async function xenditApiPost(path, body, idempotencyKey) {
 }
 
 async function xenditApiGet(path) {
-  const r = await fetch(`${XENDIT_API_URL}${path}`, { method: 'GET', headers: xenditApiHeaders() })
+  const r = await fetch(`${XENDIT_API_URL}${path}`, {
+    method: 'GET', headers: xenditApiHeaders(),
+    signal: AbortSignal.timeout(8000),
+  })
   const json = await r.json()
   if (!r.ok) console.error('[Xendit API] GET', path, r.status, json?.error_code)
   return json

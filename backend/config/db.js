@@ -8,8 +8,10 @@ const pool = new Pool({
   user:     process.env.DB_USER     || 'postgres',
   password: process.env.DB_PASSWORD || '',
   max:      20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  idleTimeoutMillis:       10000,   // drop idle connections after 10s to avoid stale pool
+  connectionTimeoutMillis: 10000,   // wait up to 10s to acquire a connection under load
+  keepAlive:               true,    // send TCP keepalives so idle connections aren't silently dropped
+  keepAliveInitialDelayMillis: 10000,
 })
 
 pool.on('error', (err) => {

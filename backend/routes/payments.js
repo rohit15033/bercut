@@ -293,8 +293,9 @@ async function markPaidIfNeeded(bookingId, amount, payMethod, xenditRef) {
   const method = payMethod || (booking.payment_method || 'card')
   const tipAmount = Math.max(0, amount - parseFloat(booking.total_amount))
 
-  const client = await pool.connect()
+  let client
   try {
+    client = await pool.connect()
     await client.query('BEGIN')
     await client.query(
       `UPDATE bookings SET status='completed', paid_at=NOW(), payment_status='paid',
@@ -312,24 +313,25 @@ async function markPaidIfNeeded(bookingId, amount, payMethod, xenditRef) {
     notifyPaymentReceipt(booking, tipAmount).catch(e => console.error('[Notification] Receipt failed:', e))
     awardPoints(bookingId).catch(e => console.error('[Loyalty] Award failed:', e))
   } catch (e) {
-    await client.query('ROLLBACK')
+    if (client) await client.query('ROLLBACK').catch(() => {})
     throw e
   } finally {
-    client.release()
+    if (client) client.release()
   }
 }
 
 // POST /api/payments/manual-confirm — confirm manual payment (cash/external card)
 router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
-  const client = await pool.connect()
+  let client
   try {
     const { booking_id, payment_method = 'cash', tip_amount = 0 } = req.body
     if (!booking_id) return res.status(400).json({ message: 'booking_id required' })
 
+    client = await pool.connect()
     await client.query('BEGIN')
     
     // 1. Get booking details
-    const bkRes = await client.query('SELECT barber_id, branch_id, status FROM bookings WHERE id = $1', [booking_id])
+    const bkRes = await client.query('SELECT barber_id, branch_id, status, payment_ref FROM bookings WHERE id = $1', [booking_id])
     if (!bkRes.rows.length) {
       await client.query('ROLLBACK')
       return res.status(404).json({ message: 'Booking not found' })
@@ -360,7 +362,7 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
     }
 
     await client.query('COMMIT')
-    
+
     // 4. Notify kiosk
     emitEvent(booking.branch_id, 'payment_complete', { booking_id, status: 'completed' })
     
@@ -381,11 +383,11 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
 
     res.json(rows[0])
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (client) await client.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ message: 'Internal server error' })
   } finally {
-    client.release()
+    if (client) client.release()
   }
 })
 
@@ -407,8 +409,9 @@ router.post('/tip', requireKiosk, async (req, res) => {
 
 // POST /api/payments/group-confirm — confirm payment for an entire booking group
 router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
-  const client = await pool.connect()
+  let client
   try {
+    client = await pool.connect()
     const { group_id, payment_method = 'cash', tip_amounts = {} } = req.body
     if (!group_id) return res.status(400).json({ message: 'group_id required' })
 
@@ -444,11 +447,11 @@ router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
 
     res.json({ ok: true })
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (client) await client.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ message: 'Internal server error' })
   } finally {
-    client.release()
+    if (client) client.release()
   }
 })
 

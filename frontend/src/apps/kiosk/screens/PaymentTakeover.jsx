@@ -227,9 +227,10 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
 }
 
 // ── QRIS Screen — QR code displayed on kiosk, customer scans with phone ────────
-function QRISScreen({ qrString, qrId, bookingId, grand, expiresAt, onSuccess, onFail, onCancel }) {
+function QRISScreen({ qrString, qrId, bookingId, grand, expiresAt, onSuccess, onFail, onCancel, adminPin, onManualOverride }) {
   const [expired,  setExpired]  = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
+  const [showPin,  setShowPin]  = useState(false)
   const doneRef = useRef(false)
 
   const succeed = () => { if (!doneRef.current) { doneRef.current = true; onSuccess() } }
@@ -326,26 +327,60 @@ function QRISScreen({ qrString, qrId, bookingId, grand, expiresAt, onSuccess, on
           style={{ padding:'clamp(12px,1.8vh,16px) clamp(28px,3.5vw,40px)', borderRadius:12, background:'none', border:`1.5px solid ${C.border}`, color:C.muted, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(13px,1.5vw,15px)', fontWeight:600, cursor:'pointer' }}>
           ← Back · Kembali
         </button>
+
+        {onManualOverride && (
+          <div style={{ marginTop:12 }}>
+            <button onClick={() => setShowPin(true)}
+              style={{ background:'none', border:'none', color:C.muted, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(11px,1.2vw,13px)', fontWeight:500, cursor:'pointer', padding:'6px 12px', textDecoration:'underline', textDecorationColor:'transparent' }}
+              onMouseEnter={e => e.target.style.color = C.text2}
+              onMouseLeave={e => e.target.style.color = C.muted}>
+              Staff Override
+            </button>
+          </div>
+        )}
       </div>
+
+      {showPin && (
+        <PinOverlay
+          adminPin={adminPin}
+          onSuccess={() => { setShowPin(false); onManualOverride() }}
+          onClose={() => setShowPin(false)}
+        />
+      )}
     </div>
   )
 }
 
 // ── PIN Overlay — staff-only gate ─────────────────────────────────────────────
 function PinOverlay({ adminPin, onSuccess, onClose }) {
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState(false)
+  const [pinDisplay, setPinDisplay] = useState('')
+  const [error,      setError]      = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const pinRef = useRef('')
   const KEYS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
 
   const press = (k) => {
-    if (k === '⌫') { setError(false); setPin(p => p.slice(0, -1)); return }
-    if (!k) return
-    const next = pin + k
-    setPin(next)
+    if (loading) return
+    if (k === '⌫') {
+      pinRef.current = pinRef.current.slice(0, -1)
+      setPinDisplay(pinRef.current)
+      setError(false)
+      return
+    }
+    if (!k || pinRef.current.length >= 4) return
+    pinRef.current = pinRef.current + k
+    const next = pinRef.current
+    setPinDisplay(next)
     setError(false)
     if (next.length === 4) {
-      if (next === String(adminPin)) { onSuccess() }
-      else { setError(true); setTimeout(() => { setPin(''); setError(false) }, 600) }
+      const expected = adminPin != null ? String(adminPin) : '1234'
+      if (next === expected) {
+        setLoading(true)
+        onSuccess()
+      } else {
+        setError(true)
+        setTimeout(() => { pinRef.current = ''; setPinDisplay(''); setError(false) }, 700)
+      }
     }
   }
 
@@ -353,23 +388,25 @@ function PinOverlay({ adminPin, onSuccess, onClose }) {
     <div style={{ position:'fixed', inset:0, zIndex:9000, background:'rgba(0,0,0,0.7)', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ background:C.white, borderRadius:20, padding:'clamp(24px,3.5vw,36px)', width:'clamp(280px,36vw,340px)', textAlign:'center' }}>
         <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:'clamp(16px,2.2vw,20px)', color:C.text, marginBottom:6 }}>Staff PIN</div>
-        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:20 }}>Enter admin PIN to continue</div>
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color: error ? '#c62828' : C.muted, marginBottom:20, fontWeight: error ? 700 : 400 }}>
+          {loading ? 'Processing…' : error ? 'Wrong PIN — try again' : 'Enter admin PIN to continue'}
+        </div>
         <div style={{ display:'flex', justifyContent:'center', gap:10, marginBottom:20 }}>
           {[0,1,2,3].map(i => (
-            <div key={i} style={{ width:14, height:14, borderRadius:'50%', background: i < pin.length ? (error ? '#ef5350' : C.accent) : C.border, transition:'background 0.15s' }} />
+            <div key={i} style={{ width:14, height:14, borderRadius:'50%', background: i < pinDisplay.length ? (error ? '#ef5350' : C.accent) : C.border, transition:'background 0.15s' }} />
           ))}
         </div>
         {KEYS.map((row, ri) => (
           <div key={ri} style={{ display:'flex', gap:8, marginBottom:8 }}>
             {row.map((k, ki) => (
-              <button key={ki} onClick={() => press(k)} disabled={!k}
-                style={{ flex:1, height:'clamp(44px,6vh,56px)', borderRadius:10, border:'none', fontSize:k === '⌫' ? 18 : 'clamp(18px,2.4vw,24px)', fontWeight:700, fontFamily:"'Inter',sans-serif", background:k ? C.surface : 'transparent', color:k ? C.text : 'transparent', cursor:k ? 'pointer' : 'default', opacity:k ? 1 : 0 }}>
+              <button key={ki} onClick={() => press(k)} disabled={!k || loading}
+                style={{ flex:1, height:'clamp(44px,6vh,56px)', borderRadius:10, border:'none', fontSize:k === '⌫' ? 18 : 'clamp(18px,2.4vw,24px)', fontWeight:700, fontFamily:"'Inter',sans-serif", background:k ? C.surface : 'transparent', color:k ? C.text : 'transparent', cursor:k && !loading ? 'pointer' : 'default', opacity: loading ? 0.5 : k ? 1 : 0 }}>
                 {k}
               </button>
             ))}
           </div>
         ))}
-        <button onClick={onClose} style={{ marginTop:8, width:'100%', background:'none', border:'none', color:C.muted, fontSize:'clamp(12px,1.4vw,14px)', cursor:'pointer', padding:'8px' }}>
+        <button onClick={onClose} disabled={loading} style={{ marginTop:8, width:'100%', background:'none', border:'none', color:C.muted, fontSize:'clamp(12px,1.4vw,14px)', cursor: loading ? 'default' : 'pointer', padding:'8px' }}>
           Batal · Cancel
         </button>
       </div>
@@ -796,7 +833,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     try {
       await kioskApi.post('/payments/manual-confirm', {
         booking_id:     bookingId,
-        payment_method: 'manual_card',
+        payment_method: 'manual',
         tip_amount:     undefined
       })
       setPhase('receipt')
@@ -823,6 +860,8 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
       onSuccess={() => setPhase('receipt')}
       onFail={() => setPhase('failed')}
       onCancel={() => { setQrData(null); setPhase('payment') }}
+      adminPin={settings.kioskAdminPin}
+      onManualOverride={handleManualOverridePinSuccess}
     />
   )
   if (phase === 'awaiting_terminal') return (

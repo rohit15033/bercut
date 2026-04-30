@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
-import { kioskApi } from '../../../shared/api.js'
+import { kioskApi, BASE } from '../../../shared/api.js'
 
 const fmt  = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 const fmtK = n => n >= 1000 ? `${n / 1000}K` : String(n)
@@ -407,10 +407,6 @@ function AwaitingTerminalScreen({ method, grand, elapsed, onBack, onManualOverri
         </div>
 
         <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
-          <button onClick={onBack}
-            style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(10px,1.4vh,13px) clamp(20px,2.8vw,28px)', color:C.text2, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer' }}>
-            ← Kembali · Back
-          </button>
           <button onClick={onManualOverride}
             style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(10px,1.4vh,13px) clamp(20px,2.8vw,28px)', color:C.text2, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer' }}>
             Bayar Manual · Staff Override
@@ -537,23 +533,8 @@ function GroupTipRow({ bk, tipPresets, groupTips, setGroupTips }) {
 
 // ── Payment Method Panel (shared) ─────────────────────────────────────────────
 function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCovered, onConfirm, confirmLabel, terminalSession }) {
-  const [timeLeft, setTimeLeft] = useState(null)
-
-  useEffect(() => {
-    if (!terminalSession?.expiresAt) { setTimeLeft(null); return }
-    const tick = () => {
-      const left = Math.max(0, Math.round((terminalSession.expiresAt - Date.now()) / 1000))
-      setTimeLeft(left)
-    }
-    tick()
-    const t = setInterval(tick, 1000)
-    return () => clearInterval(t)
-  }, [terminalSession?.expiresAt])
-
-  const sessionActive = terminalSession && timeLeft !== null && timeLeft > 0
+  const sessionActive = !!terminalSession
   const sessionMethod = terminalSession?.method
-  const sessionMins   = timeLeft != null ? Math.floor(timeLeft / 60) : 0
-  const sessionSecs   = timeLeft != null ? String(timeLeft % 60).padStart(2, '0') : '00'
 
   const isBlocked = (m) => sessionActive && m !== sessionMethod
 
@@ -603,7 +584,7 @@ function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCove
               <div style={{ width:42, height:42, background:method === 'tap' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📲</div>
               <div style={{ flex:1 }}>
                 <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>
-                  Tap {sessionActive && sessionMethod === 'tap' ? <span style={{ fontSize:'clamp(12px,1.4vw,14px)', color: timeLeft < 20 ? C.danger : C.muted, fontWeight:600 }}>({sessionMins}:{sessionSecs})</span> : null}
+                  Tap
                 </div>
                 <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
                   {isBlocked('tap') ? 'Mohon tunggu · Please wait' : 'Contactless card · Phone · Watch'}
@@ -647,7 +628,6 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
   const [confirming,       setConfirming]       = useState(false)
   const [sessionId,        setSessionId]        = useState(null)
   const [sessionMethod,    setSessionMethod]    = useState(null)   // 'card' | 'tap'
-  const [sessionExpiresAt, setSessionExpiresAt] = useState(null)  // timestamp ms
   const [sessionElapsed,   setSessionElapsed]   = useState(0)
   const [qrData,           setQrData]           = useState(null)
   const [showPin,          setShowPin]          = useState(false)
@@ -665,22 +645,47 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
   // Terminal session polling — lives here so it continues even when user goes back
   useEffect(() => {
     if (!sessionId) return
+    let errCount = 0
+    const clearSession = () => { setSessionId(null); setSessionMethod(null) }
     const poll = setInterval(async () => {
       try {
         const data = await kioskApi.get(`/payments/terminal/session/${sessionId}/status`)
+        errCount = 0
         if (data.status === 'COMPLETED') {
           clearInterval(poll)
           setPhase('receipt')
-        } else if (data.status === 'FAILED' || data.status === 'CANCELED') {
+        } else if (['FAILED', 'CANCELED', 'VOIDED'].includes(data.status)) {
           clearInterval(poll)
-          setSessionId(null); setSessionMethod(null); setSessionExpiresAt(null)
+          clearSession()
           if (phaseRef.current === 'awaiting_terminal') setPhase('failed')
           // if on payment screen (user went back), just silently clear so methods unlock
         }
-      } catch { /* keep polling on network error */ }
+      } catch {
+        errCount++
+        if (errCount >= 10) {
+          clearInterval(poll)
+          clearSession()
+          if (phaseRef.current === 'awaiting_terminal') setPhase('failed')
+        }
+      }
     }, 3000)
     return () => clearInterval(poll)
   }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SSE listener — instant notification from webhook when terminal succeeds or fails
+  useEffect(() => {
+    if (phase !== 'awaiting_terminal' || !branchId || !bookingId) return
+    const es = new EventSource(`${BASE}/events?branch_id=${branchId}`)
+    es.onmessage = (e) => {
+      try {
+        const { type, data } = JSON.parse(e.data)
+        if (data?.booking_id !== bookingId) return
+        if (type === 'payment_complete') { setPhase('receipt') }
+        else if (type === 'payment_failed') { setSessionId(null); setSessionMethod(null); setPhase('failed') }
+      } catch {}
+    }
+    return () => es.close()
+  }, [phase, branchId, bookingId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tipPresets = settings.tipPresets || [10000, 20000, 50000, 100000]
 
@@ -743,7 +748,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
       }
 
       // Resume existing active session if same method — no API call needed
-      if (sessionId && sessionMethod === method && sessionExpiresAt && Date.now() < sessionExpiresAt) {
+      if (sessionId && sessionMethod === method) {
         setPhase('awaiting_terminal')
         return
       }
@@ -756,7 +761,6 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
       })
       setSessionId(res.session_id)
       setSessionMethod(method)
-      setSessionExpiresAt(Date.now() + 60 * 1000)
       setPhase('awaiting_terminal')
     } catch (err) {
       if (err?.status === 409) setPhase('receipt')
@@ -901,7 +905,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             isPointsCovered={false}
             onConfirm={handleConfirmGroup}
             confirmLabel={method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : method === 'tap' ? 'Confirm Tap Payment ✓' : 'Select Payment Method'}
-            terminalSession={sessionId ? { method: sessionMethod, expiresAt: sessionExpiresAt } : null}
+            terminalSession={sessionId ? { method: sessionMethod } : null}
           />
         </div>
       )}
@@ -1022,7 +1026,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             confirming={confirming}
             isPointsCovered={isPointsCovered}
             onConfirm={handleConfirmSingle}
-            terminalSession={sessionId ? { method: sessionMethod, expiresAt: sessionExpiresAt } : null}
+            terminalSession={sessionId ? { method: sessionMethod } : null}
           />
         </div>
       )}

@@ -227,7 +227,7 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
 }
 
 // ── QRIS Screen — QR code displayed on kiosk, customer scans with phone ────────
-function QRISScreen({ qrString, qrId, bookingId, grand, expiresAt, onSuccess, onFail, onCancel, adminPin, onManualOverride }) {
+function QRISScreen({ qrString, qrId, bookingId, groupId, grand, expiresAt, onSuccess, onFail, onCancel, adminPin, onManualOverride }) {
   const [expired,  setExpired]  = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
   const [showPin,  setShowPin]  = useState(false)
@@ -252,9 +252,10 @@ function QRISScreen({ qrString, qrId, bookingId, grand, expiresAt, onSuccess, on
   // Poll Xendit QR status every 2s — COMPLETED means money moved
   useEffect(() => {
     if (!qrId || expired) return
+    const pollParam = groupId ? `group_id=${groupId}` : `booking_id=${bookingId}`
     const poll = setInterval(async () => {
       try {
-        const data = await kioskApi.get(`/payments/qris/${qrId}/status?booking_id=${bookingId}`)
+        const data = await kioskApi.get(`/payments/qris/${qrId}/status?${pollParam}`)
         if (data.status === 'COMPLETED') { clearInterval(poll); succeed() }
         else if (data.status === 'EXPIRED') { clearInterval(poll); setExpired(true) }
       } catch { /* keep polling on network error */ }
@@ -679,7 +680,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     return () => clearInterval(t)
   }, [phase])
 
-  // Terminal session polling — lives here so it continues even when user goes back
+  // Terminal session polling — Xendit GET endpoint for session status
   useEffect(() => {
     if (!sessionId) return
     let errCount = 0
@@ -695,35 +696,67 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
           clearInterval(poll)
           clearSession()
           if (phaseRef.current === 'awaiting_terminal') setPhase('failed')
-          // if on payment screen (user went back), just silently clear so methods unlock
         }
       } catch {
         errCount++
         if (errCount >= 10) {
           clearInterval(poll)
           clearSession()
-          if (phaseRef.current === 'awaiting_terminal') setPhase('failed')
+          if (phaseRef.current !== 'awaiting_terminal') return
+          // Before showing failed, confirm booking not already paid (prevents false-failed on DB pool exhaustion)
+          const checkId = bookingId && bookingId !== 'undefined' ? bookingId : groupBks[0]?.id
+          try {
+            if (checkId) {
+              const bk = await kioskApi.get(`/bookings/${checkId}`)
+              if (bk.payment_status === 'paid') { setPhase('receipt'); return }
+            }
+          } catch {}
+          setPhase('failed')
         }
       }
     }, 3000)
     return () => clearInterval(poll)
   }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // SSE listener — instant notification from webhook when terminal succeeds or fails
+  // DB booking poll — catches when Xendit GET lags (returns ACTIVE after payment)
+  // For group payments, poll the first booking (group-confirm marks all atomically)
   useEffect(() => {
-    if (phase !== 'awaiting_terminal' || !branchId || !bookingId) return
+    const pollId = bookingId && bookingId !== 'undefined' ? bookingId : (isGroup ? groupBks[0]?.id : null)
+    if (!pollId || !sessionId) return
+    const poll = setInterval(async () => {
+      try {
+        const data = await kioskApi.get(`/bookings/${pollId}`)
+        if (data.payment_status === 'paid') {
+          clearInterval(poll)
+          setPhase('receipt')
+        }
+      } catch { /* keep polling */ }
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [bookingId, sessionId, groupBks]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SSE listener — instant push from webhook, reconnects automatically on error
+  useEffect(() => {
+    if (phase !== 'awaiting_terminal' || !branchId) return
+    const watchId = isGroup ? groupId : bookingId
+    if (!watchId || watchId === 'undefined') return
     const es = new EventSource(`${BASE}/events?branch_id=${branchId}`)
     es.onmessage = (e) => {
       try {
         const { type, data } = JSON.parse(e.data)
-        if (data?.booking_id !== bookingId) return
+        const isMatch = isGroup ? data?.group_id === groupId : data?.booking_id === bookingId
+        if (!isMatch) return
         if (type === 'payment_complete') { setPhase('receipt') }
         else if (type === 'payment_failed') {
-          // Ignore failures from old/stale sessions — late webhook delivery
-          if (data.session_id && data.session_id !== sessionId) return
+          if (!isGroup && data.session_id && data.session_id !== sessionId) return
           setSessionId(null); setSessionMethod(null); setPhase('failed')
         }
       } catch {}
+    }
+    es.onerror = () => {
+      // EventSource auto-reconnects — close and let effect re-run on next phase change
+      // Polls cover the gap during reconnect
+      es.close()
     }
     return () => es.close()
   }, [phase, branchId, bookingId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -814,6 +847,47 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     if (!method) return
     setConfirming(true)
     try {
+      // Numeric tips only (skip 'none' sentinel)
+      const numericTips = Object.fromEntries(
+        Object.entries(groupTips)
+          .filter(([, v]) => v !== 'none' && parseFloat(v) > 0)
+          .map(([k, v]) => [k, parseFloat(v)])
+      )
+
+      if (method === 'qris') {
+        const res = await kioskApi.post('/payments/qris/session', {
+          group_id:    groupId,
+          tip_amounts: numericTips,
+        })
+        setQrData({ qr_id: res.qr_id, qr_string: res.qr_string, expires_at: res.expires_at })
+        setPhase('awaiting_qris')
+        return
+      }
+
+      if (method === 'card' || method === 'tap') {
+        const terminalId = settings.xenditTerminalId
+        if (!terminalId) {
+          await kioskApi.post('/payments/group-confirm', { group_id: groupId, payment_method: 'card', tip_amounts: groupTips })
+          setPhase('receipt')
+          return
+        }
+        if (sessionId && sessionMethod === method) {
+          setPhase('awaiting_terminal')
+          return
+        }
+        const res = await kioskApi.post('/payments/terminal/session', {
+          group_id:       groupId,
+          tip_amounts:    numericTips,
+          payment_method: method,
+          terminal_id:    terminalId,
+        })
+        setSessionId(res.session_id)
+        setSessionMethod(method)
+        setPhase('awaiting_terminal')
+        return
+      }
+
+      // Cash / manual → direct group confirm
       await kioskApi.post('/payments/group-confirm', {
         group_id:       groupId,
         payment_method: method,
@@ -831,11 +905,19 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     setShowPin(false)
     setConfirming(true)
     try {
-      await kioskApi.post('/payments/manual-confirm', {
-        booking_id:     bookingId,
-        payment_method: 'manual',
-        tip_amount:     undefined
-      })
+      if (isGroup) {
+        await kioskApi.post('/payments/group-confirm', {
+          group_id:       groupId,
+          payment_method: 'manual',
+          tip_amounts:    groupTips,
+        })
+      } else {
+        await kioskApi.post('/payments/manual-confirm', {
+          booking_id:     bookingId,
+          payment_method: 'manual',
+          tip_amount:     undefined
+        })
+      }
       setPhase('receipt')
     } catch (err) {
       if (err?.status === 409) setPhase('receipt')
@@ -854,7 +936,8 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     <QRISScreen
       qrString={qrData?.qr_string}
       qrId={qrData?.qr_id}
-      bookingId={bookingId}
+      bookingId={isGroup ? groupBks[0]?.id : bookingId}
+      groupId={isGroup ? groupId : undefined}
       grand={isGroup ? groupGrand : grand}
       expiresAt={qrData?.expires_at}
       onSuccess={() => setPhase('receipt')}

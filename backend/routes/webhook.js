@@ -2,11 +2,19 @@ const router = require('express').Router()
 const pool   = require('../config/db')
 const { sendWhatsApp } = require('../services/notifications')
 
+const FONNTE_WEBHOOK_SECRET = process.env.FONNTE_WEBHOOK_SECRET || ''
+
 // POST /api/webhook/fonnte
 // Fonnte calls this when someone messages the device number.
 // Sends the no-reply notice exactly once per phone number.
 router.post('/fonnte', async (req, res) => {
   try {
+    if (FONNTE_WEBHOOK_SECRET) {
+      const sig = req.headers['x-fonnte-signature'] || req.headers['x-webhook-signature'] || ''
+      if (sig !== FONNTE_WEBHOOK_SECRET) {
+        return res.status(401).json({ message: 'Unauthorized' })
+      }
+    }
     const phone = (req.body.sender || '').replace(/[^0-9]/g, '')
     if (!phone) return res.json({ ok: true })
 

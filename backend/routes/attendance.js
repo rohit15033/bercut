@@ -41,7 +41,7 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
     // Compute late_minutes: shift starts 09:00 WITA (540 min), grace from payroll_settings
     const ps = await pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1')
     const grace = parseInt(ps.rows[0]?.late_grace_period_minutes || 5)
-    const SHIFT_START_MIN = 9 * 60  // 09:00
+    const SHIFT_START_MIN = 10 * 60  // 10:00 WITA
 
     // Clock-in is NOW() — compute minutes late
     const clockInLocal = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })

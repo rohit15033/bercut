@@ -91,7 +91,7 @@ function Sidebar({ screen, onNav, user, onLogout }) {
       </div>
 
       <nav style={{ flex: 1, padding: '10px 0', overflowY: 'auto' }}>
-        {NAV.map(item => {
+        {visibleNav.map(item => {
           const active = screen === item.key
           return (
             <button key={item.key} onClick={() => onNav(item.key)}
@@ -194,6 +194,7 @@ export default function AdminApp() {
   const [user,   setUser]   = useState(null)
   const [screen, setScreen] = useState('overview')
   const [loading, setLoading] = useState(true)
+  const [userPerms, setUserPerms] = useState({}) // { section: is_enabled }
 
   useEffect(() => {
     const token = getToken()
@@ -204,7 +205,28 @@ export default function AdminApp() {
       .finally(() => setLoading(false))
   }, [])
 
-  const handleLogout = () => { setToken(null); setUser(null) }
+  // Load own permissions on login to drive nav filtering
+  useEffect(() => {
+    if (!user) return
+    if (user.role === 'owner') { setUserPerms({}); return } // owner sees all
+    api.get(`/settings/users/${user.id}/permissions`)
+      .then(rows => {
+        const map = {}
+        ;(Array.isArray(rows) ? rows : []).forEach(r => { map[r.section] = r.is_enabled })
+        setUserPerms(map)
+      })
+      .catch(() => setUserPerms({}))
+  }, [user])
+
+  const handleLogout = () => { setToken(null); setUser(null); setUserPerms({}) }
+
+  // Filter nav: overview always visible; sections where is_enabled=false are hidden
+  const visibleNav = NAV.filter(item => {
+    if (item.key === 'overview') return true
+    const sectionKey = item.key === 'live' ? 'live_monitor' : item.key === 'kiosk' ? 'kiosk_config' : item.key === 'settings' ? 'settings' : item.key
+    if (user?.role === 'owner') return true
+    return userPerms[sectionKey] !== false
+  })
 
   if (loading) {
     return (

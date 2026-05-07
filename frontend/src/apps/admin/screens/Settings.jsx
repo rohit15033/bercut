@@ -571,7 +571,7 @@ function UsersTab() {
   function canView(userId, section) {
     const rows = perms[userId] || []
     const row = rows.find(r => r.section === section)
-    return row ? row.can_view : true
+    return row ? row.is_enabled : true
   }
 
   function togglePerm(userId, section) {
@@ -579,8 +579,8 @@ function UsersTab() {
       const rows = p[userId] || []
       const exists = rows.find(r => r.section === section)
       const updated = exists
-        ? rows.map(r => r.section === section ? { ...r, can_view: !r.can_view } : r)
-        : [...rows, { section, can_view: false, can_edit: false }]
+        ? rows.map(r => r.section === section ? { ...r, is_enabled: !r.is_enabled } : r)
+        : [...rows, { section, is_enabled: false }]
       return { ...p, [userId]: updated }
     })
   }
@@ -590,9 +590,8 @@ function UsersTab() {
     setPermBusy(true)
     try {
       const permissions = SECTIONS.map(s => ({
-        section:  s.key,
-        can_view: canView(selectedId, s.key),
-        can_edit: canView(selectedId, s.key),
+        section: s.key,
+        is_enabled: canView(selectedId, s.key),
       }))
       await api.put(`/settings/users/${selectedId}/permissions`, { permissions })
       setPermSaved(true); setTimeout(() => setPermSaved(false), 1800)

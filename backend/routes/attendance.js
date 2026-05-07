@@ -37,9 +37,23 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
        WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2 AND clock_out_at IS NULL`,
       [barber_id, today])
     if (existing.rows.length && !force) return res.status(409).json({ message: 'Already clocked in today' })
+
+    // Compute late_minutes: shift starts 09:00 WITA (540 min), grace from payroll_settings
+    const ps = await pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1')
+    const grace = parseInt(ps.rows[0]?.late_grace_period_minutes || 5)
+    const SHIFT_START_MIN = 9 * 60  // 09:00
+
+    // Clock-in is NOW() — compute minutes late
+    const clockInLocal = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })
+    const ciHour = parseInt(clockInLocal.slice(11, 13))
+    const ciMin  = parseInt(clockInLocal.slice(14, 16))
+    const ciMins = ciHour * 60 + ciMin
+    const lateMins = Math.max(0, ciMins - SHIFT_START_MIN - grace)
+
     const { rows } = await pool.query(
-      'INSERT INTO attendance (barber_id, branch_id, clock_in_at) VALUES ($1,$2,NOW()) RETURNING *',
-      [barber_id, branch_id])
+      `INSERT INTO attendance (barber_id, branch_id, clock_in_at, late_minutes)
+       VALUES ($1,$2,NOW(),$3) RETURNING *`,
+      [barber_id, branch_id, lateMins])
     await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [barber_id])
     emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
     res.status(201).json(rows[0])
@@ -65,6 +79,10 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
   try {
     const { barber_id } = req.body
     if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+    const { rows: active } = await pool.query(
+      `SELECT id FROM bookings WHERE barber_id = $1 AND status IN ('confirmed','in_progress') LIMIT 1`,
+      [barber_id])
+    if (active.length) return res.status(409).json({ message: 'Cannot clock out with active bookings' })
     const { rows } = await pool.query(
       `UPDATE attendance SET clock_out_at = NOW()
        WHERE id = (
@@ -96,6 +114,15 @@ router.post('/log-off', requireAdmin, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT DO NOTHING RETURNING *`,
       [barber_id, branch_id, date, type, note || null, has_doctor_note, req.user?.id || null])
+    if (rows[0]) {
+      try {
+        await pool.query(
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [req.user?.id || null, 'logged_off',
+           'off_records', rows[0].id, JSON.stringify(rows[0]), branch_id])
+      } catch (e) { console.error('[AuditLog] failed:', e.message) }
+    }
     res.status(201).json(rows[0] || { message: 'Record already exists' })
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })

@@ -82,7 +82,7 @@ const NAV = [
   { key: 'settings',    label: 'Settings',           icon: ICONS.settings   },
 ]
 
-function Sidebar({ screen, onNav, user, onLogout }) {
+function Sidebar({ screen, onNav, user, onLogout, visibleNav }) {
   return (
     <div style={{ width: 220, flexShrink: 0, background: T.topBg, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '22px 20px 18px', borderBottom: '1px solid #1e1e1c' }}>
@@ -242,7 +242,7 @@ export default function AdminApp() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
       <GS />
-      <Sidebar screen={screen} onNav={setScreen} user={user} onLogout={handleLogout} />
+      <Sidebar screen={screen} onNav={setScreen} user={user} onLogout={handleLogout} visibleNav={visibleNav} />
       <main style={{ flex: 1, overflow: 'auto', minHeight: '100vh', minWidth: 0 }}>
         {screen === 'overview'   && <Overview   user={user} onNav={setScreen} />}
         {screen === 'live'       && <LiveMonitor user={user} />}

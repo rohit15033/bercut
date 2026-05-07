@@ -16,7 +16,7 @@ router.get('/', requireAdmin, async (req, res) => {
       `SELECT e.*, ec.label AS category_name, u.name AS created_by_name
        FROM expenses e
        LEFT JOIN expense_categories ec ON ec.id = e.category_id
-       LEFT JOIN users u ON u.id = e.created_by
+       LEFT JOIN users u ON u.id = e.submitted_by
        ${where} ORDER BY e.expense_date DESC, e.created_at DESC`, vals)
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }

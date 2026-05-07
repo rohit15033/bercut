@@ -14,9 +14,23 @@ async function logAudit(pool, { userId, action, entityType, entityId, diff, bran
 }
 
 // GET /api/barbers?branch_id=&service_ids=  (also used by kiosk)
+// GET /api/barbers?all=1 — all active barbers across branches (no auth required)
 router.get('/', async (req, res) => {
   try {
-    const { branch_id, service_ids } = req.query
+    const { branch_id, service_ids, all } = req.query
+
+    // ?all=1 → return all active barbers across all branches
+    if (all === '1' || all === 'true') {
+      const { rows } = await pool.query(
+        `SELECT b.id, b.name, b.branch_id, b.specialty, b.phone, b.status, b.is_active, b.sort_order, b.pay_type, b.base_salary, b.daily_rate,
+                c.label AS chair_label
+         FROM barbers b
+         LEFT JOIN chairs c ON c.barber_id = b.id
+         WHERE b.is_active = true
+         ORDER BY b.name ASC`)
+      return res.json(rows)
+    }
+
     const branchId = branch_id || req.branchId
     if (!branchId) return res.status(400).json({ message: 'branch_id required' })
 

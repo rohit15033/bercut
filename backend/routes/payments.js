@@ -147,7 +147,7 @@ router.post('/terminal/session', requireKiosk, async (req, res) => {
       console.log('[Terminal] Retry of existing session failed, creating new session. error_code:', retried.error_code)
     }
 
-    const idempotencyKey = `bercut-${group_id || booking_id}-${Date.now()}`
+    const idempotencyKey = `bercut-${group_id || booking_id}-${Date.now()}-${req.kiosk?.tokenId || 'unknown'}`
     const session = await xenditPost('/v1/terminal/sessions', payload, idempotencyKey)
     if (session.error_code) {
       console.error('[Terminal] Xendit error creating session:', JSON.stringify(session))
@@ -258,6 +258,16 @@ router.post('/qris/session', requireKiosk, async (req, res) => {
 router.get('/qris/:id/status', requireKiosk, async (req, res) => {
   try {
     const { booking_id, group_id } = req.query
+
+    // Ownership check: verify this QR belongs to a booking at this kiosk's branch
+    // This prevents Branch A kiosk from polling Branch B QR codes
+    const qrOwner = await pool.query(
+      `SELECT branch_id FROM bookings WHERE "payment_ref" = $1`,
+      [req.params.id])
+    if (!qrOwner.rows.length || qrOwner.rows[0].branch_id !== req.branchId) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+
     const payments = await xenditApiGet(`/qr_codes/${req.params.id}/payments`)
     if (payments.error_code) return res.status(502).json({ message: payments.message })
     const succeeded = Array.isArray(payments.data)

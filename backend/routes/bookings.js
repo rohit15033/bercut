@@ -404,10 +404,25 @@ router.patch('/:id/unassign', requireKioskOrAdmin, async (req, res) => {
 
 router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `UPDATE bookings SET status = 'in_progress', started_at = NOW()
-       WHERE id = $1 AND status = 'confirmed' RETURNING *`,
-      [req.params.id])
+    // Only allow starting the earliest unstarted confirmed booking for this barber today
+    // This enforces the "topmost booking only" constraint at backend level (not just frontend)
+    const { rows } = await pool.query(`
+      WITH earliest AS (
+        SELECT id FROM bookings
+        WHERE barber_id = (
+          SELECT barber_id FROM bookings WHERE id = $1
+        )
+          AND branch_id = $2
+          AND DATE(scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
+          AND status = 'confirmed'
+        ORDER BY scheduled_at ASC
+        LIMIT 1
+      )
+      UPDATE bookings
+      SET status = 'in_progress', started_at = NOW()
+      WHERE id = $1 AND id = (SELECT id FROM earliest)
+      RETURNING *`,
+      [req.params.id, req.branchId])
     if (!rows.length) return res.status(409).json({ message: 'Cannot start booking' })
     await pool.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
     emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'in_service' })

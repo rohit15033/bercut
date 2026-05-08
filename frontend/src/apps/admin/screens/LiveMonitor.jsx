@@ -835,12 +835,15 @@ function BarberActionMenu({ barber, onAction }) {
 }
 
 function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, allBarbers, barberBusy, nextSlot }) {
-  const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
 
   const schedTime = formatTime(booking.scheduled_at)
   const startTime = formatTime(booking.started_at)
-  const estEnd    = booking.calculatedEstEnd ? booking.calculatedEstEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'
+  const estEnd    = booking.calculatedEstEnd
+    ? booking.calculatedEstEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    : '—'
+
+  const sm = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const serviceNames = booking.service_names || '—'
 
   const groupMembers = booking.group_id
@@ -934,17 +937,17 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
             ))}
           </div>
           {(() => {
-            let lastFinish = new Date();
+            let lastFinish = null;
             return activeQ.map((bk, idx) => {
               const duration = parseInt(bk.est_duration_min) || 30;
               let estEnd;
-              
+
               if (bk.status === 'in_progress') {
                 const start = new Date(bk.started_at);
                 estEnd = new Date(start.getTime() + duration * 60000);
               } else {
                 const sched = new Date(bk.scheduled_at);
-                const start = sched > lastFinish ? sched : lastFinish;
+                const start = lastFinish && lastFinish > sched ? lastFinish : sched;
                 estEnd = new Date(start.getTime() + duration * 60000);
               }
               lastFinish = estEnd;
@@ -971,27 +974,57 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
 
 // ── BranchSection ─────────────────────────────────────────────────────────────
 
-function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
+function UnassignedBlock({ bookings, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign }) {
   if (!bookings?.length) return null
+  const sorted = [...bookings].sort((a, z) => new Date(a.scheduled_at) - new Date(z.scheduled_at))
   return (
-    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FDE68A', background: '#FFFBEB', padding: '10px 14px' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400E', marginBottom: 8 }}>
+    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400E', padding: '10px 14px 8px' }}>
         🔄 Waiting for Barber Assignment ({bookings.length})
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '45px 1fr 1.2fr 65px 65px 65px 90px 40px', gap: 0, padding: '6px 14px', background: '#FEF3C7', borderTop: '1px solid #FDE68A', borderBottom: '1px solid #FDE68A' }}>
+        {['#', 'Customer', 'Services', 'Sched', 'Started', 'Est.End', 'Status', ''].map((h, i) => (
+          <div key={i} style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#92400E' }}>{h}</div>
+        ))}
+      </div>
+      {(() => {
+        let lastFinish = null
+        return sorted.map((bk, idx) => {
+          const duration = parseInt(bk.est_duration_min) || 30
+          const sched    = new Date(bk.scheduled_at)
+          const start    = lastFinish && lastFinish > sched ? lastFinish : sched
+          const estEnd   = new Date(start.getTime() + duration * 60000)
+          lastFinish = estEnd
+          return (
+            <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
+              onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign}
+              allBarbers={allBarbers} barberBusy={false} nextSlot={null}
+            />
+          )
+        })
+      })()}
+    </div>
+  )
+}
+
+function GhostBookingsBlock({ bookings, onCancel }) {
+  if (!bookings?.length) return null
+  return (
+    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FECACA', background: '#FEF2F2', padding: '10px 14px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991B1B', marginBottom: 8 }}>
+        👻 Ghost Bookings — Stale Confirmed from Previous Days ({bookings.length})
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {bookings.sort((a, z) => new Date(a.created_at) - new Date(z.created_at)).map(bk => (
-          <div key={bk.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#FEF9C3', border: '1px solid #FDE68A' }}>
-            <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 12, color: '#92400E', flexShrink: 0 }}>{bk.booking_number}</span>
-            <span style={{ fontWeight: 600, fontSize: 13, color: '#78350F', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {bookings.sort((a, z) => new Date(a.scheduled_at) - new Date(z.scheduled_at)).map(bk => (
+          <div key={bk.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#FFF1F2', border: '1px solid #FECACA' }}>
+            <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 12, color: '#991B1B', flexShrink: 0 }}>{bk.booking_number}</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: '#7F1D1D', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {bk.customer_name || bk.guest_name || 'Guest'}
             </span>
-            <span style={{ fontSize: 11, color: '#A16207', flexShrink: 0 }}>{bk.service_names}</span>
-            <button onClick={() => onEdit(bk)}
-              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #D97706', background: 'transparent', color: '#92400E', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-              Assign
-            </button>
+            <span style={{ fontSize: 11, color: '#B91C1C', flexShrink: 0 }}>{bk.service_names}</span>
+            <span style={{ fontSize: 11, color: '#B91C1C', flexShrink: 0, fontWeight: 600 }}>{bk.date} · {bk.barber_name || 'Unassigned'}</span>
             <button onClick={() => onCancel(bk)}
-              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #DC2626', background: 'transparent', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #DC2626', background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
@@ -1001,7 +1034,7 @@ function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
   )
 }
 
-function BranchSection({ branch, barbers, unassigned = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
+function BranchSection({ branch, barbers, unassigned = [], ghost = [], allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, onBarberAction }) {
   const inService    = barbers.filter(b => b.status === 'in_service').length
   const available    = barbers.filter(b => b.status === 'available').length
   const onBreak      = barbers.filter(b => b.status === 'on_break').length
@@ -1020,7 +1053,8 @@ function BranchSection({ branch, barbers, unassigned = [], allBarbers, onCancel,
           {totalAlerts > 0  && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#FEF3C7', color: '#92400E' }}>⚠ {totalAlerts} alert{totalAlerts > 1 ? 's' : ''}</span>}
         </div>
       </div>
-      <UnassignedBlock bookings={unassigned} allBarbers={allBarbers} onCancel={onCancel} onEdit={onEdit} />
+      <GhostBookingsBlock bookings={ghost} onCancel={onCancel} />
+      <UnassignedBlock bookings={unassigned} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
           <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign} onBarberAction={onBarberAction} />

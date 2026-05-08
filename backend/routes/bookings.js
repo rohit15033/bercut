@@ -87,9 +87,8 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       )
       const totalDur     = parseInt(durRes.rows[0]?.dur || 30)
       const scheduledISO = scheduledAt(bookingDate, slot_time)
-      const within30Min = !isNow && (new Date(scheduledISO).getTime() <= (Date.now() + 30 * 60 * 1000))
-      if (isNow || within30Min) {
-        const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur)
+      if (isNow) {
+        const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur, true)
         barberId = await pickIdleBarber(client, branchId, freeIds)
       }
       // Future slot outside 30-min window stays deferred; scheduler picks it up later.

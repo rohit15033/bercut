@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { kioskApi } from '../../shared/api.js'
 import { getKioskToken, setKioskToken, tokens as C } from '../../shared/tokens.js'
 import { useSSE } from '../../shared/useSSE.js'
@@ -13,6 +14,12 @@ import PaymentTakeover from './screens/PaymentTakeover.jsx'
 import BarberPanel from './screens/BarberPanel.jsx'
 import StaffPanel from './screens/StaffPanel.jsx'
 import QuickPanel from './screens/QuickPanel.jsx'
+
+const screenVariants = {
+  enter: (dir) => ({ opacity: 0, x: dir * 24 }),
+  visible: { opacity: 1, x: 0, transition: { duration: 0.2, ease: 'easeOut' } },
+  exit: (dir) => ({ opacity: 0, x: dir * -24, transition: { duration: 0.14, ease: 'easeIn' } }),
+}
 
 const GS = () => (
   <style>{`
@@ -173,6 +180,8 @@ function KioskContent({ config }) {
   useEffect(() => { paymentPendingRef.current = paymentPending }, [paymentPending])
   const stepRef = useRef(0)
   useEffect(() => { stepRef.current = step }, [step])
+  const dirRef = useRef(1)
+  const nav = (n) => { dirRef.current = n >= stepRef.current ? 1 : -1; setStep(n) }
   const [paymentRefreshKey, setPaymentRefreshKey] = useState(0)
   const [barberPanelOpen, setBarberPanelOpen] = useState(false)
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
@@ -301,6 +310,7 @@ function KioskContent({ config }) {
   const cartTotal = svcTotal + extrasTotal
 
   const reset = () => {
+    dirRef.current = -1
     setStep(0); setCart([]); setBarber(null); setSlot(null)
     setName(''); setPhone(''); setGroup([]); setGroupId(null); setSelectedExtras([])
     setOwnColorToggles({}); setBooking(null); setPointsUsed(0); setIdleCountdown(null)
@@ -323,6 +333,7 @@ function KioskContent({ config }) {
       }
       setGroup(g => [...g, booking])
     }
+    dirRef.current = -1
     setStep(1); setCart([]); setBarber(null); setSlot(null)
     setName(''); setPhone(''); setSelectedExtras([]); setOwnColorToggles({}); setBooking(null); setPointsUsed(0)
   }
@@ -332,41 +343,57 @@ function KioskContent({ config }) {
       <GS />
       {!isOnline && <OfflineBanner />}
       {idleCountdown !== null && <IdleOverlay seconds={idleCountdown} onDismiss={dismissIdle} />}
-      {paymentPending && paymentBooking && (
-        <PaymentTakeover
-          bookingData={paymentBooking}
-          branchId={branchId}
-          feedbackTags={feedbackTags}
-          settings={settings}
-          refreshKey={paymentRefreshKey}
-          onDone={() => { setPaymentPending(false); setPaymentBooking(null) }}
-        />
-      )}
-      {barberPanelOpen && (
-        <BarberPanel
-          branchId={branchId}
-          lastQueueUpdate={lastQueueUpdate}
-          onClose={() => setBarberPanelOpen(false)}
-          onHome={() => { setBarberPanelOpen(false); reset() }}
-        />
-      )}
-      {staffPanelOpen && (
-        <StaffPanel
-          branchId={branchId}
-          onClose={() => setStaffPanelOpen(false)}
-          onHome={() => { setStaffPanelOpen(false); reset() }}
-        />
-      )}
-      {quickPanelOpen && (
-        <QuickPanel
-          branchId={branchId}
-          services={services}
-          triggerPayment={(data) => { setPaymentBooking(data); setPaymentPending(true) }}
-          onHome={() => { setQuickPanelOpen(false); reset() }}
-          onClose={() => setQuickPanelOpen(false)}
-          lastQueueUpdate={lastQueueUpdate}
-        />
-      )}
+      <AnimatePresence>
+        {paymentPending && paymentBooking && (
+          <motion.div key="payment" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <PaymentTakeover
+              bookingData={paymentBooking}
+              branchId={branchId}
+              feedbackTags={feedbackTags}
+              settings={settings}
+              refreshKey={paymentRefreshKey}
+              onDone={() => { setPaymentPending(false); setPaymentBooking(null) }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {barberPanelOpen && (
+          <motion.div key="barber" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <BarberPanel
+              branchId={branchId}
+              lastQueueUpdate={lastQueueUpdate}
+              onClose={() => setBarberPanelOpen(false)}
+              onHome={() => { setBarberPanelOpen(false); reset() }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {staffPanelOpen && (
+          <motion.div key="staff" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <StaffPanel
+              branchId={branchId}
+              onClose={() => setStaffPanelOpen(false)}
+              onHome={() => { setStaffPanelOpen(false); reset() }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {quickPanelOpen && (
+          <motion.div key="quick" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <QuickPanel
+              branchId={branchId}
+              services={services}
+              triggerPayment={(data) => { setPaymentBooking(data); setPaymentPending(true) }}
+              onHome={() => { setQuickPanelOpen(false); reset() }}
+              onClose={() => setQuickPanelOpen(false)}
+              lastQueueUpdate={lastQueueUpdate}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <Topbar
         step={step}
         cartTotal={cartTotal}
@@ -378,94 +405,106 @@ function KioskContent({ config }) {
         onQuickPanel={() => setQuickPanelOpen(true)}
         settings={settings}
       />
-      {step === 0 && (
-        <Welcome
-          onStart={() => setStep(1)}
-          settings={settings}
-          branchName={branchName}
-        />
-      )}
-      {step === 1 && (
-        <ServiceSelection
-          services={services}
-          cart={cart}
-          setCart={setCart}
-          ownColorToggles={ownColorToggles}
-          setOwnColorToggles={setOwnColorToggles}
-          settings={settings}
-          onNext={() => setStep(2)}
-          onBack={() => { if (group.length > 0) { setStep(5) } else { setStep(0) } }}
-        />
-      )}
-      {step === 2 && (
-        <BarberSelection
-          barbers={barbers}
-          services={services}
-          serviceIds={cart}
-          barber={barber}
-          setBarber={setBarber}
-          onNext={() => setStep(3)}
-          onBack={() => setStep(1)}
-        />
-      )}
-      {step === 3 && (
-        <TimeSlot
-          barber={barber}
-          branchId={branchId}
-          serviceIds={cart}
-          services={services}
-          menuItems={menuItems}
-          slot={slot}
-          setSlot={setSlot}
-          selectedExtras={selectedExtras}
-          setSelectedExtras={setSelectedExtras}
-          onNext={() => setStep(4)}
-          onBack={() => setStep(2)}
-        />
-      )}
-      {step === 4 && (
-        <Confirm
-          cart={cart}
-          services={services}
-          barber={barber}
-          slot={slot}
-          selectedExtras={selectedExtras}
-          menuItems={menuItems}
-          name={name}
-          setName={setName}
-          phone={phone}
-          setPhone={setPhone}
-          branchId={branchId}
-          settings={settings}
-          groupId={groupId}
-          onConfirm={(bk, pts) => {
-            setBooking(bk)
-            setPointsUsed(pts || 0)
-            if (barber?.source === 'any_available' && bk.barber_id) {
-              const assigned = barbers.find(b => b.id === bk.barber_id) || { id: bk.barber_id, name: bk.barber_name }
-              setBarber(assigned)
-            }
-            setStep(5)
-          }}
-          onBack={() => setStep(3)}
-        />
-      )}
-      {step === 5 && (
-        <QueueNumber
-          booking={booking}
-          group={group}
-          name={name}
-          cart={cart}
-          services={services}
-          barber={barber}
-          barbers={barbers}
-          slot={slot}
-          pointsUsed={pointsUsed}
-          onAddAnother={addAnother}
-          onReset={reset}
-          settings={settings}
-        />
-      )}
+      <AnimatePresence mode="wait" custom={dirRef.current}>
+        <motion.div
+          key={step}
+          custom={dirRef.current}
+          variants={screenVariants}
+          initial="enter"
+          animate="visible"
+          exit="exit"
+        >
+          {step === 0 && (
+            <Welcome
+              onStart={() => nav(1)}
+              settings={settings}
+              branchName={branchName}
+            />
+          )}
+          {step === 1 && (
+            <ServiceSelection
+              services={services}
+              cart={cart}
+              setCart={setCart}
+              ownColorToggles={ownColorToggles}
+              setOwnColorToggles={setOwnColorToggles}
+              settings={settings}
+              onNext={() => nav(2)}
+              onBack={() => { if (group.length > 0) { nav(5) } else { nav(0) } }}
+            />
+          )}
+          {step === 2 && (
+            <BarberSelection
+              barbers={barbers}
+              services={services}
+              serviceIds={cart}
+              barber={barber}
+              setBarber={setBarber}
+              onNext={() => nav(3)}
+              onBack={() => nav(1)}
+            />
+          )}
+          {step === 3 && (
+            <TimeSlot
+              barber={barber}
+              branchId={branchId}
+              serviceIds={cart}
+              setServiceIds={setCart}
+              services={services}
+              menuItems={menuItems}
+              slot={slot}
+              setSlot={setSlot}
+              selectedExtras={selectedExtras}
+              setSelectedExtras={setSelectedExtras}
+              onNext={() => nav(4)}
+              onBack={() => nav(2)}
+            />
+          )}
+          {step === 4 && (
+            <Confirm
+              cart={cart}
+              services={services}
+              barber={barber}
+              slot={slot}
+              selectedExtras={selectedExtras}
+              menuItems={menuItems}
+              name={name}
+              setName={setName}
+              phone={phone}
+              setPhone={setPhone}
+              branchId={branchId}
+              settings={settings}
+              groupId={groupId}
+              onConfirm={(bk, pts) => {
+                setBooking(bk)
+                setPointsUsed(pts || 0)
+                if (barber?.source === 'any_available' && bk.barber_id) {
+                  const assigned = barbers.find(b => b.id === bk.barber_id) || { id: bk.barber_id, name: bk.barber_name }
+                  setBarber(assigned)
+                }
+                nav(5)
+              }}
+              onBack={() => nav(3)}
+            />
+          )}
+          {step === 5 && (
+            <QueueNumber
+              booking={booking}
+              group={group}
+              name={name}
+              cart={cart}
+              services={services}
+              barber={barber}
+              barbers={barbers}
+              slot={slot}
+              pointsUsed={pointsUsed}
+              onAddAnother={addAnother}
+              onReset={reset}
+              settings={settings}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   )
 }

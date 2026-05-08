@@ -35,5 +35,14 @@ export default defineConfig({
     // Nginx serves the SPA from backend/public in production
     outDir: '../backend/public',
     emptyOutDir: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-motion': ['motion'],
+          'vendor-xlsx': ['xlsx'],
+        },
+      },
+    },
   },
 })

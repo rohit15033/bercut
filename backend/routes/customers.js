@@ -2,17 +2,24 @@ const router = require('express').Router()
 const pool   = require('../config/db')
 const { requireAdmin } = require('../middleware/auth')
 
-// GET /api/customers?phone=  — loyalty lookup by phone (kiosk)
+// GET /api/customers?phone=  — loyalty lookup by phone (kiosk); no phone → all customers
 router.get('/', async (req, res) => {
   try {
     const { phone } = req.query
-    if (!phone) return res.status(400).json({ message: 'phone required' })
+    if (phone) {
+      const { rows } = await pool.query(
+        `SELECT id, name, phone, points_balance, total_visits, total_spend, last_visit,
+                points_last_activity_at, points_last_expired_at
+         FROM customers WHERE phone = $1`, [phone])
+      if (!rows.length) return res.json(null)
+      return res.json(rows[0])
+    }
+    // No phone → return all customers
     const { rows } = await pool.query(
       `SELECT id, name, phone, points_balance, total_visits, total_spend, last_visit,
               points_last_activity_at, points_last_expired_at
-       FROM customers WHERE phone = $1`, [phone])
-    if (!rows.length) return res.json(null)
-    res.json(rows[0])
+       FROM customers ORDER BY total_visits DESC`)
+    res.json(rows)
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 

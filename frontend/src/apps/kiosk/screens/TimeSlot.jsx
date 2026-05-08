@@ -11,7 +11,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
   const [nowPickerOpen, setNowPickerOpen] = useState(false)
   const originalCartRef = useRef(serviceIds)
 
-  const today   = new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', timeZone:'Asia/Makassar' })
+  const today = new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', timeZone:'Asia/Makassar' })
   const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
 
   const totalDur = serviceIds.reduce((s, id) => {
@@ -29,7 +29,10 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
       : barber?.id ? `/slots?barber_id=${barber.id}&date=${dateStr}&duration_min=${totalDur}&walkin=true` : null
     if (!url) { setSlots([]); setLoadingSlots(false); return }
     kioskApi.get(url)
-      .then(data => setSlots(Array.isArray(data) ? data : (data.slots || [])))
+      .then(data => {
+        const parsedSlots = Array.isArray(data) ? data : (data.slots || [])
+        setSlots(parsedSlots)
+      })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false))
   }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -43,6 +46,10 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
   const nowMin = (() => { const [h, m] = nowWitaStr.split(':').map(Number); return h * 60 + m })()
 
   const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
+  const barberAvailableNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(barber?.status)
+  const canNow = barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + 4
+
+  // If barber busy but slots available, offer first slot as "Next"
   const barberAvailableNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(barber?.status)
   const canNowFromSlots = barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + 4
 

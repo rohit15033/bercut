@@ -1,19 +1,23 @@
 const pool = require('../config/db')
 
-// Returns barbers sorted by idle time: who completed last service earliest today (or never = null) comes first.
-// Alphabetical tiebreaker for nulls (start of day).
+// Returns available barbers sorted by idle time: who completed their last service TODAY earliest comes first.
+// Barbers with no completed bookings today sort first (null), broken by name alphabetically.
+// Barbers who are in_service, on_break, clocked_out, or off are excluded entirely.
 async function getActiveBarbers(client, branchId) {
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
   const { rows } = await client.query(
-    `SELECT b.id, b.name, MAX(bk.completed_at) AS last_completed_at
+    `SELECT b.id, b.name,
+            MAX(bk.completed_at) AS last_completed_at,
+            MIN(a.clock_in_at) AS clocked_in_at
      FROM barbers b
      LEFT JOIN bookings bk ON bk.barber_id = b.id
        AND bk.status IN ('pending_payment','completed')
-       AND DATE(bk.completed_at AT TIME ZONE 'Asia/Makassar') = $2
-     WHERE b.branch_id = $1 AND b.is_active = true AND b.status NOT IN ('clocked_out','off')
+       AND DATE(bk.completed_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')
+     LEFT JOIN attendance a ON a.barber_id = b.id
+       AND DATE(a.clock_in_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')
+     WHERE b.branch_id = $1 AND b.is_active = true AND b.status = 'available'
      GROUP BY b.id, b.name
-     ORDER BY last_completed_at ASC NULLS FIRST, b.name ASC`,
-    [branchId, today]
+     ORDER BY last_completed_at ASC NULLS FIRST, clocked_in_at ASC NULLS LAST, b.name ASC`,
+    [branchId]
   )
   return rows
 }
@@ -63,36 +67,6 @@ async function pickIdleBarber(client, branchId, freeIds) {
   return picked?.id || null
 }
 
-// Picks the barber whose current workload ends soonest — used when all are busy.
-async function pickFastestBarber(client, branchId) {
-  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
-  const { rows } = await client.query(
-    `SELECT b.id,
-       COALESCE(
-         MAX(CASE WHEN bk.status = 'in_progress'
-                  THEN GREATEST(bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute'), NOW())
-                  ELSE bk.scheduled_at + ((dur.total_dur + 5) * INTERVAL '1 minute')
-             END),
-         NOW()
-       ) AS est_end
-     FROM barbers b
-     LEFT JOIN bookings bk ON bk.barber_id = b.id
-       AND bk.status IN ('confirmed','in_progress')
-       AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
-     LEFT JOIN (
-       SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
-       FROM booking_services bsv JOIN services s ON s.id = bsv.service_id
-       GROUP BY bsv.booking_id
-     ) dur ON dur.booking_id = bk.id
-     WHERE b.branch_id = $1 AND b.is_active = true AND b.status NOT IN ('clocked_out','off','on_break')
-     GROUP BY b.id
-     ORDER BY est_end ASC
-     LIMIT 1`,
-    [branchId, today]
-  )
-  return rows[0]?.id || null
-}
-
 // Called after barber clicks Selesai — tries assigning oldest deferred booking
 // using the same policy as scheduler/create: only free barbers, longest-idle first.
 async function tryAssignDeferred(branchId, _completingBarberId) {
@@ -100,25 +74,15 @@ async function tryAssignDeferred(branchId, _completingBarberId) {
   try {
     await client.query('BEGIN')
     const { rows: deferred } = await client.query(
-      `WITH candidate AS (
-         SELECT bk.id, bk.scheduled_at
-         FROM bookings bk
-         WHERE bk.branch_id = $1
-           AND bk.barber_id IS NULL
-           AND bk.status = 'confirmed'
-           AND bk.scheduled_at <= NOW() + INTERVAL '30 minutes'
-         ORDER BY bk.scheduled_at ASC, bk.created_at ASC
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED
-       )
-       SELECT c.id, c.scheduled_at, COALESCE(d.total_dur, 30) AS total_dur
-       FROM candidate c
-       LEFT JOIN (
-         SELECT bsv.booking_id, SUM(s.duration_minutes) AS total_dur
-         FROM booking_services bsv
-         JOIN services s ON s.id = bsv.service_id
-         GROUP BY bsv.booking_id
-       ) d ON d.booking_id = c.id`,
+      `SELECT bk.id, bk.scheduled_at
+       FROM bookings bk
+       WHERE bk.branch_id = $1
+         AND bk.barber_id IS NULL
+         AND bk.status = 'confirmed'
+         AND bk.scheduled_at <= NOW() + INTERVAL '15 minutes'
+       ORDER BY bk.scheduled_at ASC, bk.created_at ASC
+       LIMIT 1
+       FOR UPDATE SKIP LOCKED`,
       [branchId]
     )
     if (!deferred.length) { await client.query('ROLLBACK'); return null }
@@ -166,4 +130,4 @@ async function tryAssignDeferred(branchId, _completingBarberId) {
   } finally { client.release() }
 }
 
-module.exports = { getActiveBarbers, getFreeBarberIds, pickIdleBarber, pickFastestBarber, tryAssignDeferred }
+module.exports = { getActiveBarbers, getFreeBarberIds, pickIdleBarber, tryAssignDeferred }

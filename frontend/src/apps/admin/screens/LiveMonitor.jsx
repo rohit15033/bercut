@@ -524,6 +524,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 8 }}>Barber</div>
                 <select value={barberId} onChange={e => setBarberId(e.target.value)}
                   style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, cursor: 'pointer' }}>
+                  <option value="">— Select barber —</option>
                   {branchBarbers.map(b => (
                     <option key={b.id} value={b.id}>{b.name}{b.status === 'in_service' ? ' (In Service)' : b.status === 'on_break' ? ' (On Break)' : ''}</option>
                   ))}
@@ -1070,6 +1071,7 @@ export default function LiveMonitor() {
   const [branches,        setBranches]        = useState([])
   const [barberQueues,    setBarberQueues]     = useState([])
   const [unassignedByBranch, setUnassignedByBranch] = useState({})
+  const [ghostByBranch,   setGhostByBranch]   = useState({})
   const [branchFilter,    setBranchFilter]     = useState('all')
   const [cancelModal,     setCancelModal]      = useState(null)
   const [forceStartModal, setForceStartModal]  = useState(null)
@@ -1083,18 +1085,33 @@ export default function LiveMonitor() {
   const [lastRefresh,     setLastRefresh]      = useState(new Date())
   const [loading,         setLoading]          = useState(true)
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
 
   const loadData = useCallback(async () => {
     try {
-      const [brs, bks, bars] = await Promise.all([
+      const [brs, bks, bars, ghosts] = await Promise.all([
         api.get('/branches'),
         api.get(`/bookings?date=${today}`),
         api.get('/barbers/all'),
+        api.get(`/bookings?status=confirmed`).then(all => {
+          const todayWita = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+          return (Array.isArray(all) ? all : []).filter(bk => {
+            if (!bk.scheduled_at) return false
+            const bkDateWita = new Date(bk.scheduled_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
+            return bkDateWita < todayWita
+          })
+        }).catch(() => []),
       ])
       const branchList = Array.isArray(brs) ? brs.filter(b => b.is_active !== false) : []
       const bookings   = Array.isArray(bks) ? bks.filter(b => EDITABLE_STATUSES.has(b.status)) : []
       const barberList = Array.isArray(bars) ? bars : []
+
+      const ghostMap = {}
+      for (const bk of ghosts) {
+        if (!ghostMap[bk.branch_id]) ghostMap[bk.branch_id] = []
+        ghostMap[bk.branch_id].push(bk)
+      }
+      setGhostByBranch(ghostMap)
 
       const assignedBookings   = bookings.filter(bk => bk.barber_id)
       const unassignedBookings = bookings.filter(bk => !bk.barber_id)
@@ -1179,7 +1196,7 @@ export default function LiveMonitor() {
     } catch (err) { alert(err.message || 'Action failed') }
   }
 
-  const totalInService = barberQueues.filter(b => b.status === 'in_service' || b.status === 'in_service').length
+  const totalInService = barberQueues.filter(b => b.status === 'in_service').length
   const totalWaiting   = barberQueues.reduce((a, b) => a + (b.queue || []).filter(q => q.status === 'confirmed').length, 0)
   const totalAlerts    = barberQueues.reduce((a, b) => a + (b.queue || []).filter(q => q.client_not_arrived).length, 0)
   const refreshStr     = lastRefresh.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -1315,6 +1332,7 @@ export default function LiveMonitor() {
         return (
           <BranchSection key={branch.id} branch={branch} barbers={branchBarbers}
             unassigned={unassignedByBranch[branch.id] || []}
+            ghost={ghostByBranch[branch.id] || []}
             allBarbers={barberQueues}
             onCancel={bk => setCancelModal({ booking: bk })}
             onStart={bk => setForceStartModal({ booking: bk })}

@@ -67,7 +67,7 @@ function DateRangePicker({ from, to, onChange }) {
 
   function handleDay(iso) {
     if (!from || to || iso < from) { onChange(iso, null) }
-    else if (iso === from)         { onChange(null, null) }
+    else if (iso === from)         { onChange(iso, iso); setOpen(false) }
     else                           { onChange(from, iso); setOpen(false) }
   }
 
@@ -137,12 +137,15 @@ function DateRangePicker({ from, to, onChange }) {
             <div style={{ width: 1, background: T.surface, alignSelf: 'stretch' }} />
             {renderMonth(rightYear, rightMonth, false, true)}
           </div>
-          {from && !to && <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, textAlign: 'center', fontSize: 11, color: T.muted }}>Click an end date · click start again to reset</div>}
+          {from && !to && <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, textAlign: 'center', fontSize: 11, color: T.muted }}>Click same date again to pick single day</div>}
           {from && to && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(from)} – {fmtDate(to)}</span>
               <button onClick={() => onChange(null, null)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: T.surface, color: T.text2, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Clear</button>
             </div>
+          )}
+          {!from && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, textAlign: 'center', fontSize: 11, color: T.muted }}>Click a date to select · click again for single day</div>
           )}
         </div>
       )}
@@ -394,30 +397,58 @@ export default function Reports() {
     : filterPeriod === 'today' ? 'Today' : filterPeriod === 'week' ? 'This Week' : 'This Month'
 
   function buildTxRows() {
-    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Rate%','Commission','Amount','Tip','Payment']
+    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Category','Rate%','Commission','Amount','Tip','Payment']
     const rows = [headers]
     txData.forEach(r => {
       const svcs   = Array.isArray(r.services) ? r.services : []
       const extras = Array.isArray(r.extras)   ? r.extras   : []
+      // Date column: format as WITA string to avoid Excel interpreting it in system timezone.
+      // r.date from API is DATE(scheduled_at AT TIME ZONE 'Asia/Makassar') — a YYYY-MM-DD string.
+      // Guard against falsy, invalid, or already-timestamp strings.
+      let witaDate = ''
+      if (r.date) {
+        const raw = String(r.date).trim()
+        if (raw) {
+          try {
+            // If it already looks like a date-only string, parse it directly
+            if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+              witaDate = raw // already correct, no JS parsing needed
+            } else {
+              // Full timestamp — extract date portion in WITA
+              const d = new Date(raw)
+              if (!isNaN(d)) {
+                witaDate = d.toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' })
+                  .split('/').reverse().join('-')
+              }
+            }
+          } catch (_) {
+            witaDate = raw // fallback to whatever came from API
+          }
+        }
+      }
       const base = [
-        r.date || '', r.booking_number || '', r.time_scheduled || '',
+        witaDate, r.booking_number || '', r.time_scheduled || '',
         r.time_started || '', r.time_ended || '',
         r.customer_name || '', r.customer_phone || '', r.barber_name || '',
       ]
       if (svcs.length === 0) {
-        rows.push([...base, '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
+        rows.push([...base, '', '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
       } else {
         svcs.forEach((sv, i) => {
           rows.push([
             ...base,
             sv.service_name || '',
+            sv.category || '',
             sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
             sv.commission != null ? sv.commission : '',
-            i === 0 ? (r.total_amount || '') : '', i === 0 ? (r.tip || '') : '', i === 0 ? (r.payment_method || '') : '',
+            sv.price || '',
+            i === 0 ? (r.tip || '') : '',
+            r.payment_method || '',
           ])
         })
         extras.forEach(ex => {
-          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''} (add-on)`, '', '', '', '', ''])
+          const categoryLabel = ex.category === 'beverage' ? 'Beverage' : ex.category === 'product' ? 'Product' : 'Add-on'
+          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, categoryLabel, '', '', ex.price * ex.quantity, '', r.payment_method || ''])
         })
       }
     })

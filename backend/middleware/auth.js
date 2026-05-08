@@ -2,7 +2,11 @@ const jwt    = require('jsonwebtoken')
 const pool   = require('../config/db')
 const crypto = require('crypto')
 
-const JWT_SECRET = process.env.JWT_SECRET || 'bercut-dev-secret-change-in-production'
+if (!process.env.JWT_SECRET) {
+  console.error('[Auth] JWT_SECRET env var is not set — refusing to start')
+  process.exit(1)
+}
+const JWT_SECRET = process.env.JWT_SECRET
 
 // Verify JWT for admin routes
 function requireAdmin(req, res, next) {
@@ -69,6 +73,8 @@ function requireOwner(req, res, next) {
 }
 
 // Check if user can access a section (reads user_permissions)
+// section keys: reports, barbers, services, customers, expenses, inventory,
+//                payroll, online_booking, kiosk_config, branches, settings, live_monitor
 async function checkPermission(section) {
   return async (req, res, next) => {
     if (!req.user) return next()

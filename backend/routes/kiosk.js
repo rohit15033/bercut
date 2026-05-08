@@ -15,7 +15,7 @@ router.post('/register', async (req, res) => {
               ks.upsell_enabled, ks.upsell_rules, ks.suggest_services, ks.category_order,
               ks.svc_order_by_cat, ks.service_visible, ks.session_timeout_secs,
               ks.upsell_heading, ks.upsell_heading_id, ks.upsell_switch_cta, ks.upsell_keep_cta,
-              ks.kiosk_admin_pin, ks.kiosk_barber_pin,
+              ks.kiosk_admin_pin, ks.kiosk_barber_pin, ks.xendit_terminal_id,
               b.tip_presets
        FROM kiosk_tokens kt
        JOIN branches b ON b.id = kt.branch_id
@@ -114,6 +114,7 @@ router.post('/register', async (req, res) => {
         kioskAdminPin: row.kiosk_admin_pin,
         kioskBarberPin: row.kiosk_barber_pin,
         tipPresets: row.tip_presets || [5000, 10000, 20000, 50000, 100000],
+        xenditTerminalId: row.xendit_terminal_id || null,
       },
       feedback_tags: tagRes.rows,
       menu_items: menuRes.rows,

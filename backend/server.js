@@ -36,6 +36,7 @@ app.use('/api/payroll', require('./routes/payroll'))
 app.use('/api/upload', require('./routes/upload'))
 app.use('/api/barber-breaks', require('./routes/barber-breaks'))
 app.use('/api/booking-groups', require('./routes/booking-groups'))
+app.use('/api/webhook', require('./routes/webhook'))
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
@@ -52,7 +53,7 @@ app.use((err, req, res, _next) => {
 const { runPointsExpiry } = require('./services/pointsExpiry')
 const { runAutoCancel } = require('./services/autoCancel')
 const { checkEscalations } = require('./services/escalation')
-const { assignUpcomingDeferred } = require('./services/deferredScheduler')
+const { assignUpcomingDeferred, autoEndExpiredBreaks } = require('./services/deferredScheduler')
 
 // Points expiry — nightly at 00:05 WITA (UTC+8 = 16:05 UTC prev day)
 cron.schedule('5 16 * * *', () => {
@@ -72,6 +73,11 @@ cron.schedule('* * * * *', () => {
 // Deferred booking assignment — every minute, assigns T-10min future any_available slots
 cron.schedule('* * * * *', () => {
   assignUpcomingDeferred().catch(console.error)
+})
+
+// Auto-end expired breaks — every minute
+cron.schedule('* * * * *', () => {
+  autoEndExpiredBreaks().catch(console.error)
 })
 
 const PORT = process.env.PORT || 3000

@@ -80,4 +80,23 @@ async function assignDeferredForBranch(branchId) {
   }
 }
 
-module.exports = { assignUpcomingDeferred }
+// Auto-end breaks whose duration has elapsed and barber never tapped "End Break"
+async function autoEndExpiredBreaks() {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE barber_breaks
+       SET ended_at = started_at + (duration_minutes * INTERVAL '1 minute')
+       WHERE ended_at IS NULL
+         AND started_at + (duration_minutes * INTERVAL '1 minute') <= NOW()
+       RETURNING barber_id, branch_id`
+    )
+    for (const { barber_id, branch_id } of rows) {
+      await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1 AND status = 'on_break'`, [barber_id])
+      emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
+    }
+  } catch (err) {
+    console.error('[autoEndExpiredBreaks]', err)
+  }
+}
+
+module.exports = { assignUpcomingDeferred, autoEndExpiredBreaks }

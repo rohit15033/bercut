@@ -5,128 +5,445 @@ const { emitEvent } = require('./events')
 const { notifyPaymentReceipt } = require('../services/notifications')
 const { awardPoints } = require('../services/loyalty')
 
-const XENDIT_SECRET = process.env.XENDIT_SECRET_KEY || ''
-const WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || ''
-const TERMINAL_URL  = process.env.XENDIT_TERMINAL_BASE_URL || 'https://api.xendit.co'
+const XENDIT_SECRET   = process.env.XENDIT_SECRET_KEY || ''
+const XENDIT_TERMINAL_KEY = process.env.XENDIT_TERMINAL_KEY || XENDIT_SECRET  // separate key from Xendit team
+const WEBHOOK_TOKEN   = process.env.XENDIT_WEBHOOK_TOKEN || ''
+const TERMINAL_URL    = process.env.XENDIT_TERMINAL_URL || 'https://terminal.xendit.co'
+const XENDIT_API_URL  = process.env.XENDIT_API_URL || 'https://api.xendit.co'
 
-function xenditHeaders() {
-  const cred = Buffer.from(XENDIT_SECRET + ':').toString('base64')
-  return { Authorization: `Basic ${cred}`, 'Content-Type': 'application/json' }
+function xenditHeaders(idempotencyKey) {
+  const cred = Buffer.from(XENDIT_TERMINAL_KEY + ':').toString('base64')
+  const h = { Authorization: `Basic ${cred}`, 'Content-Type': 'application/json' }
+  if (idempotencyKey) h['idempotency-key'] = idempotencyKey
+  return h
 }
 
-async function xenditPost(path, body) {
+// Terminal H2H helpers (terminal.xendit.co)
+async function xenditPost(path, body, idempotencyKey) {
   const r = await fetch(`${TERMINAL_URL}${path}`, {
-    method: 'POST', headers: xenditHeaders(), body: JSON.stringify(body)
+    method: 'POST', headers: xenditHeaders(idempotencyKey), body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
   })
-  return r.json()
+  const json = await r.json()
+  if (!r.ok) console.error('[Xendit Terminal] POST', path, r.status, json?.error_code, json?.message)
+  return json
+}
+
+async function xenditGet(path) {
+  const r = await fetch(`${TERMINAL_URL}${path}`, {
+    method: 'GET', headers: xenditHeaders(),
+    signal: AbortSignal.timeout(8000),
+  })
+  const json = await r.json()
+  if (!r.ok) console.error('[Xendit Terminal] GET', path, r.status, json?.error_code)
+  return json
+}
+
+// Main API helpers (api.xendit.co) — used for QR codes, etc.
+function xenditApiHeaders(idempotencyKey) {
+  const cred = Buffer.from(XENDIT_SECRET + ':').toString('base64')
+  const h = { Authorization: `Basic ${cred}`, 'Content-Type': 'application/json', 'api-version': '2022-07-31' }
+  if (idempotencyKey) h['idempotency-key'] = idempotencyKey
+  return h
+}
+
+async function xenditApiPost(path, body, idempotencyKey) {
+  const r = await fetch(`${XENDIT_API_URL}${path}`, {
+    method: 'POST', headers: xenditApiHeaders(idempotencyKey), body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  })
+  const json = await r.json()
+  if (!r.ok) console.error('[Xendit API] POST', path, r.status, json?.error_code, json?.message)
+  return json
+}
+
+async function xenditApiGet(path) {
+  const r = await fetch(`${XENDIT_API_URL}${path}`, {
+    method: 'GET', headers: xenditApiHeaders(),
+    signal: AbortSignal.timeout(8000),
+  })
+  const json = await r.json()
+  if (!r.ok) console.error('[Xendit API] GET', path, r.status, json?.error_code)
+  return json
+}
+
+
+
+function mapXenditPaymentMethod(xenditMethod) {
+  if (xenditMethod === 'ID_QRIS') return 'qris'
+  if (xenditMethod === 'ID_CONTACTLESS') return 'tap'
+  return 'card'
 }
 
 const computedTotal = `(
   COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id),0) +
   COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id),0) -
-  bk.points_redeemed * 100
+  bk.points_redeemed * 10000
 )`
 
-// POST /api/payments/terminal/session — initiate Xendit terminal payment
+// POST /api/payments/terminal/session — initiate Xendit H2H terminal payment
 router.post('/terminal/session', requireKiosk, async (req, res) => {
   try {
-    const { booking_id, terminal_id } = req.body
-    if (!booking_id) return res.status(400).json({ message: 'booking_id required' })
+    const { booking_id, group_id, tip_amount = 0, tip_amounts = {}, payment_method = 'card', terminal_id } = req.body
+    if (!booking_id && !group_id) return res.status(400).json({ message: 'booking_id or group_id required' })
+    if (!terminal_id) return res.status(400).json({ message: 'terminal_id required' })
 
-    const bk = await pool.query(
-      `SELECT bk.*, ${computedTotal} AS total_amount FROM bookings bk WHERE bk.id = $1`,
-      [booking_id])
-    if (!bk.rows.length) return res.status(404).json({ message: 'Booking not found' })
-    const booking = bk.rows[0]
+    let total, referenceId, branchId, leadBookingId, existingRef, metadata
 
+    if (group_id) {
+      const { rows: groupBks } = await pool.query(
+        `SELECT id, branch_id, payment_status, payment_ref, ${computedTotal} AS total_amount FROM bookings bk WHERE group_id = $1`,
+        [group_id])
+      if (!groupBks.length) return res.status(404).json({ message: 'Group not found' })
+      if (groupBks.every(bk => bk.payment_status === 'paid')) {
+        return res.status(409).json({ message: 'Group already paid', already_paid: true })
+      }
+      branchId = groupBks[0].branch_id
+      leadBookingId = groupBks[0].id
+      existingRef = groupBks[0].payment_ref
+      const subtotal = groupBks.reduce((s, bk) => s + parseFloat(bk.total_amount), 0)
+      const tipsTotal = groupBks.reduce((s, bk) => s + parseFloat(tip_amounts[bk.id] || 0), 0)
+      total = Math.round(subtotal + tipsTotal)
+      referenceId = `bk-grp-${group_id}`
+      metadata = { group_id, tip_amounts, branch_id: branchId }
+    } else {
+      const bk = await pool.query(
+        `SELECT bk.*, ${computedTotal} AS total_amount FROM bookings bk WHERE bk.id = $1`,
+        [booking_id])
+      if (!bk.rows.length) return res.status(404).json({ message: 'Booking not found' })
+      const booking = bk.rows[0]
+      if (booking.payment_status === 'paid') {
+        return res.status(409).json({ message: 'Booking is already paid', already_paid: true })
+      }
+      branchId = booking.branch_id
+      leadBookingId = booking_id
+      existingRef = booking.payment_ref
+      total = Math.round(parseFloat(booking.total_amount) + parseFloat(tip_amount || 0))
+      referenceId = `bk-${booking_id}`
+      metadata = { booking_id, branch_id: branchId, tip_amount: parseFloat(tip_amount || 0) }
+    }
+
+    const xenditMethod = payment_method === 'tap' ? 'ID_CONTACTLESS' : 'ID_INSERT_CARD'
+    const orderId = (group_id || booking_id).replace(/-/g, '').slice(0, 16) + Date.now().toString().slice(-4)
     const payload = {
-      reference_id: booking.id,
+      session_type: 'PAY',
+      mode: 'TERMINAL',
       currency: 'IDR',
-      amount: booking.total_amount,
-      terminal_id,
-      metadata: { booking_id: booking.id, branch_id: booking.branch_id }
+      amount: total,
+      country: 'ID',
+      reference_id: referenceId,
+      description: group_id ? `Bercut Group #${group_id.slice(0, 8)}` : `Bercut #${booking_id}`,
+      channel_properties: { terminal_id, order_id: orderId, payment_methods: [xenditMethod] },
+      metadata
     }
-    const session = await xenditPost('/payment_requests', payload)
+
+    // If lead booking already has a session ref, try retrying it first
+    if (existingRef) {
+      const retried = await xenditPost(`/v1/terminal/sessions/${existingRef}/retry`, {})
+      if (!retried.error_code) {
+        console.log('[Terminal] Reused existing session via retry:', existingRef)
+        return res.json({ session_id: existingRef, status: retried.status || 'ACTIVE' })
+      }
+      console.log('[Terminal] Retry of existing session failed, creating new session. error_code:', retried.error_code)
+    }
+
+    const idempotencyKey = `bercut-${group_id || booking_id}-${Date.now()}-${req.kiosk?.tokenId || 'unknown'}`
+    const session = await xenditPost('/v1/terminal/sessions', payload, idempotencyKey)
     if (session.error_code) {
-      return res.status(502).json({ message: session.message || 'Xendit error' })
+      console.error('[Terminal] Xendit error creating session:', JSON.stringify(session))
+      return res.status(502).json({ message: session.message || 'Xendit error', error_code: session.error_code })
     }
 
-    // Store Xendit session ref in payment_ref field
-    await pool.query('UPDATE bookings SET payment_ref = $1 WHERE id = $2', [session.id, booking.id])
-
-    res.json({ session_id: session.id, status: session.status })
+    await pool.query('UPDATE bookings SET payment_ref = $1 WHERE id = $2', [session.payment_session_id, leadBookingId])
+    res.json({ session_id: session.payment_session_id, status: session.status })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-// POST /api/payments/webhook — Xendit callback
+// GET /api/payments/terminal/session/:id/status — poll Xendit session status
+router.get('/terminal/session/:id/status', requireKiosk, async (req, res) => {
+  try {
+    const session = await xenditGet(`/v1/terminal/sessions/${req.params.id}`)
+    if (session.error_code) return res.status(502).json({ message: session.message, error_code: session.error_code })
+
+    // If completed, mark booking/group paid in DB (fallback for when webhook doesn't fire)
+    if (session.status === 'COMPLETED') {
+      const payMethod = mapXenditPaymentMethod(session.payment_details?.payment_method)
+      const { groupId, bookingId } = resolveIds(session)
+      if (groupId) {
+        const tipAmounts = session.metadata?.tip_amounts || {}
+        await markGroupPaidIfNeeded(groupId, tipAmounts, payMethod, session.payment_session_id)
+      } else if (bookingId) {
+        const amount = parseFloat(session.amount || 0)
+        await markPaidIfNeeded(bookingId, amount, payMethod, session.payment_session_id)
+      } else {
+        console.error('[Poll] COMPLETED session but could not resolve booking_id/group_id. session_id:', req.params.id, 'reference_id:', session.reference_id)
+      }
+    }
+
+    res.json({ status: session.status, payment_session_id: session.payment_session_id })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+
+// POST /api/payments/terminal/session/:id/retry — retry a failed/canceled session
+router.post('/terminal/session/:id/retry', requireKiosk, async (req, res) => {
+  try {
+    const result = await xenditPost(`/v1/terminal/sessions/${req.params.id}/retry`, {})
+    if (result.error_code) return res.status(502).json({ message: result.message, error_code: result.error_code })
+    res.json({ ok: true, message: result.message })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// POST /api/payments/qris/session — create Xendit QRIS code (shown on kiosk screen)
+router.post('/qris/session', requireKiosk, async (req, res) => {
+  try {
+    const { booking_id, group_id, tip_amount = 0, tip_amounts = {} } = req.body
+    if (!booking_id && !group_id) return res.status(400).json({ message: 'booking_id or group_id required' })
+
+    let total, referenceId, branchId, leadBookingId, metadata
+
+    if (group_id) {
+      const { rows: groupBks } = await pool.query(
+        `SELECT id, branch_id, payment_status, ${computedTotal} AS total_amount FROM bookings bk WHERE group_id = $1`,
+        [group_id])
+      if (!groupBks.length) return res.status(404).json({ message: 'Group not found' })
+      if (groupBks.every(bk => bk.payment_status === 'paid')) {
+        return res.status(409).json({ message: 'Group already paid', already_paid: true })
+      }
+      branchId = groupBks[0].branch_id
+      leadBookingId = groupBks[0].id
+      const subtotal = groupBks.reduce((s, bk) => s + parseFloat(bk.total_amount), 0)
+      const tipsTotal = groupBks.reduce((s, bk) => s + parseFloat(tip_amounts[bk.id] || 0), 0)
+      total = Math.round(subtotal + tipsTotal)
+      referenceId = `qris-grp-${group_id}-${Date.now()}`
+      metadata = { group_id, tip_amounts, branch_id: branchId }
+    } else {
+      const bk = await pool.query(
+        `SELECT bk.*, ${computedTotal} AS total_amount FROM bookings bk WHERE bk.id = $1`,
+        [booking_id])
+      if (!bk.rows.length) return res.status(404).json({ message: 'Booking not found' })
+      const booking = bk.rows[0]
+      if (booking.payment_status === 'paid') {
+        return res.status(409).json({ message: 'Booking is already paid', already_paid: true })
+      }
+      total = Math.round(parseFloat(booking.total_amount) + parseFloat(tip_amount || 0))
+      referenceId = `qris-${booking_id}-${Date.now()}`
+      branchId = booking.branch_id
+      leadBookingId = booking_id
+      metadata = { booking_id, branch_id: branchId, tip_amount: parseFloat(tip_amount || 0) }
+    }
+
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+
+    const qr = await xenditApiPost('/qr_codes', {
+      reference_id: referenceId,
+      type: 'DYNAMIC',
+      currency: 'IDR',
+      amount: total,
+      expires_at: expiresAt,
+      metadata
+    }, referenceId)
+
+    if (qr.error_code) {
+      console.error('[QRIS] Xendit error:', JSON.stringify(qr))
+      return res.status(502).json({ message: qr.message || 'Xendit error', error_code: qr.error_code })
+    }
+
+    await pool.query('UPDATE bookings SET payment_ref = $1 WHERE id = $2', [qr.id, leadBookingId])
+    res.json({ qr_id: qr.id, qr_string: qr.qr_string, expires_at: qr.expires_at })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// GET /api/payments/qris/:id/status — poll for completed payment on this QR code
+router.get('/qris/:id/status', requireKiosk, async (req, res) => {
+  try {
+    const { booking_id, group_id } = req.query
+
+    // Ownership check: verify this QR belongs to a booking at this kiosk's branch
+    // This prevents Branch A kiosk from polling Branch B QR codes
+    const qrOwner = await pool.query(
+      `SELECT branch_id FROM bookings WHERE "payment_ref" = $1`,
+      [req.params.id])
+    if (!qrOwner.rows.length || qrOwner.rows[0].branch_id !== req.branchId) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+
+    const payments = await xenditApiGet(`/qr_codes/${req.params.id}/payments`)
+    if (payments.error_code) return res.status(502).json({ message: payments.message })
+    const succeeded = Array.isArray(payments.data)
+      ? payments.data.find(p => p.status === 'SUCCEEDED')
+      : null
+
+    if (succeeded) {
+      if (group_id) {
+        await markGroupPaidIfNeeded(group_id, {}, 'qris', succeeded.id)
+          .catch(e => console.error('[QRIS Poll] markGroupPaid failed:', e))
+      } else if (booking_id) {
+        await markPaidIfNeeded(booking_id, parseFloat(succeeded.amount || 0), 'qris', succeeded.id)
+          .catch(e => console.error('[QRIS Poll] markPaid failed:', e))
+      } else {
+        console.warn('[QRIS Poll] Payment succeeded but no booking_id/group_id — DB not updated. qr_id:', req.params.id)
+      }
+    }
+
+    res.json({ status: succeeded ? 'COMPLETED' : 'ACTIVE', qr_id: req.params.id })
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// POST /api/payments/webhook — Xendit callbacks (Terminal H2H)
 router.post('/webhook', async (req, res) => {
   try {
     const token = req.headers['x-callback-token']
+    if (!WEBHOOK_TOKEN) { console.error('[Webhook] XENDIT_WEBHOOK_TOKEN not set — rejecting'); return res.status(401).json({ message: 'Webhook token not configured' }) }
     if (token !== WEBHOOK_TOKEN) return res.status(401).json({ message: 'Unauthorized' })
 
-    const event = req.body
-    if (event.event !== 'payment.succeeded' && event.event !== 'payment_request.succeeded') {
-      return res.json({ received: true })
-    }
+    const { event, data } = req.body
+    if (!event || !data) return res.json({ received: true })
 
-    const bookingId = event.data?.reference_id || event.data?.metadata?.booking_id
-    if (!bookingId) return res.json({ received: true })
-
-    const bk = await pool.query(
-      `SELECT bk.*, ${computedTotal} AS total_amount FROM bookings bk WHERE bk.id = $1`,
-      [bookingId])
-    if (!bk.rows.length) return res.json({ received: true })
-    const booking = bk.rows[0]
-
-    const amount     = parseInt(event.data?.amount || 0)
-    const payMethod  = event.data?.payment_method?.type === 'QR_CODE' ? 'qris' : 'card'
-    const xenditRef  = event.data?.id
-
-    const client = await pool.connect()
-    try {
-      await client.query('BEGIN')
-      await client.query(
-        `UPDATE bookings SET status='completed', paid_at=NOW(), payment_status='paid',
-           payment_method=$1, payment_ref=$2 WHERE id=$3`,
-        [payMethod, xenditRef, bookingId])
-
-      const tipAmount = Math.max(0, amount - booking.total_amount)
-      if (tipAmount > 0) {
-        await client.query(
-          `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
-           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (booking_id) DO NOTHING`,
-          [bookingId, booking.barber_id, booking.branch_id, tipAmount, payMethod])
+    if (event === 'terminal_payment.succeeded') {
+      const { groupId, bookingId, tipAmounts } = resolveIds(data)
+      const payMethod = mapXenditPaymentMethod(data?.payment_details?.payment_method)
+      const amount = parseFloat(data.request_amount || 0)
+      if (groupId) await markGroupPaidIfNeeded(groupId, tipAmounts, payMethod, data.payment_id)
+      else if (bookingId) await markPaidIfNeeded(bookingId, amount, payMethod, data.payment_id)
+    } else if (event === 'terminal_session.completed') {
+      // Idempotent — terminal_payment.succeeded usually fires first
+      const { groupId, bookingId, tipAmounts } = resolveIds(data)
+      const payMethod = mapXenditPaymentMethod(data.payment_details?.payment_method)
+      if (groupId) await markGroupPaidIfNeeded(groupId, tipAmounts, payMethod, data.payment_session_id)
+      else if (bookingId) await markPaidIfNeeded(bookingId, data.amount, payMethod, data.payment_session_id)
+    } else if (event === 'terminal_session.canceled' || event === 'terminal_session.voided') {
+      const { groupId, bookingId } = resolveIds(data)
+      let branchId
+      if (groupId) {
+        const bk = await pool.query('SELECT branch_id FROM bookings WHERE group_id=$1 LIMIT 1', [groupId])
+        branchId = bk.rows[0]?.branch_id
+      } else if (bookingId) {
+        const bk = await pool.query('SELECT branch_id FROM bookings WHERE id=$1', [bookingId])
+        branchId = bk.rows[0]?.branch_id
       }
-      await client.query('COMMIT')
-      emitEvent(booking.branch_id, 'payment_complete', { booking_id: bookingId, tip: tipAmount })
-
-      // Async notification
-      notifyPaymentReceipt(booking, tipAmount).catch(e => console.error('[Notification] Receipt failed:', e))
-      
-      // Award loyalty points
-      awardPoints(bookingId).catch(e => console.error('[Loyalty] Award failed:', e))
-    } catch (e) {
-      await client.query('ROLLBACK')
-      throw e
-    } finally {
-      client.release()
+      if (branchId) emitEvent(branchId, 'payment_failed', { booking_id: bookingId, group_id: groupId, session_id: data.payment_session_id, reason: event })
+    } else if (event === 'qr.payment') {
+      // QRIS on-screen payment confirmed
+      const { groupId, bookingId, tipAmounts } = resolveIds(data)
+      if (groupId) {
+        await markGroupPaidIfNeeded(groupId, tipAmounts, 'qris', data.id)
+      } else if (bookingId) {
+        const amount = parseFloat(data.amount || 0)
+        await markPaidIfNeeded(bookingId, amount, 'qris', data.id)
+      }
     }
 
     res.json({ received: true })
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+  } catch (err) { console.error('[Webhook]', err); res.status(500).json({ message: 'Internal server error' }) }
 })
+
+// Note: handleTerminalPaymentSucceeded removed — logic inlined into webhook using resolveIds
+
+function resolveBookingId(data) {
+  if (data?.metadata?.booking_id) return data.metadata.booking_id
+  if (data?.reference_id?.startsWith('bk-') && !data?.reference_id?.startsWith('bk-grp-')) return data.reference_id.slice(3)
+  return null
+}
+
+// Returns { bookingId, groupId, tipAmounts } — group takes precedence
+function resolveIds(data) {
+  const groupId = data?.metadata?.group_id
+    || (data?.reference_id?.startsWith('bk-grp-') ? data.reference_id.slice(7) : null)
+    || (data?.reference_id?.startsWith('qris-grp-') ? data.reference_id.slice(9, data.reference_id.lastIndexOf('-')) : null)
+  if (groupId) return { groupId, tipAmounts: data?.metadata?.tip_amounts || {} }
+  return { bookingId: resolveBookingId(data), tipAmounts: {} }
+}
+
+async function markPaidIfNeeded(bookingId, amount, payMethod, xenditRef) {
+  const bk = await pool.query(
+    `SELECT bk.*, ${computedTotal} AS total_amount FROM bookings bk WHERE bk.id = $1`,
+    [bookingId])
+  if (!bk.rows.length) return
+  const booking = bk.rows[0]
+  if (booking.payment_status === 'paid') return  // idempotent
+
+  const method = payMethod || (booking.payment_method || 'card')
+  const tipAmount = Math.max(0, amount - parseFloat(booking.total_amount))
+
+  let client
+  try {
+    client = await pool.connect()
+    await client.query('BEGIN')
+    await client.query(
+      `UPDATE bookings SET status='completed', paid_at=NOW(), payment_status='paid',
+         payment_method=$1, payment_ref=COALESCE($2, payment_ref),
+         completed_at=COALESCE(completed_at, NOW()) WHERE id=$3`,
+      [method, xenditRef, bookingId])
+    if (tipAmount > 0) {
+      await client.query(
+        `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (booking_id) DO NOTHING`,
+        [bookingId, booking.barber_id, booking.branch_id, tipAmount, method])
+    }
+    await client.query('COMMIT')
+    emitEvent(booking.branch_id, 'payment_complete', { booking_id: bookingId, tip: tipAmount })
+    notifyPaymentReceipt(booking, tipAmount).catch(e => console.error('[Notification] Receipt failed:', e))
+    awardPoints(bookingId).catch(e => console.error('[Loyalty] Award failed:', e))
+  } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    throw e
+  } finally {
+    if (client) client.release()
+  }
+}
+
+async function markGroupPaidIfNeeded(groupId, tipAmounts, payMethod, xenditRef) {
+  const { rows: bookings } = await pool.query(
+    `SELECT id, barber_id, branch_id, payment_status FROM bookings WHERE group_id = $1`,
+    [groupId])
+  if (!bookings.length) return
+  if (bookings.every(bk => bk.payment_status === 'paid')) return
+  const branchId = bookings[0].branch_id
+  let client
+  try {
+    client = await pool.connect()
+    await client.query('BEGIN')
+    for (const bk of bookings) {
+      if (bk.payment_status === 'paid') continue
+      await client.query(
+        `UPDATE bookings SET status='completed', payment_status='paid', paid_at=NOW(),
+           payment_method=$1, payment_ref=COALESCE($2, payment_ref),
+           completed_at=COALESCE(completed_at, NOW()) WHERE id=$3`,
+        [payMethod, xenditRef, bk.id])
+      const tip = parseFloat(tipAmounts?.[bk.id] || 0)
+      if (tip > 0) {
+        await client.query(
+          `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
+           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (booking_id) DO UPDATE SET amount=EXCLUDED.amount`,
+          [bk.id, bk.barber_id, branchId, tip, payMethod])
+      }
+    }
+    await client.query('COMMIT')
+    emitEvent(branchId, 'payment_complete', { group_id: groupId })
+    for (const bk of bookings) {
+      awardPoints(bk.id).catch(e => console.error('[Loyalty] Award failed:', e))
+    }
+  } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => {})
+    throw e
+  } finally {
+    if (client) client.release()
+  }
+}
 
 // POST /api/payments/manual-confirm — confirm manual payment (cash/external card)
 router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
-  const client = await pool.connect()
+  let client
   try {
     const { booking_id, payment_method = 'cash', tip_amount = 0 } = req.body
     if (!booking_id) return res.status(400).json({ message: 'booking_id required' })
 
+    client = await pool.connect()
     await client.query('BEGIN')
     
     // 1. Get booking details
-    const bkRes = await client.query('SELECT barber_id, branch_id, status FROM bookings WHERE id = $1', [booking_id])
+    const bkRes = await client.query('SELECT barber_id, branch_id, status, payment_ref FROM bookings WHERE id = $1', [booking_id])
     if (!bkRes.rows.length) {
       await client.query('ROLLBACK')
       return res.status(404).json({ message: 'Booking not found' })
@@ -157,7 +474,7 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
     }
 
     await client.query('COMMIT')
-    
+
     // 4. Notify kiosk
     emitEvent(booking.branch_id, 'payment_complete', { booking_id, status: 'completed' })
     
@@ -165,8 +482,8 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
     pool.query(`SELECT bk.*, b.name AS barber_name, (
       COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id),0) +
       COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id),0) -
-      bk.points_redeemed * 100
-    ) AS total_amount FROM bookings bk 
+      bk.points_redeemed * 10000
+    ) AS total_amount FROM bookings bk
     LEFT JOIN barbers b ON b.id = bk.barber_id
     WHERE bk.id = $1`, [booking_id])
       .then(r => {
@@ -178,11 +495,11 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
 
     res.json(rows[0])
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (client) await client.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ message: 'Internal server error' })
   } finally {
-    client.release()
+    if (client) client.release()
   }
 })
 
@@ -204,18 +521,23 @@ router.post('/tip', requireKiosk, async (req, res) => {
 
 // POST /api/payments/group-confirm — confirm payment for an entire booking group
 router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
-  const client = await pool.connect()
+  let client
   try {
+    client = await pool.connect()
     const { group_id, payment_method = 'cash', tip_amounts = {} } = req.body
     if (!group_id) return res.status(400).json({ message: 'group_id required' })
 
     await client.query('BEGIN')
-    const { rows: bookings } = await client.query(
-      `SELECT id, barber_id, branch_id FROM bookings WHERE group_id = $1 AND status = 'pending_payment'`,
-      [group_id])
+    const { rows: allBks } = await client.query(
+      `SELECT id, barber_id, branch_id, status FROM bookings WHERE group_id = $1`, [group_id])
+    if (!allBks.length) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ message: 'Group not found' })
+    }
+    const bookings = allBks.filter(bk => bk.status === 'pending_payment')
     if (!bookings.length) {
       await client.query('ROLLBACK')
-      return res.status(404).json({ message: 'No pending_payment bookings in group' })
+      return res.status(409).json({ message: 'Group already paid', already_paid: true })
     }
 
     const branchId = bookings[0].branch_id
@@ -241,11 +563,11 @@ router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
 
     res.json({ ok: true })
   } catch (err) {
-    await client.query('ROLLBACK')
+    if (client) await client.query('ROLLBACK').catch(() => {})
     console.error(err)
     res.status(500).json({ message: 'Internal server error' })
   } finally {
-    client.release()
+    if (client) client.release()
   }
 })
 

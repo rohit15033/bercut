@@ -46,7 +46,7 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     if (!service_ids.length) return res.status(400).json({ message: 'At least one service required' })
 
-    const bookingDate = date || new Date().toISOString().slice(0, 10)
+    const bookingDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
     // resolve or create customer for loyalty
     let customerId = null
@@ -71,10 +71,6 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     }
 
     const isNow = !slot_time || slot_time === 'Now'
-    // #region agent log
-    fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H3',location:'backend/routes/bookings.js:post:create:input',message:'Booking create input timing/source resolved',data:{branchId,barber_id,source,slot_time,isNow,bookingDate},timestamp:Date.now()})}).catch(()=>{});
-    console.log('[DBG85][H3] booking-input', JSON.stringify({ branchId, barber_id, source, slot_time, isNow, bookingDate }))
-    // #endregion
 
     // resolve barber
     let barberId = barber_id
@@ -91,7 +87,7 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
         const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur, true)
         barberId = await pickIdleBarber(client, branchId, freeIds)
       }
-      // Future slot outside 30-min window stays deferred; scheduler picks it up later.
+      // All future any_available slots stay deferred — assigned when a barber clicks Selesai.
     } else {
       const barberCheck = await client.query(
         `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])
@@ -218,11 +214,6 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       service_names: serviceNames,
       deferred: !barberId
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H3',location:'backend/routes/bookings.js:post:create:output',message:'Booking create final assignment result',data:{bookingId:booking.id,resolvedSource,slot_time:resp.slot_time,barberId:booking.barber_id,deferred:resp.deferred,barberName:resp.barber_name},timestamp:Date.now()})}).catch(()=>{});
-    console.log('[DBG85][H3] booking-output', JSON.stringify({ bookingId: booking.id, resolvedSource, slot_time: resp.slot_time, barberId: booking.barber_id, deferred: resp.deferred, barberName: resp.barber_name }))
-    // #endregion
-
     emitEvent(branchId, 'new_booking', resp)
 
     // Async notification — skip barber alert for deferred bookings
@@ -245,7 +236,7 @@ router.get('/public', async (req, res) => {
     const { branch_id, date } = req.query
     if (!branch_id) return res.status(400).json({ message: 'branch_id required' })
 
-    const targetDate = date || new Date().toISOString().slice(0, 10)
+    const targetDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
     const { rows } = await pool.query(
       `SELECT bk.id, bk.booking_number, bk.status, bk.scheduled_at, bk.started_at,
@@ -413,10 +404,25 @@ router.patch('/:id/unassign', requireKioskOrAdmin, async (req, res) => {
 
 router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `UPDATE bookings SET status = 'in_progress', started_at = NOW()
-       WHERE id = $1 AND status = 'confirmed' RETURNING *`,
-      [req.params.id])
+    // Only allow starting the earliest unstarted confirmed booking for this barber today
+    // This enforces the "topmost booking only" constraint at backend level (not just frontend)
+    const { rows } = await pool.query(`
+      WITH earliest AS (
+        SELECT id FROM bookings
+        WHERE barber_id = (
+          SELECT barber_id FROM bookings WHERE id = $1
+        )
+          AND branch_id = $2
+          AND DATE(scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
+          AND status = 'confirmed'
+        ORDER BY scheduled_at ASC
+        LIMIT 1
+      )
+      UPDATE bookings
+      SET status = 'in_progress', started_at = NOW()
+      WHERE id = $1 AND id = (SELECT id FROM earliest)
+      RETURNING *`,
+      [req.params.id, req.branchId])
     if (!rows.length) return res.status(409).json({ message: 'Cannot start booking' })
     await pool.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
     emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'in_service' })
@@ -955,7 +961,7 @@ router.post('/admin-force', requireAdmin, async (req, res) => {
     if (!barber_id)        return res.status(400).json({ message: 'barber_id required' })
     if (!service_ids.length) return res.status(400).json({ message: 'At least one service required' })
 
-    const bookingDate = date || new Date().toISOString().slice(0, 10)
+    const bookingDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
     // Resolve or create customer
     let customerId = null

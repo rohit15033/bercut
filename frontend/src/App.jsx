@@ -1,10 +1,10 @@
 import React, { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { tokens } from './shared/tokens.js'
-import KioskApp  from './apps/kiosk/KioskApp.jsx'
-import BarberApp from './apps/barber/BarberApp.jsx'
-import AdminApp  from './apps/admin/AdminApp.jsx'
-import TvMonitor from './apps/tv/TvMonitor.jsx'
+const KioskApp  = lazy(() => import('./apps/kiosk/KioskApp.jsx'))
+const BarberApp = lazy(() => import('./apps/barber/BarberApp.jsx'))
+const AdminApp  = lazy(() => import('./apps/admin/AdminApp.jsx'))
+const TvMonitor = lazy(() => import('./apps/tv/TvMonitor.jsx'))
 
 // Mockups — only loaded in development to keep production bundle clean
 const BercutKioskMockup = !import.meta.env.PROD 

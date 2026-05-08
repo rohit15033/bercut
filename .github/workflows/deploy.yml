@@ -19,11 +19,18 @@ jobs:
             cd /var/www/bercut
             git pull origin main
             # Run any pending migrations
+<<<<<<< HEAD
             mkdir -p backend/db/processed
             for f in backend/db/migrate_*.sql; do
               [ -f "$f" ] || continue
               echo "Running migration: $f"
               psql -U postgres -d bercut -f "$f" && mv "$f" backend/db/processed/
+=======
+            for f in backend/db/migrate_*.sql; do
+              [ -f "$f" ] || continue
+              echo "Running migration: $f"
+              psql -U postgres -d bercut -f "$f" && mv "$f" "backend/db/processed/"
+>>>>>>> main
             done
             cd frontend && npm ci && npm run build
             cd ../backend && npm ci --omit=dev

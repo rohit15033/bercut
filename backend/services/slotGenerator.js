@@ -30,11 +30,13 @@ async function getAvailableSlots(barberId, date, durationMin = 30, walkin = fals
 
   const openTime       = minutesFromMidnight('10:00')
   const closeTime      = minutesFromMidnight('21:00')
-  const lastOrderStart = minutesFromMidnight('19:55')
+  const lastOrderStart = minutesFromMidnight('19:45')
   const GRID           = 30
 
   const bookings = await pool.query(
     `SELECT TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
+            TO_CHAR(bk.started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS started_time,
+            bk.status,
             SUM(s.duration_minutes) AS total_duration
      FROM bookings bk
      JOIN booking_services bsv ON bsv.booking_id = bk.id
@@ -42,7 +44,7 @@ async function getAvailableSlots(barberId, date, durationMin = 30, walkin = fals
      WHERE bk.barber_id = $1
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
        AND bk.status IN ('confirmed','in_progress')
-     GROUP BY bk.id, bk.scheduled_at`,
+     GROUP BY bk.id, bk.scheduled_at, bk.started_at, bk.status`,
     [barberId, date])
 
   const breaks = await pool.query(
@@ -52,6 +54,12 @@ async function getAvailableSlots(barberId, date, durationMin = 30, walkin = fals
      WHERE barber_id = $1
        AND DATE(started_at AT TIME ZONE 'Asia/Makassar') = $2`,
     [barberId, date])
+
+  const { rows: timeRows } = await pool.query(
+    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
+  )
+  const nowMin  = minutesFromMidnight(timeRows[0].t)
+  const isToday = timeRows[0].d === date
 
   const blocked = []
   for (const bk of bookings.rows) {
@@ -126,10 +134,6 @@ async function getAvailableSlots(barberId, date, durationMin = 30, walkin = fals
     cursor = Math.max(cursor, b.end)
   }
   addWindow(cursor, closeTime)
-  // #region agent log
-  fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H1',location:'backend/services/slotGenerator.js:getAvailableSlots:return',message:'Returning specific barber slots',data:{barberId,date,slotCount:slots.length,firstSlot:slots[0]||null,firstThree:slots.slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
-  console.log('[DBG85][H1] specific-return', JSON.stringify({ barberId, date, slotCount: slots.length, firstSlot: slots[0] || null, firstThree: slots.slice(0, 3) }))
-  // #endregion
 
   return slots
 }
@@ -143,12 +147,12 @@ async function getAvailableSlots(barberId, date, durationMin = 30, walkin = fals
 async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
   const openTime       = minutesFromMidnight('10:00')
   const closeTime      = minutesFromMidnight('21:00')
-  const lastOrderStart = minutesFromMidnight('19:30')
+  const lastOrderStart = minutesFromMidnight('19:45')
   const GRID           = 30
 
   const { rows: barbers } = await pool.query(
     `SELECT id FROM barbers
-     WHERE branch_id = $1 AND is_active = true AND status NOT IN ('clocked_out','off')
+     WHERE branch_id = $1 AND is_active = true AND status NOT IN ('clocked_out','off','on_break')
      ORDER BY sort_order ASC`,
     [branchId]
   )
@@ -157,8 +161,9 @@ async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
   const barberIds = barbers.map(b => b.id)
 
   const { rows: bookingRows } = await pool.query(
-    `SELECT bk.barber_id,
+    `SELECT bk.barber_id, bk.status,
             TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
+            TO_CHAR(bk.started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS started_time,
             SUM(s.duration_minutes) AS total_duration
      FROM bookings bk
      JOIN booking_services bsv ON bsv.booking_id = bk.id
@@ -166,7 +171,7 @@ async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
      WHERE bk.barber_id = ANY($1::uuid[])
        AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
        AND bk.status IN ('confirmed','in_progress')
-     GROUP BY bk.barber_id, bk.id, bk.scheduled_at`,
+     GROUP BY bk.barber_id, bk.id, bk.scheduled_at, bk.started_at, bk.status`,
     [barberIds, date]
   )
 
@@ -179,6 +184,12 @@ async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
        AND DATE(started_at AT TIME ZONE 'Asia/Makassar') = $2`,
     [barberIds, date]
   )
+
+  const { rows: timeRows } = await pool.query(
+    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
+  )
+  const nowMin   = minutesFromMidnight(timeRows[0].t)
+  const isToday  = timeRows[0].d === date
 
   // Build per-barber blocked intervals
   const blockedMap = {}
@@ -204,12 +215,6 @@ async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
       fromConfirmed: false,
     })
   }
-
-  const { rows: timeRows } = await pool.query(
-    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
-  )
-  const nowMin   = minutesFromMidnight(timeRows[0].t)
-  const isToday  = timeRows[0].d === date
   const gridStart = Math.max(openTime, isToday ? Math.ceil(nowMin / GRID) * GRID : openTime)
 
   // walkin mode: confirmed bookings allow WALKIN_OVERLAP_MIN overlap tolerance for the Now slot only
@@ -226,12 +231,8 @@ async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
   // If any barber is free right now, add current time as first slot so "Now" works on the kiosk
   if (isToday && nowMin >= openTime && isFreeAt(nowMin, walkin)) {
     const nowRounded = roundUpTo5(nowMin)
-    if (nowRounded <= lastOrderStart && nowRounded + durationMin <= closeTime) {
+    if (nowRounded >= openTime && nowRounded <= lastOrderStart && nowRounded + durationMin <= closeTime) {
       slotSet.add(nowRounded)
-      // #region agent log
-      fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H2',location:'backend/services/slotGenerator.js:getUnionSlots:now-slot',message:'Added nowRounded slot for any_available',data:{branchId,date,durationMin,nowMin,nowRounded},timestamp:Date.now()})}).catch(()=>{});
-      console.log('[DBG85][H2] union-now-slot', JSON.stringify({ branchId, date, durationMin, nowMin, nowRounded }))
-      // #endregion
     }
   }
 
@@ -253,10 +254,6 @@ async function getUnionSlots(branchId, date, durationMin = 30, walkin = false) {
   }
 
   const unionSlots = [...slotSet].sort((a, b) => a - b).map(minutesToTime)
-  // #region agent log
-  fetch('http://127.0.0.1:7929/ingest/c67916ff-c4d9-4efd-b5ce-fcefcdb4f598',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6ae'},body:JSON.stringify({sessionId:'85c6ae',runId:'initial',hypothesisId:'H2',location:'backend/services/slotGenerator.js:getUnionSlots:return',message:'Returning any_available union slots',data:{branchId,date,slotCount:unionSlots.length,firstSlot:unionSlots[0]||null,firstFour:unionSlots.slice(0,4)},timestamp:Date.now()})}).catch(()=>{});
-  console.log('[DBG85][H2] union-return', JSON.stringify({ branchId, date, slotCount: unionSlots.length, firstSlot: unionSlots[0] || null, firstFour: unionSlots.slice(0, 4) }))
-  // #endregion
   return unionSlots
 }
 

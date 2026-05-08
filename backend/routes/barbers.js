@@ -3,10 +3,34 @@ const bcrypt = require('bcrypt')
 const pool   = require('../config/db')
 const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 
+async function logAudit(pool, { userId, action, entityType, entityId, diff, branchId }) {
+  try {
+    await pool.query(
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [userId || null, action, entityType, entityId,
+       diff ? JSON.stringify(diff) : null, branchId || null])
+  } catch (e) { console.error('[AuditLog] failed:', e.message) }
+}
+
 // GET /api/barbers?branch_id=&service_ids=  (also used by kiosk)
+// GET /api/barbers?all=1 — all active barbers across branches (no auth required)
 router.get('/', async (req, res) => {
   try {
-    const { branch_id, service_ids } = req.query
+    const { branch_id, service_ids, all } = req.query
+
+    // ?all=1 → return all active barbers across all branches
+    if (all === '1' || all === 'true') {
+      const { rows } = await pool.query(
+        `SELECT b.id, b.name, b.branch_id, b.specialty, b.phone, b.status, b.is_active, b.sort_order, b.pay_type, b.base_salary, b.daily_rate,
+                c.label AS chair_label
+         FROM barbers b
+         LEFT JOIN chairs c ON c.barber_id = b.id
+         WHERE b.is_active = true
+         ORDER BY b.name ASC`)
+      return res.json(rows)
+    }
+
     const branchId = branch_id || req.branchId
     if (!branchId) return res.status(400).json({ message: 'branch_id required' })
 
@@ -117,6 +141,14 @@ router.post('/', requireAdmin, async (req, res) => {
       `INSERT INTO barbers (name, branch_id, specialty, specialty_id, phone, pin_hash, status, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order)
        VALUES ($1,$2,$3,$4,$5,$6,'clocked_out',$7,$8,$9,$10,$11,$12) RETURNING *`,
       [name, branch_id, specialty, specialty_id, phone, pin_hash, commission_rate || 40, base_salary || 0, pay_type || 'salary_plus_commission', daily_rate || 0, avatar_url, sort_order || 0])
+    await logAudit(pool, {
+      userId: req.user?.id,
+      action: 'created',
+      entityType: 'barbers',
+      entityId: rows[0].id,
+      diff: { after: rows[0] },
+      branchId: rows[0].branch_id,
+    })
     res.status(201).json(rows[0])
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
@@ -129,10 +161,21 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     if (pin) updates.pin_hash = await bcrypt.hash(String(pin), 10)
 
     const keys = Object.keys(updates).filter(k => updates[k] !== undefined)
+    if (!keys.length) return res.status(400).json({ message: 'Nothing to update' })
     const vals = keys.map(k => updates[k])
     const set  = keys.map((k, i) => `${k}=$${i + 1}`).join(', ')
+    const { rows: before } = await pool.query(
+      `SELECT name, branch_id, specialty, commission_rate, base_salary, pay_type, is_active FROM barbers WHERE id = $1`, [req.params.id])
     const { rows } = await pool.query(`UPDATE barbers SET ${set} WHERE id=$${keys.length + 1} RETURNING *`, [...vals, req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    await logAudit(pool, {
+      userId: req.user?.id,
+      action: 'updated',
+      entityType: 'barbers',
+      entityId: req.params.id,
+      diff: { before: before[0], after: rows[0] },
+      branchId: rows[0].branch_id,
+    })
     res.json(rows[0])
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })

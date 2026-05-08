@@ -4,6 +4,18 @@ const bcrypt = require('bcrypt')
 const { requireAdmin, requireOwner, checkPermission } = require('../middleware/auth')
 const { sendWhatsApp } = require('../services/notifications')
 
+// ── Audit log helper ───────────────────────────────────────────────────────────
+async function logAudit(pool, { userId, action, entityType, entityId, diff, branchId }) {
+  try {
+    await pool.query(
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [userId || null, action, entityType, entityId,
+       diff ? JSON.stringify(diff) : null, branchId || null]
+    )
+  } catch (e) { console.error('[AuditLog] failed:', e.message) }
+}
+
 // ── Global Settings ────────────────────────────────────────────────────────────
 router.get('/global', requireAdmin, async (req, res) => {
   try {
@@ -76,7 +88,7 @@ router.patch('/whatsapp', requireAdmin, requireOwner, async (req, res) => {
     const allowed = ['enabled','fonnte_token',
       'tpl_booking_confirmed','tpl_booking_reminder','tpl_payment_receipt',
       'tpl_feedback_request','tpl_points_earned','tpl_kasbon_deducted',
-      'tpl_barber_new_booking','tpl_barber_escalation']
+      'tpl_barber_new_booking','tpl_barber_escalation','tpl_autoreply']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
@@ -128,9 +140,18 @@ router.patch('/users/:id', requireAdmin, requireOwner, async (req, res) => {
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
     sets.push('updated_at = NOW()')
     vals.push(req.params.id)
+    const { rows: before } = await pool.query(
+      `SELECT name, role, is_active FROM users WHERE id = $1`, [req.params.id])
     const { rows } = await pool.query(
       `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, email, name, role, is_active`, vals)
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    await logAudit(pool, {
+      userId: req.user.id,
+      action: 'updated',
+      entityType: 'users',
+      entityId: req.params.id,
+      diff: { before: before[0], after: { name: rows[0].name, role: rows[0].role, is_active: rows[0].is_active } },
+    })
     res.json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
@@ -152,14 +173,21 @@ router.put('/users/:id/permissions', requireAdmin, requireOwner, async (req, res
     const { permissions = [] } = req.body
     for (const p of permissions) {
       await client.query(
-        `INSERT INTO user_permissions (user_id, section, can_view, can_edit)
-         VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, section) DO UPDATE
-         SET can_view = $3, can_edit = $4`,
-        [req.params.id, p.section, p.can_view ?? true, p.can_edit ?? false])
+        `INSERT INTO user_permissions (user_id, section, is_enabled)
+         VALUES ($1,$2,$3) ON CONFLICT (user_id, section) DO UPDATE
+         SET is_enabled = $3`,
+        [req.params.id, p.section, p.is_enabled !== false])
     }
     await client.query('COMMIT')
     const { rows } = await pool.query(
       'SELECT * FROM user_permissions WHERE user_id = $1', [req.params.id])
+    await logAudit(pool, {
+      userId: req.user.id,
+      action: 'updated',
+      entityType: 'user_permissions',
+      entityId: req.params.id,
+      diff: { permissions },
+    })
     res.json(rows)
   } catch (err) {
     await client.query('ROLLBACK')

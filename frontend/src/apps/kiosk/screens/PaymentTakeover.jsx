@@ -1,51 +1,66 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
-import { kioskApi } from '../../../shared/api.js'
+import { kioskApi, BASE } from '../../../shared/api.js'
 
 const fmt  = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 const fmtK = n => n >= 1000 ? `${n / 1000}K` : String(n)
 
-const TIP_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
+const TIP_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['000','0','⌫']]
 const DEBOUNCE_MS = 150
 
 const TipNumpad = memo(function TipNumpad({ value, onChange }) {
   const [pressedKey, setPressedKey] = useState(null)
   const lastPressRef = useRef({})
+  const deleteTimerRef = useRef(null)
+  const deleteIntervalRef = useRef(null)
 
   const handleKey = (key) => {
     if (!key) return
     const now = Date.now()
     if (now - (lastPressRef.current[key] || 0) < DEBOUNCE_MS) return
     lastPressRef.current[key] = now
-    if (key === '⌫') { onChange(value.slice(0, -1)); return }
-    onChange(value + key)
+    if (key === '000') { onChange(prev => prev + '000'); return }
+    onChange(prev => prev + key)
   }
 
-  const press = (key) => ({
-    onPointerDown:   (e) => { e.preventDefault(); setPressedKey(key); handleKey(key) },
-    onPointerUp:     ()  => setPressedKey(null),
-    onPointerLeave:  ()  => setPressedKey(null),
-    onPointerCancel: ()  => setPressedKey(null),
-  })
+  const stopDelete = () => {
+    setPressedKey(null)
+    clearTimeout(deleteTimerRef.current)
+    clearInterval(deleteIntervalRef.current)
+  }
+
+  const press = (key) => {
+    if (key === '⌫') return {
+      onPointerDown:   (e) => { e.preventDefault(); setPressedKey('⌫'); onChange(prev => prev.slice(0, -1)); deleteTimerRef.current = setTimeout(() => { deleteIntervalRef.current = setInterval(() => onChange(prev => prev.slice(0, -1)), 80) }, 400) },
+      onPointerUp:     stopDelete,
+      onPointerLeave:  stopDelete,
+      onPointerCancel: stopDelete,
+    }
+    return {
+      onPointerDown:   (e) => { e.preventDefault(); stopDelete(); setPressedKey(key); handleKey(key) },
+      onPointerUp:     ()  => setPressedKey(null),
+      onPointerLeave:  ()  => setPressedKey(null),
+      onPointerCancel: ()  => setPressedKey(null),
+    }
+  }
 
   const displayVal = parseInt(value, 10) || 0
 
   return (
-    <div style={{ background:'#1a1a18', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)', marginTop:10 }}>
-      {/* Display */}
-      <div style={{ background:'#111', borderRadius:8, padding:'clamp(8px,1vh,11px) clamp(12px,1.4vw,16px)', fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,26px)', fontWeight:700, color: displayVal > 0 ? C.accent : '#555', letterSpacing:'0.04em', textAlign:'right' }}>
+    <div style={{ background:'#D1D5DB', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)', marginTop:10 }}>
+      <div style={{ background:C.white, borderRadius:8, padding:'clamp(8px,1vh,11px) clamp(12px,1.4vw,16px)', fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,26px)', fontWeight:700, color: displayVal > 0 ? C.text : C.muted, letterSpacing:'0.04em', textAlign:'right' }}>
         {displayVal > 0 ? fmt(displayVal) : 'Enter amount…'}
       </div>
-      {/* Numpad rows */}
       {TIP_PAD.map((row, ri) => (
         <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
           {row.map((key, ki) => {
             if (!key) return <div key={ki} style={{ flex:1 }} />
-            const isBs = key === '⌫'
-            const isP  = pressedKey === key
+            const isBs  = key === '⌫'
+            const is000 = key === '000'
+            const isP   = pressedKey === key
             return (
               <button key={ki} {...press(key)}
-                style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize: isBs ? 'clamp(16px,2vw,21px)' : 'clamp(18px,2.2vw,23px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: isP ? (isBs ? '#555' : C.accent) : (isBs ? '#333' : '#2a2a28'), color: isP ? (isBs ? '#FFF' : C.accentText) : '#FFF', boxShadow: isP ? 'inset 0 2px 4px rgba(0,0,0,0.4)' : '0 2px 3px rgba(0,0,0,0.3)', transform: isP ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
+                style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize: isBs ? 'clamp(16px,2vw,21px)' : is000 ? 'clamp(13px,1.6vw,16px)' : 'clamp(18px,2.2vw,23px)', fontWeight:700, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: isP ? (isBs ? '#888' : C.accent) : (isBs || is000 ? '#C4C4C4' : C.white), color: isP ? (isBs ? C.white : C.accentText) : C.text, boxShadow: isP ? 'inset 0 2px 4px rgba(0,0,0,0.18)' : '0 2px 3px rgba(0,0,0,0.14)', transform: isP ? 'scale(0.9)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
                 {key}
               </button>
             )
@@ -58,61 +73,41 @@ const TipNumpad = memo(function TipNumpad({ value, onChange }) {
 
 // ── Receipt Screen ─────────────────────────────────────────────────────────────
 function ReceiptScreen({ booking, grand, onNext }) {
-  const [printing, setPrinting] = useState(true)
-  const [waSent,   setWaSent]   = useState(false)
+  const [waSent, setWaSent] = useState(false)
   const hasPhone = !!(booking?.customer_phone || booking?.guest_phone)
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPrinting(false), 2500)
-    const t2 = setTimeout(() => onNext(), 8000)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
+    const t = setTimeout(() => onNext(), 8000)
+    return () => clearTimeout(t)
   }, [onNext])
 
   return (
-    <div style={{ position:'fixed', inset:0, background:C.topBg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(20px,3vw,40px)', textAlign:'center' }}>
+    <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(20px,3vw,40px)', textAlign:'center' }}>
       <div className="si" style={{ maxWidth:'clamp(340px,44vw,460px)', width:'100%' }}>
 
-        <div style={{ width:72, height:72, background:'#1a2a1a', border:'2px solid #2d7a2d', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:32, margin:'0 auto clamp(16px,2.2vh,22px)' }}>✓</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.8vw,28px)', fontWeight:800, color:C.white, marginBottom:4 }}>Pembayaran Berhasil</div>
-        <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#666', marginBottom:4 }}>Payment Confirmed</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.6vw,28px)', fontWeight:800, color:C.accent, marginBottom:'clamp(20px,3vh,28px)' }}>{fmt(grand)}</div>
+        <div style={{ width:72, height:72, background:'#e8f5e9', border:'2px solid #4caf50', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:32, margin:'0 auto clamp(16px,2.2vh,22px)' }}>✓</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.8vw,28px)', fontWeight:800, color:C.text, marginBottom:4 }}>Pembayaran Berhasil</div>
+        <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted, marginBottom:4 }}>Payment Confirmed</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.6vw,28px)', fontWeight:800, color:C.text, marginBottom:'clamp(20px,3vh,28px)' }}>{fmt(grand)}</div>
 
-        <div style={{ width:'100%', height:1, background:'#1a1a18', marginBottom:'clamp(18px,2.6vh,26px)' }} />
+        <div style={{ width:'100%', height:1, background:C.border, marginBottom:'clamp(18px,2.6vh,26px)' }} />
 
-        <div style={{ background:'#0d0d0b', border:'1px solid #2a2a28', borderRadius:14, padding:'clamp(16px,2.2vw,22px)', marginBottom:'clamp(14px,2vh,20px)' }}>
-          <div style={{ fontSize:32, marginBottom:10 }}>🧾</div>
-          {printing ? (
-            <>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, color:C.white, marginBottom:6 }}>Mencetak Struk…</div>
-              <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#666', marginBottom:14 }}>Printing receipt…</div>
-              <div style={{ height:4, background:'#1a1a18', borderRadius:2, overflow:'hidden' }}>
-                <div style={{ height:'100%', background:C.accent, borderRadius:2, animation:'printProgress 2.5s linear forwards' }} />
-              </div>
-              <style>{`@keyframes printProgress { from{width:0%} to{width:100%} }`}</style>
-            </>
-          ) : (
-            <>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, color:'#6fcf6f', marginBottom:4 }}>Struk Tercetak ✓</div>
-              <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#666' }}>Receipt printed</div>
-            </>
-          )}
-        </div>
 
         {hasPhone && !waSent && (
           <button onClick={() => setWaSent(true)}
-            style={{ width:'100%', background:'#0d2b1a', border:'1.5px solid #1a5c35', color:'#4caf82', padding:'clamp(11px,1.6vh,15px)', borderRadius:12, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(13px,1.5vw,15px)', fontWeight:600, cursor:'pointer', marginBottom:10, display:'flex', alignItems:'center', justifyContent:'center', gap:8, border:'none' }}>
+            style={{ width:'100%', background:'#f0faf4', border:'1.5px solid #a5d6a7', color:'#2e7d32', padding:'clamp(11px,1.6vh,15px)', borderRadius:12, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(13px,1.5vw,15px)', fontWeight:600, cursor:'pointer', marginBottom:10, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
             <span>📱</span><span>Kirim ke WhatsApp · Send to WhatsApp</span>
           </button>
         )}
         {waSent && (
-          <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#4caf82', fontWeight:600, marginBottom:10 }}>📱 Sent to WhatsApp ✓</div>
+          <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#2e7d32', fontWeight:600, marginBottom:10 }}>📱 Sent to WhatsApp ✓</div>
         )}
 
         <button onClick={onNext}
           style={{ width:'100%', background:C.accent, color:C.accentText, padding:'clamp(14px,2vh,18px)', borderRadius:12, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.7vw,17px)', fontWeight:700, border:'none', cursor:'pointer' }}>
           Lanjut · Continue
         </button>
-        <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#444', marginTop:10 }}>Auto-continues in a few seconds</div>
+        <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted, marginTop:10 }}>Auto-continues in a few seconds</div>
       </div>
     </div>
   )
@@ -149,11 +144,11 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
   }
 
   if (submitted) return (
-    <div style={{ position:'fixed', inset:0, background:C.topBg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', padding:32 }}>
+    <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', padding:32 }}>
       <div className="si">
         <div style={{ fontSize:64, marginBottom:16 }}>🙏</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(24px,3.5vw,34px)', fontWeight:800, color:C.white, marginBottom:8 }}>Terima Kasih! · Thank You!</div>
-        <div style={{ fontSize:'clamp(13px,1.5vw,15px)', color:'#666', marginBottom:32 }}>Sampai jumpa lagi di Bercut · See you again!</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(24px,3.5vw,34px)', fontWeight:800, color:C.text, marginBottom:8 }}>Terima Kasih! · Thank You!</div>
+        <div style={{ fontSize:'clamp(13px,1.5vw,15px)', color:C.muted, marginBottom:32 }}>Sampai jumpa lagi di Bercut · See you again!</div>
         <button onClick={onDone}
           style={{ padding:'clamp(14px,2vh,18px) clamp(32px,4vw,48px)', borderRadius:12, fontSize:'clamp(15px,1.8vw,18px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:C.accent, color:C.accentText, border:'none', cursor:'pointer' }}>
           Selesai · Done
@@ -163,23 +158,23 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
   )
 
   return (
-    <div style={{ position:'fixed', inset:0, background:C.topBg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(16px,3vw,40px)', overflowY:'auto' }}>
+    <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(16px,3vw,40px)', overflowY:'auto' }}>
       <div className="si" style={{ maxWidth:'clamp(360px,52vw,540px)', width:'100%', textAlign:'center' }}>
 
         <div style={{ width:60, height:60, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, margin:'0 auto clamp(12px,1.8vh,18px)' }}>✓</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.8vw,28px)', fontWeight:800, color:C.white, lineHeight:1.1, marginBottom:4 }}>Pembayaran Berhasil</div>
-        <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#666', marginBottom:4 }}>Payment Successful</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,26px)', fontWeight:800, color:C.accent, marginBottom:4 }}>{fmt(grand)}</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.8vw,28px)', fontWeight:800, color:C.text, lineHeight:1.1, marginBottom:4 }}>Pembayaran Berhasil</div>
+        <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted, marginBottom:4 }}>Payment Successful</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,26px)', fontWeight:800, color:C.text, marginBottom:4 }}>{fmt(grand)}</div>
         {booking && (
-          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555', marginBottom:'clamp(16px,2.4vh,24px)' }}>
+          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:'clamp(16px,2.4vh,24px)' }}>
             {booking.customer_name || booking.guest_name || 'Guest'} · ✂ {booking.barber_name}
           </div>
         )}
 
-        <div style={{ width:'100%', height:1, background:'#1a1a18', marginBottom:'clamp(16px,2.4vh,24px)' }} />
+        <div style={{ width:'100%', height:1, background:C.border, marginBottom:'clamp(16px,2.4vh,24px)' }} />
 
-        <div style={{ fontSize:'clamp(10px,1.2vw,12px)', letterSpacing:'0.16em', textTransform:'uppercase', color:'#555', marginBottom:6 }}>Bagaimana pengalamanmu? · How was your visit?</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,24px)', fontWeight:800, color:C.white, marginBottom:'clamp(12px,1.8vh,18px)' }}>Rate Your Visit</div>
+        <div style={{ fontSize:'clamp(10px,1.2vw,12px)', letterSpacing:'0.16em', textTransform:'uppercase', color:C.muted, marginBottom:6 }}>Bagaimana pengalamanmu? · How was your visit?</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(18px,2.4vw,24px)', fontWeight:800, color:C.text, marginBottom:'clamp(12px,1.8vh,18px)' }}>Rate Your Visit</div>
 
         <div style={{ display:'flex', justifyContent:'center', gap:'clamp(6px,1.2vw,14px)', marginBottom:'clamp(12px,1.8vh,18px)' }}>
           {[1,2,3,4,5].map(s => (
@@ -195,12 +190,12 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
 
         {stars > 0 && (
           <div className="fi">
-            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.9vw,19px)', fontWeight:700, color:C.white, marginBottom:'clamp(10px,1.4vh,14px)' }}>{LABELS[stars]}</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.9vw,19px)', fontWeight:700, color:C.text, marginBottom:'clamp(10px,1.4vh,14px)' }}>{LABELS[stars]}</div>
             {availTags.length > 0 && (
               <div style={{ display:'flex', flexWrap:'wrap', gap:'clamp(6px,1vw,10px)', justifyContent:'center', marginBottom:'clamp(12px,1.8vh,18px)' }}>
                 {availTags.map(tag => (
                   <button key={tag.id} onClick={() => setTags(p => p.includes(tag.id) ? p.filter(x => x !== tag.id) : [...p, tag.id])}
-                    style={{ padding:'clamp(8px,1.2vh,12px) clamp(14px,1.8vw,18px)', borderRadius:999, fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer', background:tags.includes(tag.id) ? C.accent : '#1a1a18', color:tags.includes(tag.id) ? C.accentText : '#888', border:`1.5px solid ${tags.includes(tag.id) ? C.accent : '#2a2a28'}`, transition:'all 0.15s' }}>
+                    style={{ padding:'clamp(8px,1.2vh,12px) clamp(14px,1.8vw,18px)', borderRadius:999, fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer', background:tags.includes(tag.id) ? C.accent : C.surface, color:tags.includes(tag.id) ? C.accentText : C.text2, border:`1.5px solid ${tags.includes(tag.id) ? C.accent : C.border}`, transition:'all 0.15s' }}>
                     {tag.label}
                   </button>
                 ))}
@@ -208,9 +203,9 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
             )}
             <textarea value={comment} onChange={e => setComment(e.target.value)}
               placeholder="Komentar tambahan (opsional) · Additional comments"
-              style={{ width:'100%', padding:'clamp(10px,1.4vh,14px)', borderRadius:12, border:'1.5px solid #2a2a28', fontSize:'clamp(13px,1.5vw,14px)', fontFamily:"'DM Sans',sans-serif", resize:'none', minHeight:70, background:'#1a1a18', color:C.white, marginBottom:'clamp(12px,1.8vh,18px)' }}
-              onFocus={e => e.target.style.borderColor = C.accent}
-              onBlur={e => e.target.style.borderColor = '#2a2a28'} />
+              style={{ width:'100%', padding:'clamp(10px,1.4vh,14px)', borderRadius:12, border:`1.5px solid ${C.border}`, fontSize:'clamp(13px,1.5vw,14px)', fontFamily:"'DM Sans',sans-serif", resize:'none', minHeight:70, background:C.surface, color:C.text, marginBottom:'clamp(12px,1.8vh,18px)', boxSizing:'border-box' }}
+              onFocus={e => e.target.style.borderColor = C.topBg}
+              onBlur={e => e.target.style.borderColor = C.border} />
           </div>
         )}
 
@@ -221,7 +216,7 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
           </button>
           {stars > 0 && (
             <button onClick={onDone}
-              style={{ padding:'clamp(10px,1.4vh,14px)', borderRadius:12, fontSize:'clamp(12px,1.4vw,14px)', fontFamily:"'DM Sans',sans-serif", fontWeight:500, background:'none', color:'#555', border:'none', cursor:'pointer' }}>
+              style={{ padding:'clamp(10px,1.4vh,14px)', borderRadius:12, fontSize:'clamp(12px,1.4vw,14px)', fontFamily:"'DM Sans',sans-serif", fontWeight:500, background:'none', color:C.muted, border:'none', cursor:'pointer' }}>
               Lewati · Skip
             </button>
           )}
@@ -231,32 +226,277 @@ function ReviewScreen({ booking, grand, feedbackTags, onDone }) {
   )
 }
 
-// ── Payment Failed Screen ──────────────────────────────────────────────────────
-function PaymentFailedScreen({ method, onRetry, onSwitchMethod }) {
-  const [notified, setNotified] = useState(false)
+// ── QRIS Screen — QR code displayed on kiosk, customer scans with phone ────────
+function QRISScreen({ qrString, qrId, bookingId, groupId, grand, expiresAt, onSuccess, onFail, onCancel, adminPin, onManualOverride }) {
+  const [expired,  setExpired]  = useState(false)
+  const [timeLeft, setTimeLeft] = useState(null)
+  const [showPin,  setShowPin]  = useState(false)
+  const doneRef = useRef(false)
+
+  const succeed = () => { if (!doneRef.current) { doneRef.current = true; onSuccess() } }
+
+  // Countdown timer
+  useEffect(() => {
+    if (!expiresAt) return
+    const end = new Date(expiresAt).getTime()
+    const tick = () => {
+      const left = Math.max(0, Math.round((end - Date.now()) / 1000))
+      setTimeLeft(left)
+      if (left === 0) setExpired(true)
+    }
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [expiresAt])
+
+  // Poll Xendit QR status every 2s — COMPLETED means money moved
+  useEffect(() => {
+    if (!qrId || expired) return
+    const pollParam = groupId ? `group_id=${groupId}` : `booking_id=${bookingId}`
+    const poll = setInterval(async () => {
+      try {
+        const data = await kioskApi.get(`/payments/qris/${qrId}/status?${pollParam}`)
+        if (data.status === 'COMPLETED') { clearInterval(poll); succeed() }
+        else if (data.status === 'EXPIRED') { clearInterval(poll); setExpired(true) }
+      } catch { /* keep polling on network error */ }
+    }, 2000)
+    return () => clearInterval(poll)
+  }, [qrId, expired]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll DB every 3s as backup — webhook updates DB faster than Xendit API reflects COMPLETED
+  useEffect(() => {
+    if (!bookingId || expired) return
+    const poll = setInterval(async () => {
+      try {
+        const data = await kioskApi.get(`/bookings/${bookingId}`)
+        if (data.payment_status === 'paid') { clearInterval(poll); succeed() }
+      } catch { /* keep polling */ }
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [bookingId, expired]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const qrImageUrl = qrString
+    ? `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrString)}&size=260x260&margin=8`
+    : null
+
+  const mins = timeLeft != null ? Math.floor(timeLeft / 60) : null
+  const secs = timeLeft != null ? String(timeLeft % 60).padStart(2, '0') : null
+
   return (
-    <div style={{ position:'fixed', inset:0, background:C.topBg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(24px,4vw,56px)', textAlign:'center' }}>
-      <div style={{ width:80, height:80, borderRadius:'50%', background:'#2a0a0a', border:'2px solid #7f1d1d', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, marginBottom:28 }}>✕</div>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(22px,3.2vw,30px)', fontWeight:800, color:C.white, marginBottom:8 }}>Payment Unsuccessful</div>
-      <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:'#888', marginBottom:6 }}>Pembayaran tidak berhasil</div>
-      <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555', marginBottom:40, maxWidth:380 }}>
-        {method === 'qris' ? 'QRIS transaction could not be completed.' : 'Card terminal did not confirm payment.'} Your booking is still held.
+    <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(20px,3vw,40px)', textAlign:'center' }}>
+      <div style={{ maxWidth:480, width:'100%' }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(20px,2.8vw,28px)', fontWeight:800, color:C.text, marginBottom:4 }}>
+          Scan to Pay
+        </div>
+        <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted, marginBottom:20 }}>
+          Buka GoPay, OVO, Dana, atau app bank · Open any payment app
+        </div>
+
+        {/* QR code */}
+        <div style={{ background:C.white, border:`3px solid ${expired ? C.border : C.accent}`, borderRadius:20, padding:16, display:'inline-block', marginBottom:16, position:'relative' }}>
+          {expired ? (
+            <div style={{ width:260, height:260, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:C.muted, gap:12 }}>
+              <div style={{ fontSize:48 }}>⏱</div>
+              <div style={{ fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.text }}>QR Expired</div>
+              <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>Go back and try again</div>
+            </div>
+          ) : qrImageUrl ? (
+            <img src={qrImageUrl} alt="QRIS" width={260} height={260} style={{ display:'block', borderRadius:8 }} />
+          ) : (
+            <div style={{ width:260, height:260, display:'flex', alignItems:'center', justifyContent:'center', color:C.muted }}>Loading…</div>
+          )}
+        </div>
+
+        {/* Amount + timer */}
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(26px,4vw,38px)', fontWeight:800, color:C.text, marginBottom:4 }}>
+          {fmt(grand)}
+        </div>
+        {timeLeft != null && !expired && (
+          <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color: timeLeft < 60 ? C.danger : C.muted, fontWeight:600, marginBottom:16 }}>
+            Expires in {mins}:{secs}
+          </div>
+        )}
+
+        {/* App logos */}
+        <div style={{ display:'flex', justifyContent:'center', gap:10, marginBottom:24 }}>
+          {['GoPay','OVO','Dana','BCA','BRI','Mandiri'].map(name => (
+            <div key={name} style={{ fontSize:'clamp(10px,1.1vw,12px)', color:C.muted, background:C.surface, borderRadius:6, padding:'4px 8px', fontWeight:600 }}>{name}</div>
+          ))}
+        </div>
+
+        <button onClick={onCancel}
+          style={{ padding:'clamp(12px,1.8vh,16px) clamp(28px,3.5vw,40px)', borderRadius:12, background:'none', border:`1.5px solid ${C.border}`, color:C.muted, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(13px,1.5vw,15px)', fontWeight:600, cursor:'pointer' }}>
+          ← Back · Kembali
+        </button>
+
+        {onManualOverride && (
+          <div style={{ marginTop:12 }}>
+            <button onClick={() => setShowPin(true)}
+              style={{ background:'none', border:'none', color:C.muted, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(11px,1.2vw,13px)', fontWeight:500, cursor:'pointer', padding:'6px 12px', textDecoration:'underline', textDecorationColor:'transparent' }}
+              onMouseEnter={e => e.target.style.color = C.text2}
+              onMouseLeave={e => e.target.style.color = C.muted}>
+              Staff Override
+            </button>
+          </div>
+        )}
       </div>
-      <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:400 }}>
-        <button onClick={onRetry}
-          style={{ width:'100%', padding:'clamp(15px,2.2vh,19px)', borderRadius:14, background:C.accent, color:C.accentText, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(15px,1.8vw,18px)', fontWeight:700, border:'none', cursor:'pointer' }}>
-          Try Again · Coba Lagi
-        </button>
-        <button onClick={onSwitchMethod}
-          style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:'transparent', color:C.white, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:600, border:'1.5px solid #333', cursor:'pointer' }}>
-          {method === 'qris' ? 'Try Card Instead · Coba Kartu' : 'Try QRIS Instead · Coba QRIS'}
-        </button>
-        <button onClick={() => setNotified(true)} disabled={notified}
-          style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:notified ? '#1a2a1a' : '#1a1a18', color:notified ? '#6fcf6f' : '#DC2626', fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:700, border:`1.5px solid ${notified ? '#166534' : '#7f1d1d'}`, cursor:notified ? 'default' : 'pointer', transition:'all 0.2s' }}>
-          {notified ? '✓ Staff Notified — Please Wait' : '⚠ Contact Staff · Hubungi Staff'}
+
+      {showPin && (
+        <PinOverlay
+          adminPin={adminPin}
+          onSuccess={() => { setShowPin(false); onManualOverride() }}
+          onClose={() => setShowPin(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── PIN Overlay — staff-only gate ─────────────────────────────────────────────
+function PinOverlay({ adminPin, onSuccess, onClose }) {
+  const [pinDisplay, setPinDisplay] = useState('')
+  const [error,      setError]      = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const pinRef = useRef('')
+  const KEYS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
+
+  const press = (k) => {
+    if (loading) return
+    if (k === '⌫') {
+      pinRef.current = pinRef.current.slice(0, -1)
+      setPinDisplay(pinRef.current)
+      setError(false)
+      return
+    }
+    if (!k || pinRef.current.length >= 4) return
+    pinRef.current = pinRef.current + k
+    const next = pinRef.current
+    setPinDisplay(next)
+    setError(false)
+    if (next.length === 4) {
+      const expected = adminPin != null ? String(adminPin) : '1234'
+      if (next === expected) {
+        setLoading(true)
+        onSuccess()
+      } else {
+        setError(true)
+        setTimeout(() => { pinRef.current = ''; setPinDisplay(''); setError(false) }, 700)
+      }
+    }
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:9000, background:'rgba(0,0,0,0.7)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:C.white, borderRadius:20, padding:'clamp(24px,3.5vw,36px)', width:'clamp(280px,36vw,340px)', textAlign:'center' }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:'clamp(16px,2.2vw,20px)', color:C.text, marginBottom:6 }}>Staff PIN</div>
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color: error ? '#c62828' : C.muted, marginBottom:20, fontWeight: error ? 700 : 400 }}>
+          {loading ? 'Processing…' : error ? 'Wrong PIN — try again' : 'Enter admin PIN to continue'}
+        </div>
+        <div style={{ display:'flex', justifyContent:'center', gap:10, marginBottom:20 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{ width:14, height:14, borderRadius:'50%', background: i < pinDisplay.length ? (error ? '#ef5350' : C.accent) : C.border, transition:'background 0.15s' }} />
+          ))}
+        </div>
+        {KEYS.map((row, ri) => (
+          <div key={ri} style={{ display:'flex', gap:8, marginBottom:8 }}>
+            {row.map((k, ki) => (
+              <button key={ki} onClick={() => press(k)} disabled={!k || loading}
+                style={{ flex:1, height:'clamp(44px,6vh,56px)', borderRadius:10, border:'none', fontSize:k === '⌫' ? 18 : 'clamp(18px,2.4vw,24px)', fontWeight:700, fontFamily:"'Inter',sans-serif", background:k ? C.surface : 'transparent', color:k ? C.text : 'transparent', cursor:k && !loading ? 'pointer' : 'default', opacity: loading ? 0.5 : k ? 1 : 0 }}>
+                {k}
+              </button>
+            ))}
+          </div>
+        ))}
+        <button onClick={onClose} disabled={loading} style={{ marginTop:8, width:'100%', background:'none', border:'none', color:C.muted, fontSize:'clamp(12px,1.4vw,14px)', cursor: loading ? 'default' : 'pointer', padding:'8px' }}>
+          Batal · Cancel
         </button>
       </div>
     </div>
+  )
+}
+
+// ── Awaiting Terminal Screen — display only, polling lives in parent ───────────
+function AwaitingTerminalScreen({ method, grand, elapsed, onBack, onManualOverride }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(24px,4vw,56px)', textAlign:'center' }}>
+      <div style={{ maxWidth:460, width:'100%' }}>
+        <div style={{ width:80, height:80, borderRadius:'50%', background:C.surface, border:`2px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, margin:'0 auto 28px' }}>
+          💳
+        </div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(22px,3.2vw,30px)', fontWeight:800, color:C.text, marginBottom:8 }}>
+          Use Terminal at the Counter
+        </div>
+        <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:C.text2, marginBottom:6 }}>
+          Tap atau masukkan kartu pada terminal
+        </div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(28px,4.5vw,40px)', fontWeight:800, color:C.text, margin:'28px 0 32px' }}>
+          {fmt(grand)}
+        </div>
+
+        <div style={{ display:'flex', justifyContent:'center', gap:8, marginBottom:32 }}>
+          {[0,1,2].map(i => (
+            <div key={i} style={{ width:10, height:10, borderRadius:'50%', background:C.accent, animation:`pulse 1.2s ease-in-out ${i*0.4}s infinite` }} />
+          ))}
+        </div>
+        <style>{`@keyframes pulse { 0%,100%{opacity:0.25;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }`}</style>
+
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:32 }}>
+          Waiting for payment confirmation… {elapsed > 0 ? `(${elapsed}s)` : ''}
+        </div>
+
+        <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
+          <button onClick={onManualOverride}
+            style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:10, padding:'clamp(10px,1.4vh,13px) clamp(20px,2.8vw,28px)', color:C.text2, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600, cursor:'pointer' }}>
+            Bayar Manual · Staff Override
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Payment Failed Screen ──────────────────────────────────────────────────────
+function PaymentFailedScreen({ method, onRetry, onSwitchMethod, adminPin, onManualOverride }) {
+  const [notified,  setNotified]  = useState(false)
+  const [showPin,   setShowPin]   = useState(false)
+  return (
+    <>
+      <div style={{ position:'fixed', inset:0, background:C.bg, zIndex:8100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'clamp(24px,4vw,56px)', textAlign:'center' }}>
+        <div style={{ width:80, height:80, borderRadius:'50%', background:'#fdecea', border:'2px solid #ef9a9a', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, marginBottom:28 }}>✕</div>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(22px,3.2vw,30px)', fontWeight:800, color:C.text, marginBottom:8 }}>Payment Unsuccessful</div>
+        <div style={{ fontSize:'clamp(13px,1.6vw,15px)', color:C.text2, marginBottom:6 }}>Pembayaran tidak berhasil</div>
+        <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted, marginBottom:40, maxWidth:380 }}>
+          {method === 'qris' ? 'QRIS transaction could not be completed.' : 'Card terminal did not confirm payment.'} Your booking is still held.
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:400 }}>
+          <button onClick={onRetry}
+            style={{ width:'100%', padding:'clamp(15px,2.2vh,19px)', borderRadius:14, background:C.accent, color:C.accentText, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(15px,1.8vw,18px)', fontWeight:700, border:'none', cursor:'pointer' }}>
+            Try Again · Coba Lagi
+          </button>
+          <button onClick={onSwitchMethod}
+            style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:C.white, color:C.text, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:600, border:`1.5px solid ${C.border}`, cursor:'pointer' }}>
+            {method === 'qris' ? 'Try Card Instead · Coba Kartu' : 'Try QRIS Instead · Coba QRIS'}
+          </button>
+          {onManualOverride && (
+            <button onClick={() => setShowPin(true)}
+              style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:'#fff8e1', color:'#7c5800', fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:700, border:'1.5px solid #f9a825', cursor:'pointer', transition:'all 0.2s' }}>
+              🔑 Staff Override · Konfirmasi Staff
+            </button>
+          )}
+          <button onClick={() => setNotified(true)} disabled={notified}
+            style={{ width:'100%', padding:'clamp(13px,1.9vh,17px)', borderRadius:14, background:notified ? '#f0faf4' : '#fdecea', color:notified ? '#2e7d32' : '#c62828', fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.6vw,16px)', fontWeight:700, border:`1.5px solid ${notified ? '#a5d6a7' : '#ef9a9a'}`, cursor:notified ? 'default' : 'pointer', transition:'all 0.2s' }}>
+            {notified ? '✓ Staff Notified — Please Wait' : '⚠ Contact Staff · Hubungi Staff'}
+          </button>
+        </div>
+      </div>
+      {showPin && (
+        <PinOverlay
+          adminPin={adminPin}
+          onSuccess={() => { setShowPin(false); onManualOverride() }}
+          onClose={() => setShowPin(false)}
+        />
+      )}
+    </>
   )
 }
 
@@ -284,28 +524,34 @@ function GroupTipRow({ bk, tipPresets, groupTips, setGroupTips }) {
   const rowTotal = parseFloat(bk.total_amount ?? (parseFloat(bk.subtotal || 0) + parseFloat(bk.extras_total || 0) - (bk.points_redeemed || 0) * 10000))
 
   return (
-    <div style={{ background:'#1a1a18', borderRadius:10, padding:'clamp(10px,1.4vw,14px)', marginBottom:8 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:8, borderBottom:'1px solid #2a2a28', marginBottom:8 }}>
+    <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:'clamp(10px,1.4vw,14px)', marginBottom:8 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:8, borderBottom:`1px solid ${C.border}`, marginBottom:8 }}>
         <div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.accent, fontSize:'clamp(13px,1.6vw,16px)' }}>{customerName}</div>
-          {bk.barber_name && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginTop:1 }}>✂ {bk.barber_name}</div>}
-          {serviceNames && <div style={{ fontSize:'clamp(10px,1.1vw,11px)', color:'#555', marginTop:1 }}>{serviceNames}</div>}
+          <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.text, fontSize:'clamp(13px,1.6vw,16px)' }}>{customerName}</div>
+          {bk.barber_name && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted, marginTop:1 }}>✂ {bk.barber_name}</div>}
+          {serviceNames && <div style={{ fontSize:'clamp(10px,1.1vw,11px)', color:C.muted, marginTop:1 }}>{serviceNames}</div>}
         </div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:C.white }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,16px)', fontWeight:700, color:C.text }}>
           {fmt(rowTotal)}
         </div>
       </div>
-      <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:'#555', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.1em' }}>Tip for {bk.barber_name}?</div>
+      <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.text, fontWeight:700, fontFamily:"'Inter',sans-serif", marginBottom:8 }}>
+        Leave a tip for {bk.barber_name || 'your barber'}? 🙌
+      </div>
       <div style={{ display:'flex', gap:6, flexWrap:'nowrap' }}>
         {tipPresets.map(t => (
           <button key={t} onClick={() => currentTip === t ? clearTip() : setTip(t)}
-            style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(11px,1.4vw,13px)', fontFamily:"'Inter',sans-serif", fontWeight:800, background:currentTip === t ? C.accent : '#2a2a28', color:currentTip === t ? C.accentText : C.white, border:`2px solid ${currentTip === t ? C.accent : '#3a3a38'}`, transition:'all 0.15s', cursor:'pointer' }}>
+            style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(11px,1.4vw,13px)', fontFamily:"'Inter',sans-serif", fontWeight:800, background:currentTip === t ? C.accent : C.white, color:currentTip === t ? C.accentText : C.text, border:`2px solid ${currentTip === t ? C.accent : C.border}`, transition:'all 0.15s', cursor:'pointer' }}>
             {fmtK(t)}
           </button>
         ))}
         <button onClick={() => setShowNumpad(p => !p)}
-          style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(10px,1.2vw,12px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:showNumpad ? C.accent : '#2a2a28', color:showNumpad ? C.accentText : C.white, border:`2px solid ${showNumpad ? C.accent : '#3a3a38'}`, cursor:'pointer' }}>
-          {currentTip && !tipPresets.includes(currentTip) ? fmt(currentTip) : 'Custom'}
+          style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(10px,1.2vw,12px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:showNumpad ? C.accent : C.white, color:showNumpad ? C.accentText : C.text2, border:`2px solid ${showNumpad ? C.accent : C.border}`, cursor:'pointer' }}>
+          {currentTip && !tipPresets.includes(currentTip) && currentTip !== 'none' ? fmt(currentTip) : 'Custom'}
+        </button>
+        <button onClick={() => { setGroupTips(prev => ({ ...prev, [bk.id]: 'none' })); setShowNumpad(false); setCustomVal('') }}
+          style={{ flex:1, padding:'clamp(7px,1vh,10px) 0', borderRadius:9, fontSize:'clamp(10px,1.2vw,12px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:currentTip === 'none' ? C.surface2 : C.white, color:C.text2, border:`2px solid ${currentTip === 'none' ? C.text2 : C.border}`, cursor:'pointer', transition:'all 0.15s' }}>
+          No Tip
         </button>
       </div>
       {showNumpad && (
@@ -317,94 +563,88 @@ function GroupTipRow({ bk, tipPresets, groupTips, setGroupTips }) {
             style={{ flex:1, padding:'8px', borderRadius:8, background:C.accent, color:C.accentText, fontWeight:700, fontSize:'clamp(12px,1.4vw,13px)', border:'none', cursor:'pointer' }}>
             Set Tip ✓
           </button>
-          <button onClick={clearTip}
-            style={{ padding:'8px 14px', borderRadius:8, background:'transparent', color:'#555', fontSize:'clamp(11px,1.3vw,12px)', border:'none', cursor:'pointer', textDecoration:'underline' }}>
-            No tip
-          </button>
         </div>
-      )}
-      {!showNumpad && (
-        <button onClick={clearTip}
-          style={{ background:'none', border:'none', color:'#555', fontSize:'clamp(9px,1.1vw,10px)', fontFamily:"'DM Sans',sans-serif", textDecoration:'underline', cursor:'pointer', marginTop:4, padding:'2px 0' }}>
-          No tip, maybe next time
-        </button>
       )}
     </div>
   )
 }
 
 // ── Payment Method Panel (shared) ─────────────────────────────────────────────
-function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCovered, onConfirm, confirmLabel }) {
+function PaymentMethodPanel({ method, setMethod, grand, confirming, isPointsCovered, onConfirm, confirmLabel, terminalSession }) {
+  const sessionActive = !!terminalSession
+  const sessionMethod = terminalSession?.method
+
+  const isBlocked = (m) => sessionActive && m !== sessionMethod
+
   return (
-    <div style={{ width:'clamp(260px,30vw,370px)', borderLeft:'1px solid #1a1a18', background:'#0d0d0b', padding:'clamp(18px,2.6vw,28px)', display:'flex', flexDirection:'column', flexShrink:0 }}>
+    <div style={{ width:'clamp(260px,30vw,370px)', borderLeft:`1px solid ${C.border}`, background:C.white, padding:'clamp(18px,2.6vw,28px)', display:'flex', flexDirection:'column', flexShrink:0 }}>
       {isPointsCovered ? (
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', gap:14 }}>
           <div style={{ fontSize:44 }}>⭐</div>
-          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:800, color:'#6fcf6f' }}>Fully Covered by Points!</div>
-          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>No payment needed · Tidak perlu bayar</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:800, color:'#2e7d32' }}>Fully Covered by Points!</div>
+          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>No payment needed · Tidak perlu bayar</div>
         </div>
       ) : (
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', marginBottom:14 }}>
-          <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:'#555', textTransform:'uppercase', marginBottom:14 }}>Payment Method</div>
-          <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555', marginBottom:14 }}>Barber selects method, customer pays.</div>
+          <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:C.muted, textTransform:'uppercase', marginBottom:14 }}>Payment Method</div>
 
-          {/* QRIS */}
-          <div onClick={() => setMethod('qris')} style={{ background:method === 'qris' ? '#1a1a18' : '#111110', border:`2px solid ${method === 'qris' ? C.accent : '#222'}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', marginBottom:10, transition:'all 0.18s' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:method === 'qris' ? 14 : 0 }}>
-              <div style={{ width:42, height:42, background:method === 'qris' ? C.accent : '#1a1a18', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⬛</div>
+          {/* QRIS — always available */}
+          <div onClick={() => setMethod('qris')} style={{ background:method === 'qris' ? C.surface : C.bg, border:`2px solid ${method === 'qris' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', marginBottom:10, transition:'all 0.18s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:42, height:42, background:method === 'qris' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>⬛</div>
               <div style={{ flex:1 }}>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.white }}>QRIS</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>GoPay · OVO · Dana · Bank</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>QRIS</div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>Scan QR on this screen · GoPay · OVO · Dana</div>
               </div>
               {method === 'qris' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
             </div>
-            {method === 'qris' && (
-              <div style={{ background:'#0d0d0b', borderRadius:10, padding:14, textAlign:'center' }}>
-                <div style={{ width:110, height:110, background:C.white, borderRadius:8, margin:'0 auto 10px', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <svg width="90" height="90" viewBox="0 0 100 100">
-                    <rect x="5" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                    <rect x="13" y="13" width="19" height="19" rx="2" fill="#111" />
-                    <rect x="60" y="5" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                    <rect x="68" y="13" width="19" height="19" rx="2" fill="#111" />
-                    <rect x="5" y="60" width="35" height="35" rx="4" fill="none" stroke="#111" strokeWidth="3" />
-                    <rect x="13" y="68" width="19" height="19" rx="2" fill="#111" />
-                    <rect x="60" y="60" width="8" height="8" fill="#111" /><rect x="72" y="60" width="8" height="8" fill="#111" />
-                    <rect x="84" y="60" width="11" height="8" fill="#111" /><rect x="60" y="72" width="11" height="8" fill="#111" />
-                    <rect x="76" y="72" width="8" height="8" fill="#111" /><rect x="60" y="84" width="8" height="11" fill="#111" />
-                    <rect x="72" y="84" width="23" height="11" fill="#111" />
-                  </svg>
-                </div>
-                <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#666' }}>Scan QR code to pay</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.accent, marginTop:6 }}>{fmt(grand)}</div>
-              </div>
-            )}
           </div>
 
-          {/* Card */}
-          <div onClick={() => setMethod('card')} style={{ background:method === 'card' ? '#1a1a18' : '#111110', border:`2px solid ${method === 'card' ? C.accent : '#222'}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:'pointer', transition:'all 0.18s' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:method === 'card' ? 14 : 0 }}>
-              <div style={{ width:42, height:42, background:method === 'card' ? C.accent : '#1a1a18', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>💳</div>
+          {/* Card — insert */}
+          <div onClick={() => !isBlocked('card') && setMethod('card')}
+            style={{ background:method === 'card' ? C.surface : C.bg, border:`2px solid ${method === 'card' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:isBlocked('card') ? 'not-allowed' : 'pointer', marginBottom:10, transition:'all 0.18s', opacity:isBlocked('card') ? 0.38 : 1 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:42, height:42, background:method === 'card' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>💳</div>
               <div style={{ flex:1 }}>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.white }}>Card</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>Tap, Insert, or Swipe</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>Card</div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
+                  {isBlocked('card') ? 'Mohon tunggu · Please wait' : 'Insert or Swipe'}
+                </div>
               </div>
               {method === 'card' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
             </div>
-            {method === 'card' && (
-              <div style={{ background:'#0d0d0b', borderRadius:10, padding:14, textAlign:'center' }}>
-                <div style={{ fontSize:36, marginBottom:6 }}>🏦</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.7vw,16px)', fontWeight:700, color:C.white, marginBottom:3 }}>Tap or insert card</div>
-                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginBottom:6 }}>Use the terminal on the counter</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.accent }}>{fmt(grand)}</div>
+          </div>
+
+          {/* Tap — contactless */}
+          <div onClick={() => !isBlocked('tap') && setMethod('tap')}
+            style={{ background:method === 'tap' ? C.surface : C.bg, border:`2px solid ${method === 'tap' ? C.accent : C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', cursor:isBlocked('tap') ? 'not-allowed' : 'pointer', transition:'all 0.18s', opacity:isBlocked('tap') ? 0.38 : 1 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:42, height:42, background:method === 'tap' ? C.accent : C.surface2, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📲</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(16px,2.2vw,22px)', fontWeight:700, color:C.text }}>
+                  Tap
+                </div>
+                <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>
+                  {isBlocked('tap') ? 'Mohon tunggu · Please wait' : 'Contactless card · Phone · Watch'}
+                </div>
               </div>
-            )}
+              {method === 'tap' && <div style={{ width:20, height:20, background:C.accent, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, color:C.accentText, flexShrink:0 }}>✓</div>}
+            </div>
           </div>
         </div>
       )}
 
+      {/* Total hero — sits above confirm button, always visible */}
+      {!isPointsCovered && (
+        <div style={{ textAlign:'center', padding:'clamp(12px,1.8vh,18px) 0', borderTop:`1px solid ${C.border}`, marginBottom:'clamp(10px,1.4vh,14px)', flexShrink:0 }}>
+          <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:C.muted, textTransform:'uppercase', marginBottom:4 }}>Total to Pay</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(28px,4vw,44px)', fontWeight:800, color:C.text, lineHeight:1 }}>{fmt(grand)}</div>
+        </div>
+      )}
+
       <button onClick={onConfirm} disabled={(!method && !isPointsCovered) || confirming}
-        style={{ width:'100%', background:(!method && !isPointsCovered) || confirming ? '#2a2a28' : C.accent, color:(!method && !isPointsCovered) || confirming ? '#555' : C.accentText, padding:'clamp(15px,2.2vh,19px)', borderRadius:14, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, border:'none', cursor:(!method && !isPointsCovered) || confirming ? 'not-allowed' : 'pointer', flexShrink:0, transition:'all 0.2s' }}>
-        {confirming ? 'Processing…' : confirmLabel || (isPointsCovered ? 'Confirm & Complete ✓' : method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : 'Select Payment Method')}
+        style={{ width:'100%', background:(!method && !isPointsCovered) || confirming ? C.surface2 : C.accent, color:(!method && !isPointsCovered) || confirming ? C.muted : C.accentText, padding:'clamp(15px,2.2vh,19px)', borderRadius:14, fontFamily:"'DM Sans',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, border:'none', cursor:(!method && !isPointsCovered) || confirming ? 'not-allowed' : 'pointer', flexShrink:0, transition:'all 0.2s' }}>
+        {confirming ? 'Processing…' : confirmLabel || (isPointsCovered ? 'Confirm & Complete ✓' : method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : method === 'tap' ? 'Confirm Tap Payment ✓' : 'Select Payment Method')}
       </button>
     </div>
   )
@@ -416,14 +656,110 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
   const groupId   = bookingData?.group_id
   const bookingId = bookingData?.booking_id || bookingData?.id
 
-  const [booking,    setBooking]    = useState(null)
-  const [groupBks,   setGroupBks]   = useState([])
-  const [phase,      setPhase]      = useState('loading')
-  const [method,     setMethod]     = useState(null)
-  const [tip,        setTip]        = useState(null)
-  const [customTip,  setCustomTip]  = useState('')
-  const [groupTips,  setGroupTips]  = useState({})
-  const [confirming, setConfirming] = useState(false)
+  const [booking,          setBooking]          = useState(null)
+  const [groupBks,         setGroupBks]         = useState([])
+  const [phase,            setPhase]            = useState('loading')
+  const [method,           setMethod]           = useState(null)
+  const [tip,              setTip]              = useState(null)
+  const [customTip,        setCustomTip]        = useState('')
+  const [groupTips,        setGroupTips]        = useState({})
+  const [confirming,       setConfirming]       = useState(false)
+  const [sessionId,        setSessionId]        = useState(null)
+  const [sessionMethod,    setSessionMethod]    = useState(null)   // 'card' | 'tap'
+  const [sessionElapsed,   setSessionElapsed]   = useState(0)
+  const [qrData,           setQrData]           = useState(null)
+  const [showPin,          setShowPin]          = useState(false)
+
+  const phaseRef = useRef(phase)
+  useEffect(() => { phaseRef.current = phase }, [phase])
+
+  // Elapsed timer for awaiting_terminal display
+  useEffect(() => {
+    if (phase !== 'awaiting_terminal') { setSessionElapsed(0); return }
+    const t = setInterval(() => setSessionElapsed(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [phase])
+
+  // Terminal session polling — Xendit GET endpoint for session status
+  useEffect(() => {
+    if (!sessionId) return
+    let errCount = 0
+    const clearSession = () => { setSessionId(null); setSessionMethod(null) }
+    const poll = setInterval(async () => {
+      try {
+        const data = await kioskApi.get(`/payments/terminal/session/${sessionId}/status`)
+        errCount = 0
+        if (data.status === 'COMPLETED') {
+          clearInterval(poll)
+          setPhase('receipt')
+        } else if (['FAILED', 'CANCELED', 'VOIDED'].includes(data.status)) {
+          clearInterval(poll)
+          clearSession()
+          if (phaseRef.current === 'awaiting_terminal') setPhase('failed')
+        }
+      } catch {
+        errCount++
+        if (errCount >= 10) {
+          clearInterval(poll)
+          clearSession()
+          if (phaseRef.current !== 'awaiting_terminal') return
+          // Before showing failed, confirm booking not already paid (prevents false-failed on DB pool exhaustion)
+          const checkId = bookingId && bookingId !== 'undefined' ? bookingId : groupBks[0]?.id
+          try {
+            if (checkId) {
+              const bk = await kioskApi.get(`/bookings/${checkId}`)
+              if (bk.payment_status === 'paid') { setPhase('receipt'); return }
+            }
+          } catch {}
+          setPhase('failed')
+        }
+      }
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // DB booking poll — catches when Xendit GET lags (returns ACTIVE after payment)
+  // For group payments, poll the first booking (group-confirm marks all atomically)
+  useEffect(() => {
+    const pollId = bookingId && bookingId !== 'undefined' ? bookingId : (isGroup ? groupBks[0]?.id : null)
+    if (!pollId || !sessionId) return
+    const poll = setInterval(async () => {
+      try {
+        const data = await kioskApi.get(`/bookings/${pollId}`)
+        if (data.payment_status === 'paid') {
+          clearInterval(poll)
+          setPhase('receipt')
+        }
+      } catch { /* keep polling */ }
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [bookingId, sessionId, groupBks]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SSE listener — instant push from webhook, reconnects automatically on error
+  useEffect(() => {
+    if (phase !== 'awaiting_terminal' || !branchId) return
+    const watchId = isGroup ? groupId : bookingId
+    if (!watchId || watchId === 'undefined') return
+    const es = new EventSource(`${BASE}/events?branch_id=${branchId}`)
+    es.onmessage = (e) => {
+      try {
+        const { type, data } = JSON.parse(e.data)
+        const isMatch = isGroup ? data?.group_id === groupId : data?.booking_id === bookingId
+        if (!isMatch) return
+        if (type === 'payment_complete') { setPhase('receipt') }
+        else if (type === 'payment_failed') {
+          if (!isGroup && data.session_id && data.session_id !== sessionId) return
+          setSessionId(null); setSessionMethod(null); setPhase('failed')
+        }
+      } catch {}
+    }
+    es.onerror = () => {
+      // EventSource auto-reconnects — close and let effect re-run on next phase change
+      // Polls cover the gap during reconnect
+      es.close()
+    }
+    return () => es.close()
+  }, [phase, branchId, bookingId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tipPresets = settings.tipPresets || [10000, 20000, 50000, 100000]
 
@@ -440,28 +776,70 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     }
   }, [isGroup, groupId, bookingId, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Single booking flow
   const amount    = parseFloat(booking?.total_amount ?? bookingData?.amount ?? 0)
-  const tipAmount = tip === 'custom' ? (parseInt(customTip.replace(/\D/g, ''), 10) || 0) : (tip || 0)
+  const tipAmount = tip === 'custom' ? (parseInt(customTip.replace(/\D/g, ''), 10) || 0) : (typeof tip === 'number' ? tip : 0)
   const grand     = amount + tipAmount
   const isPointsCovered = amount <= 0 && booking
 
-  // Group flow
-  const groupSubtotal = groupBks.reduce((s, bk) => s + parseFloat(bk.total_amount || 0), 0)
+  const groupSubtotal  = groupBks.reduce((s, bk) => s + parseFloat(bk.total_amount || 0), 0)
   const groupTipsTotal = Object.values(groupTips).reduce((s, v) => s + (parseFloat(v) || 0), 0)
-  const groupGrand = groupSubtotal + groupTipsTotal
+  const groupGrand     = groupSubtotal + groupTipsTotal
 
   const handleConfirmSingle = async () => {
     if (!method && !isPointsCovered) return
     setConfirming(true)
     try {
-      await kioskApi.post('/payments/manual-confirm', {
+      // Points or cash → manual confirm
+      if (isPointsCovered || method === 'cash') {
+        await kioskApi.post('/payments/manual-confirm', {
+          booking_id:     bookingId,
+          payment_method: isPointsCovered ? 'points' : 'cash',
+          tip_amount:     tipAmount || undefined
+        })
+        setPhase('receipt')
+        return
+      }
+
+      // QRIS → show QR code on kiosk screen
+      if (method === 'qris') {
+        const res = await kioskApi.post('/payments/qris/session', {
+          booking_id: bookingId,
+          tip_amount: tipAmount || 0
+        })
+        setQrData({ qr_id: res.qr_id, qr_string: res.qr_string, expires_at: res.expires_at })
+        setPhase('awaiting_qris')
+        return
+      }
+
+      // Card / Tap → Xendit terminal session (EDC)
+      const terminalId = settings.xenditTerminalId
+      if (!terminalId) {
+        await kioskApi.post('/payments/manual-confirm', {
+          booking_id: bookingId, payment_method: 'card', tip_amount: tipAmount || undefined
+        })
+        setPhase('receipt')
+        return
+      }
+
+      // Resume existing active session if same method — no API call needed
+      if (sessionId && sessionMethod === method) {
+        setPhase('awaiting_terminal')
+        return
+      }
+
+      const res = await kioskApi.post('/payments/terminal/session', {
         booking_id:     bookingId,
-        payment_method: isPointsCovered ? 'points' : method,
-        tip_amount:     tipAmount || undefined
+        tip_amount:     tipAmount || 0,
+        payment_method: method,
+        terminal_id:    terminalId
       })
-      setPhase('receipt')
-    } catch { setPhase('failed') }
+      setSessionId(res.session_id)
+      setSessionMethod(method)
+      setPhase('awaiting_terminal')
+    } catch (err) {
+      if (err?.status === 409) setPhase('receipt')
+      else setPhase('failed')
+    }
     finally { setConfirming(false) }
   }
 
@@ -469,47 +847,151 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
     if (!method) return
     setConfirming(true)
     try {
+      // Numeric tips only (skip 'none' sentinel)
+      const numericTips = Object.fromEntries(
+        Object.entries(groupTips)
+          .filter(([, v]) => v !== 'none' && parseFloat(v) > 0)
+          .map(([k, v]) => [k, parseFloat(v)])
+      )
+
+      if (method === 'qris') {
+        const res = await kioskApi.post('/payments/qris/session', {
+          group_id:    groupId,
+          tip_amounts: numericTips,
+        })
+        setQrData({ qr_id: res.qr_id, qr_string: res.qr_string, expires_at: res.expires_at })
+        setPhase('awaiting_qris')
+        return
+      }
+
+      if (method === 'card' || method === 'tap') {
+        const terminalId = settings.xenditTerminalId
+        if (!terminalId) {
+          await kioskApi.post('/payments/group-confirm', { group_id: groupId, payment_method: 'card', tip_amounts: groupTips })
+          setPhase('receipt')
+          return
+        }
+        if (sessionId && sessionMethod === method) {
+          setPhase('awaiting_terminal')
+          return
+        }
+        const res = await kioskApi.post('/payments/terminal/session', {
+          group_id:       groupId,
+          tip_amounts:    numericTips,
+          payment_method: method,
+          terminal_id:    terminalId,
+        })
+        setSessionId(res.session_id)
+        setSessionMethod(method)
+        setPhase('awaiting_terminal')
+        return
+      }
+
+      // Cash / manual → direct group confirm
       await kioskApi.post('/payments/group-confirm', {
         group_id:       groupId,
         payment_method: method,
         tip_amounts:    groupTips,
       })
       setPhase('receipt')
-    } catch { setPhase('failed') }
+    } catch (err) {
+      if (err?.status === 409) setPhase('receipt')
+      else setPhase('failed')
+    }
     finally { setConfirming(false) }
   }
 
-  const firstBk  = isGroup ? groupBks[0] : booking
+  const handleManualOverridePinSuccess = async () => {
+    setShowPin(false)
+    setConfirming(true)
+    try {
+      if (isGroup) {
+        await kioskApi.post('/payments/group-confirm', {
+          group_id:       groupId,
+          payment_method: 'manual',
+          tip_amounts:    groupTips,
+        })
+      } else {
+        await kioskApi.post('/payments/manual-confirm', {
+          booking_id:     bookingId,
+          payment_method: 'manual',
+          tip_amount:     undefined
+        })
+      }
+      setPhase('receipt')
+    } catch (err) {
+      if (err?.status === 409) setPhase('receipt')
+      else setPhase('failed')
+    }
+    finally { setConfirming(false) }
+  }
+
+  const firstBk    = isGroup ? groupBks[0] : booking
   const headerName = isGroup
     ? `Group · ${groupBks.length} people`
     : (booking?.customer_name || booking?.guest_name || 'Guest')
 
   if (phase === 'receipt') return <ReceiptScreen booking={firstBk} grand={isGroup ? groupGrand : grand} onNext={onDone} />
+  if (phase === 'awaiting_qris') return (
+    <QRISScreen
+      qrString={qrData?.qr_string}
+      qrId={qrData?.qr_id}
+      bookingId={isGroup ? groupBks[0]?.id : bookingId}
+      groupId={isGroup ? groupId : undefined}
+      grand={isGroup ? groupGrand : grand}
+      expiresAt={qrData?.expires_at}
+      onSuccess={() => setPhase('receipt')}
+      onFail={() => setPhase('failed')}
+      onCancel={() => { setQrData(null); setPhase('payment') }}
+      adminPin={settings.kioskAdminPin}
+      onManualOverride={handleManualOverridePinSuccess}
+    />
+  )
+  if (phase === 'awaiting_terminal') return (
+    <>
+      <AwaitingTerminalScreen
+        method={method}
+        grand={isGroup ? groupGrand : grand}
+        elapsed={sessionElapsed}
+        onBack={() => setPhase('payment')}
+        onManualOverride={() => setShowPin(true)}
+      />
+      {showPin && (
+        <PinOverlay
+          adminPin={settings.kioskAdminPin || '1234'}
+          onSuccess={handleManualOverridePinSuccess}
+          onClose={() => setShowPin(false)}
+        />
+      )}
+    </>
+  )
   if (phase === 'failed')  return (
     <PaymentFailedScreen
       method={method}
       onRetry={() => setPhase('payment')}
       onSwitchMethod={() => { setMethod(method === 'qris' ? 'card' : 'qris'); setPhase('payment') }}
+      adminPin={settings.kioskAdminPin || '1234'}
+      onManualOverride={handleManualOverridePinSuccess}
     />
   )
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:8000, background:C.topBg, display:'flex', flexDirection:'column' }}>
+    <div style={{ position:'fixed', inset:0, zIndex:8000, background:C.bg, display:'flex', flexDirection:'column' }}>
 
-      {/* Header */}
-      <div style={{ background:'#0a0a08', padding:'0 clamp(20px,3vw,32px)', height:'clamp(52px,6.5vh,62px)', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid #1a1a18', flexShrink:0 }}>
+      {/* Header — dark topbar, consistent with all kiosk screens */}
+      <div style={{ background:C.topBg, padding:'0 clamp(20px,3vw,32px)', height:'clamp(52px,6.5vh,62px)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
           <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style={{ height:'clamp(22px,3vh,30px)', width:'auto', objectFit:'contain' }} />
-          <span style={{ color:'#555', fontSize:'clamp(11px,1.3vw,13px)' }}>Payment</span>
+          <span style={{ color:'#888', fontSize:'clamp(11px,1.3vw,13px)' }}>Payment</span>
         </div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:700, color:C.accent }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:700, color:C.topText }}>
           {phase !== 'loading' ? headerName : ''}
         </div>
       </div>
 
       {/* Loading */}
       {phase === 'loading' && (
-        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'#555', fontSize:'clamp(14px,1.6vw,16px)' }}>
+        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:C.muted, fontSize:'clamp(14px,1.6vw,16px)' }}>
           Loading…
         </div>
       )}
@@ -518,31 +1000,25 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
       {phase === 'payment' && isGroup && (
         <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
           <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'clamp(18px,2.6vw,28px)' }}>
-            <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:'#555', textTransform:'uppercase', marginBottom:14 }}>
+            <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:C.muted, textTransform:'uppercase', marginBottom:14 }}>
               Group Order — {groupBks.length} Bookings
             </div>
 
             {groupBks.map(bk => (
-              <GroupTipRow
-                key={bk.id}
-                bk={bk}
-                tipPresets={tipPresets}
-                groupTips={groupTips}
-                setGroupTips={setGroupTips}
-              />
+              <GroupTipRow key={bk.id} bk={bk} tipPresets={tipPresets} groupTips={groupTips} setGroupTips={setGroupTips} />
             ))}
 
             {/* Grand total */}
-            <div style={{ background:'#1a1a18', borderRadius:12, padding:'clamp(12px,1.6vw,18px)', marginTop:10 }}>
+            <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:'clamp(12px,1.6vw,18px)', marginTop:10 }}>
               {groupTipsTotal > 0 && (
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                  <span style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#888' }}>Tips Total 🙌</span>
-                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.accent }}>{fmt(groupTipsTotal)}</span>
+                  <span style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted }}>Tips Total 🙌</span>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.text }}>{fmt(groupTipsTotal)}</span>
                 </div>
               )}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:800, color:C.white }}>TOTAL</span>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(26px,3.8vw,36px)', fontWeight:800, color:C.accent }}>{fmt(groupGrand)}</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:800, color:C.text }}>TOTAL</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(26px,3.8vw,36px)', fontWeight:800, color:C.text }}>{fmt(groupGrand)}</span>
               </div>
             </div>
           </div>
@@ -554,7 +1030,8 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             confirming={confirming}
             isPointsCovered={false}
             onConfirm={handleConfirmGroup}
-            confirmLabel={method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : 'Select Payment Method'}
+            confirmLabel={method === 'qris' ? 'Confirm QRIS Payment ✓' : method === 'card' ? 'Confirm Card Payment ✓' : method === 'tap' ? 'Confirm Tap Payment ✓' : 'Select Payment Method'}
+            terminalSession={sessionId ? { method: sessionMethod } : null}
           />
         </div>
       )}
@@ -565,104 +1042,104 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
 
           {/* Left — order summary + tip */}
           <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'clamp(18px,2.6vw,28px)' }}>
-            <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:'#555', textTransform:'uppercase', marginBottom:14 }}>Order Summary</div>
+            <div style={{ fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, letterSpacing:'0.14em', color:C.muted, textTransform:'uppercase', marginBottom:14 }}>Order Summary</div>
 
-            <div style={{ background:'#1a1a18', borderRadius:14, padding:'clamp(14px,2vw,20px)', marginBottom:'clamp(16px,2.2vw,22px)' }}>
+            <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:14, padding:'clamp(14px,2vw,20px)', marginBottom:'clamp(16px,2.2vw,22px)' }}>
 
               {/* Customer + barber */}
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:'clamp(10px,1.4vh,14px)', borderBottom:'1px solid #2a2a28', marginBottom:'clamp(10px,1.4vh,14px)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingBottom:'clamp(10px,1.4vh,14px)', borderBottom:`1px solid ${C.border}`, marginBottom:'clamp(10px,1.4vh,14px)' }}>
                 <div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.accent, fontSize:'clamp(14px,1.8vw,17px)' }}>{booking?.customer_name || booking?.guest_name || 'Guest'}</div>
-                  {booking?.barber_name && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666', marginTop:2 }}>✂ {booking.barber_name}</div>}
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, color:C.text, fontSize:'clamp(14px,1.8vw,17px)' }}>{booking?.customer_name || booking?.guest_name || 'Guest'}</div>
+                  {booking?.barber_name && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted, marginTop:2 }}>✂ {booking.barber_name}</div>}
                 </div>
-                {booking?.slot_time && <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#555' }}>{booking.slot_time}</div>}
+                {booking?.slot_time && <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:C.muted }}>{booking.slot_time}</div>}
               </div>
 
               {/* Services */}
               {(booking?.services || []).map((s, i) => (
-                <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:'1px solid #1a1a18' }}>
+                <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:`1px solid ${C.surface}` }}>
                   <div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <div style={{ fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.white, fontFamily:"'Inter',sans-serif" }}>{s.name}</div>
-                      {s.added_mid_cut && <div style={{ background:'#2a2a18', border:'1px solid #c9a050', color:'#c9a050', fontSize:'clamp(8px,1vw,10px)', fontWeight:700, padding:'1px 6px', borderRadius:4 }}>+ ADDED</div>}
+                      <div style={{ fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.text, fontFamily:"'Inter',sans-serif" }}>{s.name}</div>
+                      {s.added_mid_cut && <div style={{ background:'#fffbea', border:'1px solid #c9a050', color:'#92660a', fontSize:'clamp(8px,1vw,10px)', fontWeight:700, padding:'1px 6px', borderRadius:4 }}>+ ADDED</div>}
                     </div>
-                    {s.duration_min > 0 && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:'#666' }}>{s.duration_min} min</div>}
+                    {s.duration_min > 0 && <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted }}>{s.duration_min} min</div>}
                   </div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, color:s.added_mid_cut ? '#c9a050' : C.white }}>{fmt(s.price)}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,17px)', fontWeight:700, color:s.added_mid_cut ? '#92660a' : C.text }}>{fmt(s.price)}</div>
                 </div>
               ))}
 
               {/* Extras */}
               {(booking?.extras || []).map((e, i) => (
-                <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:'1px solid #1a1a18' }}>
-                  <div style={{ fontSize:'clamp(13px,1.6vw,15px)', fontWeight:600, color:'#aaa' }}>{e.name}{e.qty > 1 ? ` ×${e.qty}` : ''}</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:'#aaa' }}>{fmt(e.price)}</div>
+                <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(7px,1vh,10px) 0', borderBottom:`1px solid ${C.surface}` }}>
+                  <div style={{ fontSize:'clamp(13px,1.6vw,15px)', fontWeight:600, color:C.text2 }}>{e.name}{e.qty > 1 ? ` ×${e.qty}` : ''}</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.text2 }}>{fmt(e.price)}</div>
                 </div>
               ))}
 
               {/* Points discount */}
               {booking?.points_redeemed > 0 && (
-                <div style={{ display:'flex', justifyContent:'space-between', padding:'clamp(7px,1vh,10px) 0', borderBottom:'1px solid #1a1a18' }}>
-                  <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#6fcf6f' }}>⭐ Points Redeemed</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:'#6fcf6f' }}>−{fmt(booking.points_redeemed)}</div>
+                <div style={{ display:'flex', justifyContent:'space-between', padding:'clamp(7px,1vh,10px) 0', borderBottom:`1px solid ${C.surface}` }}>
+                  <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#2e7d32' }}>⭐ Points Redeemed</div>
+                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:'#2e7d32' }}>−{fmt(booking.points_redeemed)}</div>
                 </div>
               )}
 
-              {/* Tip row (if selected) */}
-              {tipAmount > 0 && (
-                <div style={{ display:'flex', justifyContent:'space-between', padding:'clamp(7px,1vh,10px) 0', borderBottom:'1px solid #1a1a18' }}>
-                  <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:'#888' }}>Tip 🙌</div>
-                  <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.accent }}>{fmt(tipAmount)}</div>
-                </div>
-              )}
+              {/* Tip row — always rendered to reserve space; invisible until tip is selected */}
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'clamp(7px,1vh,10px) 0', borderBottom:`1px solid ${C.surface}`, opacity:tipAmount > 0 ? 1 : 0, transition:'opacity 0.2s' }}>
+                <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.muted }}>Tip 🙌</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(13px,1.6vw,15px)', fontWeight:700, color:C.text }}>{tipAmount > 0 ? fmt(tipAmount) : ''}</div>
+              </div>
 
-              {/* Grand total */}
+              {/* Grand total — updates live as tip changes */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:14 }}>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:800, color:C.white }}>TOTAL</span>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(26px,3.8vw,36px)', fontWeight:800, color:C.accent }}>{fmt(grand)}</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.8vw,18px)', fontWeight:800, color:C.text }}>TOTAL</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(26px,3.8vw,36px)', fontWeight:800, color:C.text }}>{fmt(grand)}</span>
               </div>
             </div>
 
             {/* Tip section */}
             {!isPointsCovered && (
-              <div style={{ background:'#1c1c1a', border:'1.5px solid #333', borderRadius:16, padding:'clamp(14px,2vw,20px)' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
-                  <div>
-                    <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.white, fontWeight:800, fontFamily:"'Inter',sans-serif", textTransform:'uppercase', letterSpacing:'0.02em' }}>
-                      Support {booking?.barber_name || 'your barber'}? 🙌
-                    </div>
-                    <div style={{ fontSize:'clamp(10px,1.2vw,11px)', color:'#555', marginTop:2 }}>100% of tips go directly to your barber</div>
+              <div style={{ background:'#FEFDE8', border:`2px solid ${C.accent}`, borderRadius:16, padding:'clamp(16px,2.2vw,24px)' }}>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:'clamp(14px,1.7vw,17px)', color:C.text, fontWeight:800, fontFamily:"'Inter',sans-serif" }}>
+                    Leave a tip for {booking?.barber_name || 'your barber'}? 🙌
                   </div>
+                  <div style={{ fontSize:'clamp(10px,1.2vw,12px)', color:C.muted, marginTop:3 }}>100% goes directly to your barber</div>
                 </div>
 
-                <div style={{ display:'flex', gap:8, flexWrap:'nowrap' }}>
-                  {tipPresets.map(t => (
-                    <button key={t} onClick={() => { setTip(prev => prev === t ? null : t); setCustomTip('') }}
-                      style={{ flex:1, padding:'clamp(10px,1.4vh,13px) 0', borderRadius:12, fontSize:'clamp(13px,1.7vw,15px)', fontFamily:"'Inter',sans-serif", fontWeight:800, background:tip === t ? C.accent : '#2a2a28', color:tip === t ? C.accentText : C.white, border:`2px solid ${tip === t ? C.accent : '#3a3a38'}`, transition:'all 0.15s', cursor:'pointer' }}>
-                      {fmtK(t)}
+                {tip === 'custom' ? (
+                  <>
+                    <TipNumpad value={customTip} onChange={setCustomTip} />
+                    <button onClick={() => { setTip(null); setCustomTip('') }}
+                      style={{ marginTop:8, width:'100%', background:'none', border:`1px solid ${C.border}`, borderRadius:8, padding:'clamp(8px,1.2vh,11px)', color:C.muted, fontSize:'clamp(11px,1.3vw,13px)', fontFamily:"'DM Sans',sans-serif", cursor:'pointer' }}>
+                      ← Back to tip options
                     </button>
-                  ))}
-                  <button onClick={() => setTip(prev => prev === 'custom' ? null : 'custom')}
-                    style={{ flex:1, padding:'clamp(10px,1.4vh,13px) 0', borderRadius:12, fontSize:'clamp(12px,1.5vw,13px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:tip === 'custom' ? C.accent : '#2a2a28', color:tip === 'custom' ? C.accentText : C.white, border:`2px solid ${tip === 'custom' ? C.accent : '#3a3a38'}`, cursor:'pointer' }}>
-                    Custom
-                  </button>
-                </div>
-
-                {tip === 'custom' && (
-                  <TipNumpad value={customTip} onChange={setCustomTip} />
-                )}
-
-                <div style={{ display:'flex', justifyContent:'center', marginTop:10 }}>
-                  <button onClick={() => { setTip(null); setCustomTip('') }}
-                    style={{ background:'none', border:'none', color:'#555', fontSize:'clamp(10px,1.2vw,11px)', fontFamily:"'DM Sans',sans-serif", textDecoration:'underline', cursor:'pointer', padding:'4px 10px' }}>
-                    No tip, maybe next time
-                  </button>
-                </div>
-
-                {tipAmount > 0 && (
-                  <div style={{ marginTop:8, fontSize:'clamp(12px,1.4vw,13px)', color:C.accent, fontWeight:700, textAlign:'center', fontFamily:"'Inter',sans-serif" }}>
-                    +{fmt(tipAmount)} tip added ✓
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display:'flex', gap:8, flexWrap:'nowrap' }}>
+                      {tipPresets.map(t => (
+                        <button key={t} onClick={() => { setTip(prev => prev === t ? null : t); setCustomTip('') }}
+                          style={{ flex:1, padding:'clamp(10px,1.4vh,14px) 0', borderRadius:12, fontSize:'clamp(13px,1.7vw,15px)', fontFamily:"'Inter',sans-serif", fontWeight:800, background:tip === t ? C.accent : C.white, color:tip === t ? C.accentText : C.text, border:`2px solid ${tip === t ? C.accent : C.border}`, transition:'all 0.15s', cursor:'pointer' }}>
+                          {fmtK(t)}
+                        </button>
+                      ))}
+                      <button onClick={() => setTip('custom')}
+                        style={{ flex:1, padding:'clamp(10px,1.4vh,14px) 0', borderRadius:12, fontSize:'clamp(12px,1.5vw,13px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:C.white, color:C.text2, border:`2px solid ${C.border}`, cursor:'pointer' }}>
+                        Custom
+                      </button>
+                      <button onClick={() => { setTip('none'); setCustomTip('') }}
+                        style={{ flex:1, padding:'clamp(10px,1.4vh,14px) 0', borderRadius:12, fontSize:'clamp(12px,1.5vw,13px)', fontFamily:"'DM Sans',sans-serif", fontWeight:700, background:tip === 'none' ? C.surface2 : C.white, color:C.text2, border:`2px solid ${tip === 'none' ? C.text2 : C.border}`, cursor:'pointer', transition:'all 0.15s' }}>
+                        No Tip
+                      </button>
+                    </div>
+                    {tipAmount > 0 && (
+                      <div style={{ marginTop:10, fontSize:'clamp(12px,1.4vw,13px)', color:C.text, fontWeight:700, textAlign:'center', fontFamily:"'Inter',sans-serif" }}>
+                        +{fmt(tipAmount)} added ✓
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -675,6 +1152,7 @@ export default function PaymentTakeover({ bookingData, branchId, feedbackTags = 
             confirming={confirming}
             isPointsCovered={isPointsCovered}
             onConfirm={handleConfirmSingle}
+            terminalSession={sessionId ? { method: sessionMethod } : null}
           />
         </div>
       )}

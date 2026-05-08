@@ -2,6 +2,7 @@ const router = require('express').Router()
 const pool   = require('../config/db')
 const { requireAdmin, requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
+const { tryAssignDeferred } = require('../services/barberAssignment')
 
 // GET /api/attendance?branch_id=&barber_id=&month=&year=
 router.get('/', requireAdmin, async (req, res) => {
@@ -29,19 +30,47 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
   try {
     const { barber_id, branch_id, force = false } = req.body
     if (!barber_id || !branch_id) return res.status(400).json({ message: 'barber_id and branch_id required' })
-    const today = new Date().toISOString().slice(0, 10)
+    const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
     // Check if already clocked in today (WITA)
     const existing = await pool.query(
       `SELECT id FROM attendance
        WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2 AND clock_out_at IS NULL`,
       [barber_id, today])
     if (existing.rows.length && !force) return res.status(409).json({ message: 'Already clocked in today' })
+
+    // Compute late_minutes: shift starts 09:00 WITA (540 min), grace from payroll_settings
+    const ps = await pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1')
+    const grace = parseInt(ps.rows[0]?.late_grace_period_minutes || 5)
+    const SHIFT_START_MIN = 10 * 60  // 10:00 WITA
+
+    // Clock-in is NOW() — compute minutes late
+    const clockInLocal = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })
+    const ciHour = parseInt(clockInLocal.slice(11, 13))
+    const ciMin  = parseInt(clockInLocal.slice(14, 16))
+    const ciMins = ciHour * 60 + ciMin
+    const lateMins = Math.max(0, ciMins - SHIFT_START_MIN - grace)
+
     const { rows } = await pool.query(
-      'INSERT INTO attendance (barber_id, branch_id, clock_in_at) VALUES ($1,$2,NOW()) RETURNING *',
-      [barber_id, branch_id])
+      `INSERT INTO attendance (barber_id, branch_id, clock_in_at, late_minutes)
+       VALUES ($1,$2,NOW(),$3) RETURNING *`,
+      [barber_id, branch_id, lateMins])
     await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [barber_id])
     emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
     res.status(201).json(rows[0])
+
+    // Assign any deferred any_available booking to this newly clocked-in barber
+    tryAssignDeferred(branch_id, barber_id).then(assigned => {
+      if (!assigned) return
+      pool.query(
+        `SELECT bk.*, COALESCE(bk.guest_name, c.name) AS customer_name, bar.name AS barber_name
+         FROM bookings bk
+         LEFT JOIN customers c ON c.id = bk.customer_id
+         LEFT JOIN barbers bar ON bar.id = bk.barber_id
+         WHERE bk.id = $1`, [assigned.bookingId]
+      ).then(r => {
+        if (r.rows[0]) emitEvent(branch_id, 'booking_updated', r.rows[0])
+      }).catch(() => {})
+    }).catch(e => console.error('[ClockIn] tryAssignDeferred failed:', e))
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
@@ -50,6 +79,10 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
   try {
     const { barber_id } = req.body
     if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+    const { rows: active } = await pool.query(
+      `SELECT id FROM bookings WHERE barber_id = $1 AND status IN ('confirmed','in_progress') LIMIT 1`,
+      [barber_id])
+    if (active.length) return res.status(409).json({ message: 'Cannot clock out with active bookings' })
     const { rows } = await pool.query(
       `UPDATE attendance SET clock_out_at = NOW()
        WHERE id = (
@@ -81,6 +114,15 @@ router.post('/log-off', requireAdmin, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT DO NOTHING RETURNING *`,
       [barber_id, branch_id, date, type, note || null, has_doctor_note, req.user?.id || null])
+    if (rows[0]) {
+      try {
+        await pool.query(
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [req.user?.id || null, 'logged_off',
+           'off_records', rows[0].id, JSON.stringify(rows[0]), branch_id])
+      } catch (e) { console.error('[AuditLog] failed:', e.message) }
+    }
     res.status(201).json(rows[0] || { message: 'Record already exists' })
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })

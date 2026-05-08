@@ -438,7 +438,9 @@ export default function Reports() {
             sv.category || '',
             sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
             sv.commission != null ? sv.commission : '',
-            i === 0 ? (r.total_amount || '') : '', i === 0 ? (r.tip || '') : '', i === 0 ? (r.payment_method || '') : '',
+            sv.price || '',
+            i === 0 ? (r.tip || '') : '',
+            r.payment_method || '',
           ])
         })
         extras.forEach(ex => {

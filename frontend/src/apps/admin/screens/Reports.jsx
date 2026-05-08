@@ -394,30 +394,36 @@ export default function Reports() {
     : filterPeriod === 'today' ? 'Today' : filterPeriod === 'week' ? 'This Week' : 'This Month'
 
   function buildTxRows() {
-    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Rate%','Commission','Amount','Tip','Payment']
+    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Category','Rate%','Commission','Amount','Tip','Payment']
     const rows = [headers]
     txData.forEach(r => {
       const svcs   = Array.isArray(r.services) ? r.services : []
       const extras = Array.isArray(r.extras)   ? r.extras   : []
+      // Date column: format as WITA string to avoid Excel interpreting it in system timezone
+      const witaDate = r.date
+        ? new Date(r.date + 'T00:00:00+08:00').toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar' })
+        : ''
       const base = [
-        r.date || '', r.booking_number || '', r.time_scheduled || '',
+        witaDate, r.booking_number || '', r.time_scheduled || '',
         r.time_started || '', r.time_ended || '',
         r.customer_name || '', r.customer_phone || '', r.barber_name || '',
       ]
       if (svcs.length === 0) {
-        rows.push([...base, '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
+        rows.push([...base, '', '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
       } else {
         svcs.forEach((sv, i) => {
           rows.push([
             ...base,
             sv.service_name || '',
+            sv.category || '',
             sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
             sv.commission != null ? sv.commission : '',
             i === 0 ? (r.total_amount || '') : '', i === 0 ? (r.tip || '') : '', i === 0 ? (r.payment_method || '') : '',
           ])
         })
         extras.forEach(ex => {
-          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''} (add-on)`, '', '', '', '', ''])
+          const isBeverage = /^(jus|air|coffee|es\s|kopi|susu|teh|juice|water)/i.test(ex.name)
+          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, isBeverage ? 'Beverage' : 'Add-on', '', '', ex.price * ex.quantity, '', ''])
         })
       }
     })

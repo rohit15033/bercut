@@ -121,7 +121,9 @@ router.get('/barber-transactions', requireAdmin, async (req, res) => {
               COALESCE(bk.guest_name, c.name) AS customer_name,
               COALESCE(bk.guest_phone, c.phone) AS customer_phone,
               COALESCE(t.amount, 0) AS tip,
-              (SELECT json_agg(s.name) FROM booking_services bsv JOIN services s ON s.id = bsv.service_id WHERE bsv.booking_id = bk.id) AS services
+              (SELECT json_agg(json_build_object('service_name', s.name, 'category', s.category) ORDER BY s.name)
+               FROM booking_services bsv JOIN services s ON s.id = bsv.service_id
+               WHERE bsv.booking_id = bk.id) AS services
        FROM bookings bk
        LEFT JOIN customers c ON c.id = bk.customer_id
        LEFT JOIN tips t ON t.booking_id = bk.id
@@ -177,6 +179,7 @@ router.get('/transactions', requireAdmin, async (req, res) => {
                 json_build_object(
                   'service_name',    s.name,
                   'price',           bsv.price_charged,
+                  'category',        s.category,
                   'commission_rate', COALESCE(bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate),
                   'commission',      ROUND(bsv.price_charged *
                                        COALESCE(bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)

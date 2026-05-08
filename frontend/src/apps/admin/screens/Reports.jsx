@@ -399,10 +399,30 @@ export default function Reports() {
     txData.forEach(r => {
       const svcs   = Array.isArray(r.services) ? r.services : []
       const extras = Array.isArray(r.extras)   ? r.extras   : []
-      // Date column: format as WITA string to avoid Excel interpreting it in system timezone
-      const witaDate = r.date && r.date.trim
-        ? new Date(r.date + 'T00:00:00+08:00').toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar' })
-        : ''
+      // Date column: format as WITA string to avoid Excel interpreting it in system timezone.
+      // r.date from API is DATE(scheduled_at AT TIME ZONE 'Asia/Makassar') — a YYYY-MM-DD string.
+      // Guard against falsy, invalid, or already-timestamp strings.
+      let witaDate = ''
+      if (r.date) {
+        const raw = String(r.date).trim()
+        if (raw) {
+          try {
+            // If it already looks like a date-only string, parse it directly
+            if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+              witaDate = raw // already correct, no JS parsing needed
+            } else {
+              // Full timestamp — extract date portion in WITA
+              const d = new Date(raw)
+              if (!isNaN(d)) {
+                witaDate = d.toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' })
+                  .split('/').reverse().join('-')
+              }
+            }
+          } catch (_) {
+            witaDate = raw // fallback to whatever came from API
+          }
+        }
+      }
       const base = [
         witaDate, r.booking_number || '', r.time_scheduled || '',
         r.time_started || '', r.time_ended || '',
@@ -423,7 +443,7 @@ export default function Reports() {
         })
         extras.forEach(ex => {
           const categoryLabel = ex.category === 'beverage' ? 'Beverage' : ex.category === 'product' ? 'Product' : 'Add-on'
-          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, categoryLabel, '', '', ex.price * ex.quantity, '', ''])
+          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, categoryLabel, '', '', ex.price * ex.quantity, '', r.payment_method || ''])
         })
       }
     })

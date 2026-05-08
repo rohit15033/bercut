@@ -400,7 +400,7 @@ export default function Reports() {
       const svcs   = Array.isArray(r.services) ? r.services : []
       const extras = Array.isArray(r.extras)   ? r.extras   : []
       // Date column: format as WITA string to avoid Excel interpreting it in system timezone
-      const witaDate = r.date
+      const witaDate = r.date && r.date.trim
         ? new Date(r.date + 'T00:00:00+08:00').toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar' })
         : ''
       const base = [
@@ -422,8 +422,8 @@ export default function Reports() {
           ])
         })
         extras.forEach(ex => {
-          const isBeverage = /^(jus|air|coffee|es\s|kopi|susu|teh|juice|water)/i.test(ex.name)
-          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, isBeverage ? 'Beverage' : 'Add-on', '', '', ex.price * ex.quantity, '', ''])
+          const categoryLabel = ex.category === 'beverage' ? 'Beverage' : ex.category === 'product' ? 'Product' : 'Add-on'
+          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, categoryLabel, '', '', ex.price * ex.quantity, '', ''])
         })
       }
     })

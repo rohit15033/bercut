@@ -74,6 +74,8 @@ const SearchKeyboard = memo(function SearchKeyboard({ value, onChange, onClose }
   const deleteTimerRef = useRef(null)
   const deleteIntervalRef = useRef(null)
 
+  useEffect(() => () => { clearTimeout(deleteTimerRef.current); clearInterval(deleteIntervalRef.current) }, [])
+
   const handleKey = (key) => {
     if (!key) return
     const now = Date.now()
@@ -230,6 +232,8 @@ const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
   const deleteTimerRef = useRef(null)
   const deleteIntervalRef = useRef(null)
 
+  useEffect(() => () => { clearTimeout(deleteTimerRef.current); clearInterval(deleteIntervalRef.current) }, [])
+
   const handleKey = (key) => {
     if (!key) return
     const now = Date.now()
@@ -319,6 +323,8 @@ const InlineNumpad = memo(function InlineNumpad({ value, onChange, country, onDo
   const lastPressRef = useRef({})
   const deleteTimerRef = useRef(null)
   const deleteIntervalRef = useRef(null)
+
+  useEffect(() => () => { clearTimeout(deleteTimerRef.current); clearInterval(deleteIntervalRef.current) }, [])
 
   const handleKey = (key) => {
     if (!key) return

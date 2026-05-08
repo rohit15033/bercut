@@ -17,3 +17,6 @@ graphify-out/
 *.md
 *.md
 _ai/CLAUDE.md
+_ai/decisions-log.md
+/backend/public
+.worktrees/

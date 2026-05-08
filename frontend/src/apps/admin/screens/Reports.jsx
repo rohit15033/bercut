@@ -67,7 +67,7 @@ function DateRangePicker({ from, to, onChange }) {
 
   function handleDay(iso) {
     if (!from || to || iso < from) { onChange(iso, null) }
-    else if (iso === from)         { onChange(null, null) }
+    else if (iso === from)         { onChange(iso, iso); setOpen(false) }
     else                           { onChange(from, iso); setOpen(false) }
   }
 
@@ -137,12 +137,15 @@ function DateRangePicker({ from, to, onChange }) {
             <div style={{ width: 1, background: T.surface, alignSelf: 'stretch' }} />
             {renderMonth(rightYear, rightMonth, false, true)}
           </div>
-          {from && !to && <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, textAlign: 'center', fontSize: 11, color: T.muted }}>Click an end date · click start again to reset</div>}
+          {from && !to && <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, textAlign: 'center', fontSize: 11, color: T.muted }}>Click same date again to pick single day</div>}
           {from && to && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(from)} – {fmtDate(to)}</span>
               <button onClick={() => onChange(null, null)} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: T.surface, color: T.text2, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Clear</button>
             </div>
+          )}
+          {!from && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid ' + T.surface, textAlign: 'center', fontSize: 11, color: T.muted }}>Click a date to select · click again for single day</div>
           )}
         </div>
       )}

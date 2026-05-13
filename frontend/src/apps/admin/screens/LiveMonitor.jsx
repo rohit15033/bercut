@@ -836,12 +836,14 @@ function BarberActionMenu({ barber, onAction }) {
 }
 
 function BookingRow({ booking, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign, allBarbers, barberBusy, nextSlot }) {
-  const sm       = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const isInProg = booking.status === 'in_progress'
 
   const schedTime = formatTime(booking.scheduled_at)
   const startTime = formatTime(booking.started_at)
-  const estEnd    = booking.calculatedEstEnd ? booking.calculatedEstEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'
+  const estEnd    = booking.calculatedEstEnd
+    ? booking.calculatedEstEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    : '—'
+  const sm = BOOKING_STATUS[booking.status] || BOOKING_STATUS.confirmed
   const serviceNames = booking.service_names || '—'
 
   const groupMembers = booking.group_id
@@ -935,26 +937,24 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
             ))}
           </div>
           {(() => {
-            let lastFinish = new Date();
+            let lastFinish = null;
             return activeQ.map((bk, idx) => {
               const duration = parseInt(bk.est_duration_min) || 30;
               let estEnd;
-              
               if (bk.status === 'in_progress') {
                 const start = new Date(bk.started_at);
                 estEnd = new Date(start.getTime() + duration * 60000);
               } else {
                 const sched = new Date(bk.scheduled_at);
-                const start = sched > lastFinish ? sched : lastFinish;
+                const start = lastFinish && lastFinish > sched ? lastFinish : sched;
                 estEnd = new Date(start.getTime() + duration * 60000);
               }
               lastFinish = estEnd;
-
               const nextConfirmed = activeQ.slice(idx + 1).find(q => q.status === 'confirmed')
               const nextSlotTime  = bk.status === 'in_progress' && nextConfirmed && nextConfirmed.scheduled_at
                 ? new Date(nextConfirmed.scheduled_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
                 : null
-              
+
               return (
                 <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
                   onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign}
@@ -972,32 +972,35 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
 
 // ── BranchSection ─────────────────────────────────────────────────────────────
 
-function UnassignedBlock({ bookings, allBarbers, onCancel, onEdit }) {
+function UnassignedBlock({ bookings, allBarbers, onCancel, onStart, onEdit, onGroup, onReopen, onUnassign }) {
   if (!bookings?.length) return null
+  const sorted = [...bookings].sort((a, z) => new Date(a.scheduled_at) - new Date(z.scheduled_at))
   return (
-    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FDE68A', background: '#FFFBEB', padding: '10px 14px' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400E', marginBottom: 8 }}>
+    <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400E', padding: '10px 14px 8px' }}>
         🔄 Waiting for Barber Assignment ({bookings.length})
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {bookings.sort((a, z) => new Date(a.created_at) - new Date(z.created_at)).map(bk => (
-          <div key={bk.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#FEF9C3', border: '1px solid #FDE68A' }}>
-            <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 12, color: '#92400E', flexShrink: 0 }}>{bk.booking_number}</span>
-            <span style={{ fontWeight: 600, fontSize: 13, color: '#78350F', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {bk.customer_name || bk.guest_name || 'Guest'}
-            </span>
-            <span style={{ fontSize: 11, color: '#A16207', flexShrink: 0 }}>{bk.service_names}</span>
-            <button onClick={() => onEdit(bk)}
-              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #D97706', background: 'transparent', color: '#92400E', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-              Assign
-            </button>
-            <button onClick={() => onCancel(bk)}
-              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #DC2626', background: 'transparent', color: '#DC2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '45px 1fr 1.2fr 65px 65px 65px 90px 40px', gap: 0, padding: '6px 14px', background: '#FEF3C7', borderTop: '1px solid #FDE68A', borderBottom: '1px solid #FDE68A' }}>
+        {['#', 'Customer', 'Services', 'Sched', 'Started', 'Est.End', 'Status', ''].map((h, i) => (
+          <div key={i} style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#92400E' }}>{h}</div>
         ))}
       </div>
+      {(() => {
+        let lastFinish = null
+        return sorted.map((bk, idx) => {
+          const duration = parseInt(bk.est_duration_min) || 30
+          const sched    = new Date(bk.scheduled_at)
+          const start    = lastFinish && lastFinish > sched ? lastFinish : sched
+          const estEnd   = new Date(start.getTime() + duration * 60000)
+          lastFinish = estEnd
+          return (
+            <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
+              onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign}
+              allBarbers={allBarbers} barberBusy={false} nextSlot={null}
+            />
+          )
+        })
+      })()}
     </div>
   )
 }
@@ -1007,7 +1010,7 @@ function GhostBookingsBlock({ bookings, onCancel }) {
   return (
     <div style={{ marginBottom: 12, borderRadius: 10, border: '1.5px solid #FECACA', background: '#FEF2F2', padding: '10px 14px' }}>
       <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#991B1B', marginBottom: 8 }}>
-        👻 Ghost Bookings — Stale Confirmed from Previous Days ({bookings.length})
+        👻 Ghost Bookings — Stale from Previous Days ({bookings.length})
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {bookings.sort((a, z) => new Date(a.scheduled_at) - new Date(z.scheduled_at)).map(bk => (
@@ -1049,7 +1052,7 @@ function BranchSection({ branch, barbers, unassigned = [], ghost = [], allBarber
         </div>
       </div>
       <GhostBookingsBlock bookings={ghost} onCancel={onCancel} />
-      <UnassignedBlock bookings={unassigned} allBarbers={allBarbers} onCancel={onCancel} onEdit={onEdit} />
+      <UnassignedBlock bookings={unassigned} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {barbers.map(b => (
           <BarberQueueBlock key={b.id} barber={b} allBarbers={allBarbers} onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign} onBarberAction={onBarberAction} />
@@ -1087,9 +1090,13 @@ export default function LiveMonitor() {
         api.get('/branches'),
         api.get(`/bookings?date=${today}`),
         api.get('/barbers/all'),
-        api.get(`/bookings?status=confirmed`).then(all => {
+        Promise.all([
+          api.get(`/bookings?status=confirmed`).catch(() => []),
+          api.get(`/bookings?status=in_progress`).catch(() => []),
+        ]).then(([confirmed, inProgress]) => {
+          const all = [...(Array.isArray(confirmed) ? confirmed : []), ...(Array.isArray(inProgress) ? inProgress : [])]
           const todayWita = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
-          return (Array.isArray(all) ? all : []).filter(bk => {
+          return all.filter(bk => {
             if (!bk.scheduled_at) return false
             const bkDateWita = new Date(bk.scheduled_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
             return bkDateWita < todayWita

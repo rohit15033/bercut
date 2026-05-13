@@ -80,7 +80,11 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
     const { barber_id } = req.body
     if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
     const { rows: active } = await pool.query(
-      `SELECT id FROM bookings WHERE barber_id = $1 AND status IN ('confirmed','in_progress') LIMIT 1`,
+      `SELECT id FROM bookings
+       WHERE barber_id = $1
+         AND status IN ('confirmed','in_progress')
+         AND DATE(scheduled_at AT TIME ZONE 'Asia/Makassar') = (NOW() AT TIME ZONE 'Asia/Makassar')::date
+       LIMIT 1`,
       [barber_id])
     if (active.length) return res.status(409).json({ message: 'Cannot clock out with active bookings' })
     const { rows } = await pool.query(

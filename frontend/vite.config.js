@@ -18,14 +18,14 @@ export default defineConfig({
       // Allow serving files from the root of the project (one level up from frontend/)
       allow: ['..'],
     },
-    // Dev proxy — forward /api to backend running on :3000
+    // Dev proxy — forward /api to backend running on :3001
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
     },
@@ -35,5 +35,14 @@ export default defineConfig({
     // Nginx serves the SPA from backend/public in production
     outDir: '../backend/public',
     emptyOutDir: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-motion': ['motion'],
+          'vendor-xlsx': ['xlsx'],
+        },
+      },
+    },
   },
 })

@@ -282,7 +282,7 @@ const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
   }
 
   return (
-    <div style={{ background:'#D1D5DB', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)' }}>
+    <div data-testid="name-keyboard" style={{ background:'#D1D5DB', borderRadius:12, padding:'clamp(8px,1.1vh,12px) clamp(8px,1vw,12px)', display:'flex', flexDirection:'column', gap:'clamp(4px,0.55vh,6px)' }}>
       {ALPHA_ROWS.map((row, ri) => (
         <div key={ri} style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)', justifyContent:'center' }}>
           {ri === 1 && <div style={{ flex:0.5 }} />}
@@ -564,7 +564,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
             <div style={{ padding:'clamp(8px,1vw,11px)', borderRadius:10, background:'#FEF2F2', border:'1px solid #FECACA', color:C.danger, fontSize:'clamp(12px,1.4vw,13px)' }}>{error}</div>
           )}
 
-          <button className="btnP" disabled={!valid || loading} onClick={handleConfirm}
+          <button data-testid="confirm-booking-btn" className="btnP" disabled={!valid || loading} onClick={handleConfirm}
             style={{ fontSize:'clamp(14px,1.6vw,16px)', padding:'clamp(10px,1.4vh,13px)' }}>
             {loading ? 'Confirming…' : valid ? 'Confirm Reservation ✓' : 'Enter your name to continue'}
           </button>

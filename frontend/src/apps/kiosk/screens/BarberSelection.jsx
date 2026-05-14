@@ -11,6 +11,7 @@ const toMin = (hhmm) => {
 
 export default function BarberSelection({ barbers, services, serviceIds, barber, setBarber, onNext, onBack }) {
   const [nextSlots, setNextSlots] = useState({})
+  const [nowWindows, setNowWindows] = useState({})
   const [loadingSlots, setLoadingSlots] = useState(false)
 
   const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
@@ -23,16 +24,20 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
     const fetchAllNext = async () => {
       setLoadingSlots(true)
       const results = {}
+      const windows = {}
       await Promise.all(barbers.map(async b => {
         if (['clocked_out', 'off'].includes(b.status)) return
         try {
-          const slots = await kioskApi.get(`/slots?barber_id=${b.id}&date=${dateStr}&duration_min=${totalDur}`)
-          if (slots && slots.length > 0) {
-            results[b.id] = slots[0]
-          }
+          const [slots, nowWin] = await Promise.all([
+            kioskApi.get(`/slots?barber_id=${b.id}&date=${dateStr}&duration_min=${totalDur}`),
+            kioskApi.get(`/slots/now-window?barber_id=${b.id}&date=${dateStr}`)
+          ])
+          if (slots && slots.length > 0) results[b.id] = slots[0]
+          if (nowWin) windows[b.id] = nowWin
         } catch (e) { console.error(e) }
       }))
       setNextSlots(results)
+      setNowWindows(windows)
       setLoadingSlots(false)
     }
     fetchAllNext()
@@ -84,7 +89,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
           const sel = isAny ? isAnySelected : (barber?.id === data.id && !isAnySelected)
 
           return (
-            <div key={isAny ? 'any' : data.id} className={`fu card ${sel ? 'sel' : ''}`}
+            <div key={isAny ? 'any' : data.id} data-testid={isAny ? 'barber-any' : `barber-${data.id}`} className={`fu card ${sel ? 'sel' : ''}`}
               style={{ 
                 animationDelay:`${i * 0.05}s`, 
                 padding:'clamp(14px,1.8vw,20px)', 
@@ -142,27 +147,37 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                 </div>
               )}
 
-              {isAny ? (
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                  <div style={{ background:sel ? '#1a1a1814' : C.surface, borderRadius:8, padding:'4px 10px' }}>
-                    <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:sel ? C.accentText : C.text }}>
-                      {anyCanNow ? 'Now ⚡' : (earliestAnyTime ? `Next: ${earliestAnyTime}` : 'Check for slots')}
-                    </span>
+              {isAny ? (() => {
+                const anyMaxGap = Object.values(nowWindows)
+                  .filter(w => w?.freeNow && w?.windowMin > 0 && totalDur > w.windowMin)
+                  .reduce((max, w) => Math.max(max, w.windowMin), 0)
+                const showAnyGap = !anyCanNow && anyMaxGap > 0
+                return (
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                    <div style={{ background:sel ? '#1a1a1814' : C.surface, borderRadius:8, padding:'4px 10px' }}>
+                      <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color:sel ? C.accentText : C.text }}>
+                        {anyCanNow ? 'Now ⚡' : (earliestAnyTime ? `Next: ${earliestAnyTime}` : 'Check for slots')}
+                      </span>
+                    </div>
+                    {showAnyGap && (
+                      <div style={{ fontSize:'clamp(9px,1vw,10px)', color:sel ? '#1a1a1877' : C.muted, fontWeight:500, textAlign:'center' }}>
+                        Now available for {anyMaxGap} min or shorter
+                      </div>
+                    )}
                   </div>
-                  <div style={{ fontSize:'clamp(9px,1vw,10px)', color:sel ? '#1a1a1877' : C.muted, fontWeight:500 }}>
-
-                  </div>
-                </div>
-              ) : (() => {
+                )
+              })() : (() => {
                 const bSlot = nextSlots[data.id]
                 const bSlotMin = toMin(bSlot)
                 const bCanNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(data.status)
                   && bSlotMin !== null && bSlotMin <= nowMin + 4
+                const bNowWin = nowWindows[data.id]
+                const hasGap = !bCanNow && bNowWin?.freeNow && bNowWin?.windowMin > 0 && totalDur > bNowWin.windowMin
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ background: isUnavailable ? '#eee' : (sel ? '#1a1a1814' : C.surface), borderRadius:8, padding:'4px 10px', display:'inline-block' }}>
                       <span style={{ fontSize:'clamp(11px,1.3vw,13px)', fontWeight:700, color: isUnavailable ? '#888' : (sel ? C.accentText : C.text) }}>
-                        {bCanNow ? 'Now ⚡' 
+                        {bCanNow ? 'Now ⚡'
                           : data.status === 'clocked_out' ? 'No shift today'
                           : data.status === 'on_break' ? 'On Break'
                           : data.status === 'off' ? 'Off'
@@ -170,7 +185,12 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
                           : 'Busy'}
                       </span>
                     </div>
-                    {!isUnavailable && !bCanNow && bSlot && (
+                    {hasGap && (
+                      <div style={{ fontSize:'clamp(9px,1.1vw,10px)', color:sel ? C.accentText : C.muted, fontWeight:500, textAlign:'center' }}>
+                        Now available for {bNowWin.windowMin} min or shorter
+                      </div>
+                    )}
+                    {!isUnavailable && !bCanNow && !hasGap && bSlot && (
                       <div style={{ fontSize:'clamp(9px,1.1vw,10px)', color:sel ? C.accentText : C.muted, fontWeight:500 }}>
                         Next available slot
                       </div>
@@ -185,7 +205,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
 
       <div style={{ display:'flex', gap:'clamp(8px,1.2vw,14px)' }}>
         <button className="btnG" onClick={onBack} style={{ width:'clamp(120px,16vw,180px)' }}>← Back</button>
-        <button className="btnP" disabled={!barber} onClick={onNext}>Continue →</button>
+        <button data-testid="barber-continue-btn" className="btnP" disabled={!barber} onClick={onNext}>Continue →</button>
       </div>
     </div>
   )

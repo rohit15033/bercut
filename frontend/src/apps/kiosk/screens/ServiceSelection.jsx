@@ -512,7 +512,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
   const renderPackageCard = (s, i, ci) => {
     const sel = cart.includes(s.id)
     return (
-      <div key={s.id} onClick={() => toggle(s.id)} style={{ cursor: 'pointer', borderRadius: 14, overflow: 'hidden', border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : 'rgba(255,255,255,0.08)'}`, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: 'relative', background: C.topBg, display: 'flex', height: 'clamp(180px,23vw,250px)' }}>
+      <div key={s.id} data-testid={`service-${s.id}`} onClick={() => toggle(s.id)} style={{ cursor: 'pointer', borderRadius: 14, overflow: 'hidden', border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : 'rgba(255,255,255,0.08)'}`, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: 'relative', background: C.topBg, display: 'flex', height: 'clamp(180px,23vw,250px)' }}>
 
         {/* Left — treatment image mosaic or fallback */}
         <div style={{ width: '56%', flexShrink: 0, display: 'flex', position: 'relative', overflow: 'hidden', borderRight: '1px solid rgba(0,0,0,0.2)', background: '#222' }}>
@@ -573,7 +573,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
   const renderImageCard = (s, i, ci) => {
     const sel = cart.includes(s.id)
     return (
-      <div key={s.id} onClick={() => toggle(s.id)} style={{ cursor: 'pointer', borderRadius: 14, overflow: 'hidden', position: 'relative', height: 'clamp(140px,18vw,190px)', animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : 'transparent'}` }}>
+      <div key={s.id} data-testid={`service-${s.id}`} onClick={() => toggle(s.id)} style={{ cursor: 'pointer', borderRadius: 14, overflow: 'hidden', position: 'relative', height: 'clamp(140px,18vw,190px)', animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, border: `${sel ? 3 : 1.5}px solid ${sel ? C.accent : 'transparent'}` }}>
         <img src={s.img} alt={s.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
         <div style={{ position: 'absolute', inset: 0, background: sel ? 'rgba(245,226,0,0.22)' : 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.15) 55%, transparent 100%)' }} />
         <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: 'clamp(10px,1.4vw,14px)' }}>
@@ -599,7 +599,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
   const renderTextCard = (s, i, ci) => {
     const sel = cart.includes(s.id)
     return (
-      <div key={s.id} onClick={() => toggle(s.id)} className={`card ${sel ? 'sel' : ''}`}
+      <div key={s.id} data-testid={`service-${s.id}`} onClick={() => toggle(s.id)} className={`card ${sel ? 'sel' : ''}`}
         style={{ padding: 'clamp(14px,1.8vw,18px)', border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : '#fff', cursor: 'pointer', borderRadius: 14, animation: `fadeUp 0.3s ease ${ci * 0.05 + i * 0.03}s both`, position: 'relative' }}>
         <div style={{ fontWeight: 700, fontSize: 'clamp(14px,1.8vw,17px)', color: sel ? C.accentText : C.text, paddingRight: 24 }}>{effName(s)}</div>
         {s.nameId && <div style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: sel ? 'rgba(0,0,0,0.45)' : C.muted, marginTop: 2 }}>{s.nameId}</div>}
@@ -710,7 +710,7 @@ export default function ServiceSelection({ services, cart, setCart, ownColorTogg
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-              <button className="btnP" style={{ width: '100%' }} disabled={displayCart.length === 0} onClick={handleContinue}>Continue →</button>
+              <button data-testid="services-continue-btn" className="btnP" style={{ width: '100%' }} disabled={displayCart.length === 0} onClick={handleContinue}>Continue →</button>
               <button className="btnG" style={{ width: '100%' }} onClick={onBack}>← Back</button>
             </div>
           </div>

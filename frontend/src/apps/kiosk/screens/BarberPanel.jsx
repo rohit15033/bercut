@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { tokens as C } from '../../../shared/tokens.js'
 import { kioskApi } from '../../../shared/api.js'
 import { speak } from '../../../shared/speak.js'
@@ -314,6 +314,8 @@ function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
   const [status,       setStatus]       = useState(barber.current_status || barber.status || 'clocked_out')
   const [attendanceId, setAttendanceId] = useState(null)
   const [breakId,      setBreakId]      = useState(null)
+  const breakIdRef = useRef(null)
+  useEffect(() => { breakIdRef.current = breakId }, [breakId])
   const [breakEnd,     setBreakEnd]     = useState(null)
   const [breakLeft,    setBreakLeft]    = useState(0)
   const [showBreak,    setShowBreak]    = useState(false)
@@ -339,6 +341,21 @@ function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
   useEffect(() => { loadQueue() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (lastQueueUpdate) loadQueue() }, [lastQueueUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Restore breakId if barber is already on_break when panel opens
+  useEffect(() => {
+    if (status !== 'on_break' || breakId) return
+    kioskApi.get(`/barber-breaks?barber_id=${barber.id}&active=true`)
+      .then(rows => {
+        if (rows && rows.length > 0) {
+          setBreakId(rows[0].id)
+          const started = new Date(rows[0].started_at).getTime()
+          const dur = (rows[0].duration_minutes || 30) * 60 * 1000
+          const ends = started + dur
+          if (ends > Date.now()) setBreakEnd(ends)
+        }
+      })
+      .catch(() => {})
+  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!breakEnd) return
     const t = setInterval(() => {
@@ -383,7 +400,12 @@ function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
 
   const handleEndBreak = async () => {
     try {
-      if (breakId) await kioskApi.patch(`/barber-breaks/${breakId}/end`)
+      let id = breakId
+      if (!id) {
+        const rows = await kioskApi.get(`/barber-breaks?barber_id=${barber.id}&active=true`)
+        id = rows && rows.length > 0 ? rows[0].id : null
+      }
+      if (id) await kioskApi.patch(`/barber-breaks/${id}/end`)
       setBreakId(null); setBreakEnd(null); setBreakLeft(0); setStatus('available')
     } catch (err) { alert(err.message || 'End break failed') }
   }

@@ -1,7 +1,8 @@
 const pool = require('../config/db')
 
-const BUFFER_MIN = 5  // grace buffer after each booking ends
-const GRID       = 30 // standard slot grid in minutes
+const BUFFER_MIN  = 5   // grace buffer after each booking ends
+const GRID        = 30  // standard slot grid in minutes
+const OVERLAP_MIN = 15  // customers can arrive up to 15 min early and wait
 
 function minutesFromMidnight(timeStr) {
   const [h, m] = timeStr.split(':').map(Number)
@@ -223,4 +224,111 @@ async function getUnionSlots(branchId, date, durationMin = 30) {
   return unionSlots
 }
 
-module.exports = { getAvailableSlots, getUnionSlots }
+/**
+ * Returns { freeNow, windowMin, barberWindows } — how many consecutive minutes are available
+ * for a walk-in starting right now, limited by the nearest blocking event.
+ * - When called with barber_id: returns that barber's window
+ * - When called with branch_id (Any Available): returns the MAX window across all barbers
+ *   so the UI can show the highest threshold and let idlepicker choose fairly
+ */
+async function getNowWindow(branchId, barberId, date) {
+  const { rows: timeRows } = await pool.query(
+    "SELECT TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'HH24:MI') as t, TO_CHAR(NOW() AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') as d"
+  )
+  const nowMin  = minutesFromMidnight(timeRows[0].t)
+  const isToday = timeRows[0].d === date
+  if (!isToday) return { freeNow: false, windowMin: 0 }
+
+  // Get barbers to check
+  let barbers
+  if (barberId) {
+    const { rows } = await pool.query(
+      'SELECT id FROM barbers WHERE id = $1 AND is_active = true AND status NOT IN (\'clocked_out\',\'off\',\'on_break\')',
+      [barberId])
+    barbers = rows
+  } else {
+    const { rows } = await pool.query(
+      `SELECT id FROM barbers WHERE branch_id = $1 AND is_active = true AND status NOT IN ('clocked_out','off','on_break')`,
+      [branchId])
+    barbers = rows
+  }
+  if (!barbers.length) return { freeNow: false, windowMin: 0 }
+
+  const barberIds = barbers.map(b => b.id)
+  const closeTime = minutesFromMidnight('21:00')
+
+  // Fetch all bookings + breaks for these barbers today
+  const { rows: bookingRows } = await pool.query(
+    `SELECT bk.barber_id, bk.status,
+            TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time,
+            TO_CHAR(bk.started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS started_time,
+            SUM(s.duration_minutes) AS total_duration
+     FROM bookings bk
+     JOIN booking_services bsv ON bsv.booking_id = bk.id
+     JOIN services s ON s.id = bsv.service_id
+     WHERE bk.barber_id = ANY($1::uuid[])
+       AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
+       AND bk.status IN ('confirmed','in_progress')
+     GROUP BY bk.barber_id, bk.id, bk.scheduled_at, bk.started_at, bk.status`,
+    [barberIds, date]
+  )
+  const { rows: breakRows } = await pool.query(
+    `SELECT barber_id,
+            TO_CHAR(started_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS start_time,
+            TO_CHAR(COALESCE(ended_at, started_at + (COALESCE(duration_minutes,30) * INTERVAL '1 minute')) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS end_time
+     FROM barber_breaks
+     WHERE barber_id = ANY($1::uuid[])
+       AND DATE(started_at AT TIME ZONE 'Asia/Makassar') = $2`,
+    [barberIds, date]
+  )
+
+  const blockedMap = {}
+  for (const b of barbers) blockedMap[b.id] = []
+  for (const bk of bookingRows) {
+    if (!bk.slot_time) continue
+    const start = minutesFromMidnight(bk.slot_time)
+    const effectiveStart = bk.status === 'in_progress' && bk.started_time
+      ? minutesFromMidnight(bk.started_time)
+      : start
+    const estimatedEnd = effectiveStart + parseInt(bk.total_duration || 30)
+    const isOverrun = bk.status === 'in_progress' && nowMin > estimatedEnd
+    blockedMap[bk.barber_id].push({ start, end: isOverrun ? nowMin + 5 : estimatedEnd + BUFFER_MIN })
+  }
+  for (const br of breakRows) {
+    blockedMap[br.barber_id].push({
+      start: minutesFromMidnight(br.start_time),
+      end: minutesFromMidnight(br.end_time),
+    })
+  }
+
+  // Sort each barber's blocked intervals
+  for (const id of barberIds) blockedMap[id].sort((a, b) => a.start - b.start)
+
+  // Calculate per-barber windows first (include OVERLAP_MIN for early-arrival tolerance)
+  const perBarberWindows = {}
+  for (const b of barbers) {
+    let w = closeTime - nowMin + OVERLAP_MIN  // include overlap in base window
+    for (const bk of blockedMap[b.id]) {
+      if (bk.start > nowMin) {
+        w = Math.min(w, bk.start - nowMin + OVERLAP_MIN)  // add overlap to gap
+      }
+    }
+    perBarberWindows[b.id] = Math.max(0, w)
+  }
+
+  // freeNow = at least one barber has positive window AND is not currently in a booking
+  const isFreeNow = barbers.some(b => !blockedMap[b.id].some(bk => nowMin >= bk.start && nowMin < bk.end))
+
+  // For single barber: return their window
+  // For branch (Any Available): return the MAX window — the barber with most free time
+  const isAnyAvailable = !barberId && !!branchId
+
+  const windowMin = isAnyAvailable
+    ? Math.max(...Object.values(perBarberWindows))  // MAX for Any Available
+    : barberId ? perBarberWindows[barberId] ?? 0   // Single barber's window
+    : Math.min(...Object.values(perBarberWindows))  // fallback: MIN
+
+  return { freeNow: isFreeNow, windowMin, barberWindows: perBarberWindows }
+}
+
+module.exports = { getAvailableSlots, getUnionSlots, getNowWindow }

@@ -57,7 +57,7 @@ export default function QueueNumber({ booking, group = [], name, cart = [], serv
       <div className="si" style={{ maxWidth:'clamp(360px,58vw,600px)', width:'100%', textAlign:'center' }}>
 
         {/* Status eyebrow */}
-        <div style={{ fontSize:'clamp(10px,1.1vw,11px)', letterSpacing:'0.18em', textTransform:'uppercase', color:C.muted, marginBottom:4 }}>
+        <div data-testid="queue-confirmed" style={{ fontSize:'clamp(10px,1.1vw,11px)', letterSpacing:'0.18em', textTransform:'uppercase', color:C.muted, marginBottom:4 }}>
           {isGrouped ? 'Group Booking / Reservasi Grup' : 'Reservation Confirmed · Dikonfirmasi'}
         </div>
 

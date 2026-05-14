@@ -169,9 +169,11 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
               })() : (() => {
                 const bSlot = nextSlots[data.id]
                 const bSlotMin = toMin(bSlot)
-                const bCanNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(data.status)
-                  && bSlotMin !== null && bSlotMin <= nowMin + 4
                 const bNowWin = nowWindows[data.id]
+                const bCanNow = (
+                  !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(data.status)
+                  && bSlotMin !== null && bSlotMin <= nowMin + 4
+                ) || (bNowWin?.freeNow && bNowWin?.windowMin >= totalDur)
                 const hasGap = !bCanNow && bNowWin?.freeNow && bNowWin?.windowMin > 0 && totalDur > bNowWin.windowMin
                 return (
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>

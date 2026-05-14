@@ -376,9 +376,9 @@ test.describe('Barber availability states', () => {
 
   test('Now button disabled and inert when freeNow=false', async ({ page }) => {
     await injectKioskConfig(page)
-    // Use late-night slots so firstSlotMin is never within 4 min of test run time
+    // slots:[] → firstSlotMin=null → canNowFromSlots=false regardless of run time
     await mockApiRoutes(page, {
-      slots:     ['22:00', '22:30'],
+      slots:     [],
       nowWindow: { freeNow: false, windowMin: 0, barberWindows: {} },
     })
     await page.goto('/')
@@ -389,12 +389,11 @@ test.describe('Barber availability states', () => {
     await page.getByTestId('barber-any').click()
     await page.getByTestId('barber-continue-btn').click()
 
-    // Clicking Now must not set a slot (canNow=false, showNowPicker=false)
+    // Wait for nowWindow to settle (now-btn subtext should show 'No one free now')
+    await expect(page.getByTestId('now-btn')).toContainText('No one free now')
+    // Clicking Now must not set a slot
     await page.getByTestId('now-btn').click()
     await expect(page.getByTestId('timeslot-continue-btn')).toBeDisabled()
-
-    // Grid slots are still visible and selectable
-    await expect(page.getByTestId('slot-22:00')).toBeVisible()
   })
 
   test('no slots and freeNow=false shows no-availability message', async ({ page }) => {
@@ -413,5 +412,199 @@ test.describe('Barber availability states', () => {
 
     await expect(page.getByText(/no available slots today/i)).toBeVisible()
     await expect(page.getByTestId('timeslot-continue-btn')).toBeDisabled()
+  })
+})
+
+// ── Any Available — NowPicker gap threshold (3 barbers) ───────────────────────
+//
+// Business rule: 3 barbers have gaps 45/60/75 min (upcoming bookings).
+// maxWindow = 75 (largest gap = barber3).
+// Services: haircut 30min + beard 20min + premium 50min = 100min total.
+// 100 > 75 → NowPicker opens.  Customer unchecks services to fit a barber's gap.
+//   70min (−haircut)   → fits only barber3  (75 ≥ 70)
+//   50min (−premium)   → fits barbers 2 & 3 (60 ≥ 50, 75 ≥ 50)
+//   30min (−beard−prem) → fits all 3        (45 ≥ 30)
+
+test.describe('Any Available — NowPicker gap threshold', () => {
+  const B1 = 'barber-id-1'
+  const B2 = 'barber-id-2'
+  const B3 = 'barber-id-3'
+
+  const SVC_H = 'svc-haircut-30'   // 30 min
+  const SVC_B = 'svc-beard-20'     // 20 min
+  const SVC_P = 'svc-premium-50'   // 50 min  → total = 100 min
+
+  const gapConfig = {
+    branch_id:    BRANCH_ID,
+    branch_name:  'Test Branch',
+    settings:     { idle_timeout_sec: 999 },
+    feedback_tags: [],
+    menu_items:   [],
+    services: [
+      { id: SVC_H, name: 'Regular Haircut', category: 'haircut',  duration_minutes: 30, base_price: 50000,  is_active: true },
+      { id: SVC_B, name: 'Beard Trim',      category: 'beard',    duration_minutes: 20, base_price: 30000,  is_active: true },
+      { id: SVC_P, name: 'Premium Package', category: 'package',  duration_minutes: 50, base_price: 200000, is_active: true },
+    ],
+    barbers: [
+      { id: B1, name: 'Alex',    status: 'available', is_active: true, spec: 'Haircut', rating: 4.8 },
+      { id: B2, name: 'Bob',     status: 'available', is_active: true, spec: 'Haircut', rating: 4.5 },
+      { id: B3, name: 'Charlie', status: 'available', is_active: true, spec: 'Haircut', rating: 4.7 },
+    ],
+  }
+
+  // Gaps: barber1=45, barber2=60, barber3=75.  maxWindow = 75 (largest).
+  const gapWindow = {
+    freeNow:       true,
+    windowMin:     75,
+    barberWindows: { [B1]: 45, [B2]: 60, [B3]: 75 },
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((cfg) => {
+      localStorage.setItem('kiosk_token',       'TEST-KIOSK-TOKEN')
+      localStorage.setItem('kiosk_branch_id',   cfg.branch_id)
+      localStorage.setItem('kiosk_branch_name', cfg.branch_name)
+      localStorage.setItem('kiosk_config',      JSON.stringify(cfg))
+    }, gapConfig)
+    // Empty slots so firstSlotMin=null → canNowFromSlots=false → now-window fetch fires
+    await mockApiRoutes(page, { slots: [], nowWindow: gapWindow })
+    await page.route('**/api/kiosk/register', route => route.fulfill({ json: gapConfig }))
+
+    await page.goto('/')
+    await page.getByTestId('start-booking-btn').click()
+    // Select all 3 services → 100 min > 75 min maxWindow
+    await page.getByTestId(`service-${SVC_H}`).click()
+    await page.getByTestId(`service-${SVC_B}`).click()
+    await page.getByTestId(`service-${SVC_P}`).click()
+    await page.getByTestId('services-continue-btn').click()
+    await page.getByTestId('barber-any').click()
+    await page.getByTestId('barber-continue-btn').click()
+    // Wait for nowWindow to load — subtext changes to 'Adjust services →' when showNowPicker is true
+    await expect(page.getByTestId('now-btn')).toContainText('Adjust services →')
+    // 100 min > maxWindow 75 → NowPicker
+    await page.getByTestId('now-btn').click()
+    await expect(page.getByTestId('nowpicker-confirm-btn')).toBeVisible()
+  })
+
+  test('NowPicker opens when 100min total exceeds 75min maxWindow', async ({ page }) => {
+    await expect(page.getByTestId('nowpicker-confirm-btn')).toBeVisible()
+    await expect(page.getByText(/100 \/ 75 min/)).toBeVisible()
+  })
+
+  test('confirm disabled: 100min exceeds all barber gaps', async ({ page }) => {
+    await expect(page.getByTestId('nowpicker-confirm-btn')).toBeDisabled()
+  })
+
+  test('uncheck haircut (70min) fits barber3 gap (75min) → confirm enabled', async ({ page }) => {
+    await page.getByTestId(`nowpicker-service-${SVC_H}`).click()
+    await expect(page.getByTestId('nowpicker-confirm-btn')).toBeEnabled()
+  })
+
+  test('uncheck premium (50min) fits barbers 2 & 3 → confirm enabled', async ({ page }) => {
+    await page.getByTestId(`nowpicker-service-${SVC_P}`).click()
+    await expect(page.getByTestId('nowpicker-confirm-btn')).toBeEnabled()
+  })
+
+  test('uncheck beard+premium (30min) fits all 3 barbers → confirm enabled', async ({ page }) => {
+    await page.getByTestId(`nowpicker-service-${SVC_B}`).click()
+    await page.getByTestId(`nowpicker-service-${SVC_P}`).click()
+    await expect(page.getByTestId('nowpicker-confirm-btn')).toBeEnabled()
+  })
+
+  test('confirming 70min selection → booking POST contains only beard+premium IDs', async ({ page }) => {
+    let postBody
+    // Register override after beforeEach routes — higher priority, captures POST body
+    await page.route('**/api/bookings', async route => {
+      if (route.request().method() === 'POST') {
+        postBody = route.request().postDataJSON()
+        route.fulfill({ json: mockBookingResponse, status: 201 })
+      } else {
+        route.continue()
+      }
+    })
+
+    // Uncheck haircut → 70 min (fits barber3's 75-min gap only)
+    await page.getByTestId(`nowpicker-service-${SVC_H}`).click()
+    await page.getByTestId('nowpicker-confirm-btn').click()
+
+    // Confirm screen — enter a name
+    await page.locator('input[placeholder*="name" i], input[placeholder*="nama" i]').first().click()
+    const kb = page.getByTestId('name-keyboard')
+    await kb.getByRole('button', { name: 'B', exact: true }).click()
+    await kb.getByRole('button', { name: 'u', exact: true }).click()
+    await page.getByTestId('confirm-booking-btn').click()
+
+    await expect(page.getByTestId('queue-confirmed')).toBeVisible({ timeout: 10000 })
+    expect(postBody.service_ids).toContain(SVC_B)
+    expect(postBody.service_ids).toContain(SVC_P)
+    expect(postBody.service_ids).not.toContain(SVC_H)
+  })
+})
+
+// ── Any Available — immediate vs deferred assignment ──────────────────────────
+//
+// "Now" with any-available: backend idle-picker assigns a barber immediately.
+// Scheduled any-available: booking is deferred; barber assigned when previous
+// customer's selesai is pressed.
+
+test.describe('Any Available — immediate vs deferred assignment', () => {
+  test('now booking: barber assigned immediately → queue shows barber name', async ({ page }) => {
+    await injectKioskConfig(page)
+    await mockApiRoutes(page, {
+      // 30min service fits 75min window → canNow = true, no NowPicker
+      nowWindow: { freeNow: true, windowMin: 75, barberWindows: { [BARBER_ID]: 75 } },
+      booking:   { ...mockBookingResponse, barber_id: BARBER_ID, barber_name: 'Alex', slot_time: null, deferred: false },
+    })
+    await page.goto('/')
+
+    await page.getByTestId('start-booking-btn').click()
+    await page.getByTestId(`service-${SERVICE_ID}`).click()
+    await page.getByTestId('services-continue-btn').click()
+    await page.getByTestId('barber-any').click()
+    await page.getByTestId('barber-continue-btn').click()
+
+    // 30min fits 75min → canNow=true → click Now sets slot directly (no picker)
+    await page.getByTestId('now-btn').click()
+    await expect(page.getByTestId('timeslot-continue-btn')).toBeEnabled()
+    await page.getByTestId('timeslot-continue-btn').click()
+
+    await page.locator('input[placeholder*="name" i], input[placeholder*="nama" i]').first().click()
+    const kb1 = page.getByTestId('name-keyboard')
+    await kb1.getByRole('button', { name: 'B', exact: true }).click()
+    await kb1.getByRole('button', { name: 'u', exact: true }).click()
+    await page.getByTestId('confirm-booking-btn').click()
+
+    await expect(page.getByTestId('queue-confirmed')).toBeVisible({ timeout: 10000 })
+    // Idle-picker assigned Alex → "will serve you now" shown in barber status card
+    await expect(page.getByText(/Alex will serve you now/i)).toBeVisible()
+  })
+
+  test('scheduled any-available: deferred=true → queue shows pending assignment message', async ({ page }) => {
+    await injectKioskConfig(page)
+    await mockApiRoutes(page, {
+      slots:     ['10:00', '10:30'],
+      nowWindow: { freeNow: false, windowMin: 0, barberWindows: {} },
+      booking:   { ...mockBookingResponse, barber_id: null, barber_name: null, slot_time: '10:00', deferred: true },
+    })
+    await page.goto('/')
+
+    await page.getByTestId('start-booking-btn').click()
+    await page.getByTestId(`service-${SERVICE_ID}`).click()
+    await page.getByTestId('services-continue-btn').click()
+    await page.getByTestId('barber-any').click()
+    await page.getByTestId('barber-continue-btn').click()
+
+    // Pick scheduled slot — no Now available
+    await page.getByTestId('slot-10:00').click()
+    await page.getByTestId('timeslot-continue-btn').click()
+
+    await page.locator('input[placeholder*="name" i], input[placeholder*="nama" i]').first().click()
+    const kb2 = page.getByTestId('name-keyboard')
+    await kb2.getByRole('button', { name: 'B', exact: true }).click()
+    await kb2.getByRole('button', { name: 'u', exact: true }).click()
+    await page.getByTestId('confirm-booking-btn').click()
+
+    await expect(page.getByTestId('queue-confirmed')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText("We're Assigning You a Barber")).toBeVisible()
   })
 })

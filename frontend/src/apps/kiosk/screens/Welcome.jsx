@@ -10,7 +10,7 @@ export default function Welcome({ onStart, settings = {}, branchName = 'Bercut' 
   const sub = settings.welcome_subtitle || 'Touch screen to begin'
   const subId = settings.welcome_subtitle_id || 'Sentuh layar untuk memulai'
 
-  const tickerItems = ['BERCUT BARBERSHOP', 'SEMINYAK', 'CANGGU', 'UBUD', 'ULUWATU', 'SANUR', 'NO.1 BARBERSHOP IN BALI', 'OPEN 10:00 – 20:00 EVERY DAY']
+  const tickerItems = ['BERCUT BARBERSHOP', 'SEMINYAK', 'CANGGU', 'KEROBOKAN', 'ULUWATU', 'SANUR', 'NO.1 BARBERSHOP IN BALI', 'OPEN 10:00 – 20:00 EVERY DAY']
 
   return (
     <div style={{ minHeight: 'calc(100vh - clamp(48px,6vh,60px))', display: 'flex', flexDirection: 'column', background: C.topBg, position: 'relative', overflow: 'hidden' }}>

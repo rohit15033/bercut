@@ -155,7 +155,7 @@ router.post('/', requireAdmin, async (req, res) => {
 // ── PATCH /api/expenses/:id ────────────────────────────────────────────────────
 router.patch('/:id', requireAdmin, async (req, res) => {
   try {
-    const allowed = ['category_id','description','amount','expense_date','source','po_id','po_attribution']
+    const allowed = ['branch_id','category_id','description','amount','expense_date','source','barber_id','deduct_period','po_id','po_attribution']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }

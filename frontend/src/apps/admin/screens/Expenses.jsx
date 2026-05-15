@@ -44,80 +44,180 @@ function computeSmartDist(totalAmount, lines) {
 
 // ── EditExpenseModal ──────────────────────────────────────────────────────────
 
-function EditExpenseModal({ expense, categories, onSaved, onClose }) {
-  const [eDate,   setEDate]   = useState((expense.expense_date || '').slice(0, 10))
-  const [eAmount, setEAmount] = useState(String(expense.amount || ''))
-  const [eDesc,   setEDesc]   = useState(expense.description || '')
-  const [eCatId,  setECatId]  = useState(String(expense.category_id || ''))
-  const [eSource, setESource] = useState(expense.source || 'petty_cash')
-  const [saving,  setSaving]  = useState(false)
-  const [err,     setErr]     = useState('')
+function EditExpenseModal({ expense, categories, branches, barbers, onSaved, onClose }) {
+  const [eDate,         setEDate]         = useState((expense.expense_date || '').slice(0, 10))
+  const [eAmount,       setEAmount]       = useState(String(expense.amount || ''))
+  const [eDesc,         setEDesc]         = useState(expense.description || '')
+  const [eCatId,        setECatId]        = useState(String(expense.category_id || ''))
+  const [eSource,       setESource]       = useState(expense.source || 'petty_cash')
+  const [eBranchId,     setEBranchId]     = useState(String(expense.branch_id || ''))
+  const [eBarberId,     setEBarberId]     = useState(String(expense.barber_id || ''))
+  const [eDeductPeriod, setEDeductPeriod] = useState(expense.deduct_period || 'current')
+  const [saving,        setSaving]        = useState(false)
+  const [errors,        setErrors]        = useState({})
 
   const isRegular   = expense.type === 'regular'
   const isInventory = expense.type === 'inventory'
   const isKasbon    = expense.type === 'kasbon'
 
+  const TYPE_BADGE = { regular: { label: 'Regular', color: '#2563EB', bg: '#EFF6FF' }, inventory: { label: 'Inventory', color: '#9333EA', bg: '#F3E8FF' }, kasbon: { label: 'Kasbon', color: '#D97706', bg: '#FFFBEB' } }
+  const badge = TYPE_BADGE[expense.type] || { label: expense.type, color: T.muted, bg: T.surface }
+
   async function handleSave() {
-    if (!eAmount || parseInt(eAmount) <= 0) { setErr('Amount required'); return }
+    const e = {}
+    if (!eAmount || parseInt(eAmount) <= 0) e.amount = true
+    if (!isKasbon && !eDesc.trim()) e.desc = true
+    if (isRegular && !eBranchId) e.branch = true
+    if (isKasbon && !eBarberId) e.barber = true
+    setErrors(e)
+    if (Object.keys(e).length) return
     setSaving(true)
     try {
       const body = { expense_date: eDate, amount: parseInt(eAmount), description: eDesc.trim() || null }
-      if (isRegular)   { body.category_id = eCatId || null; body.source = eSource }
+      if (isRegular)   { body.branch_id = eBranchId; body.category_id = eCatId || null; body.source = eSource }
       if (isInventory) { body.source = eSource }
+      if (isKasbon)    { body.barber_id = eBarberId; body.deduct_period = eDeductPeriod }
       const updated = await api.patch('/expenses/' + expense.id, body)
       onSaved(updated)
-    } catch { setErr('Save failed') }
+    } catch { setErrors({ save: true }) }
     setSaving(false)
   }
 
-  const inp = { padding: '8px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, background: T.white, fontSize: 13, color: T.text, width: '100%', boxSizing: 'border-box' }
+  const sel = (err) => ({ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + (err ? T.danger : T.border), background: T.white, fontSize: 13, color: T.text })
+  const inp = (err) => ({ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + (err ? T.danger : T.border), background: T.white, fontSize: 13, color: T.text, boxSizing: 'border-box' })
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="admin-card" style={{ width: 420, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text }}>Edit Expense</div>
+      <div className="admin-card" style={{ width: 580, padding: '24px 28px', animation: 'scaleIn 0.18s ease both', maxHeight: '90vh', overflowY: 'auto' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text }}>Edit Expense</div>
+            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: badge.bg, color: badge.color }}>{badge.label}</span>
+          </div>
           <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div>
-            <label style={{ ...LS, color: T.muted }}>Date</label>
-            <input type="date" value={eDate} onChange={e => setEDate(e.target.value)} style={inp} />
-          </div>
-          <div>
-            <label style={{ ...LS, color: err ? T.danger : T.muted }}>Amount (IDR) *</label>
-            <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (err ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
-              <span style={{ padding: '8px 9px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
-              <input type="number" value={eAmount} onChange={e => { setEAmount(e.target.value); setErr('') }}
-                style={{ flex: 1, padding: '8px 9px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
-            </div>
-          </div>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ ...LS, color: T.muted }}>{isKasbon ? 'Note' : 'Description'}</label>
-          <input value={eDesc} onChange={e => setEDesc(e.target.value)} style={inp} />
-        </div>
-        {(isRegular || isInventory) && (
-          <div style={{ display: 'grid', gridTemplateColumns: isRegular ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 12 }}>
-            {isRegular && (
+
+        {/* Regular */}
+        {isRegular && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 0.8fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ ...LS, color: errors.branch ? T.danger : T.muted }}>Branch *</label>
+                <select value={eBranchId} onChange={e => setEBranchId(e.target.value)} style={sel(errors.branch)}>
+                  <option value=''>— Branch —</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
               <div>
                 <label style={{ ...LS, color: T.muted }}>Category</label>
-                <select value={eCatId} onChange={e => setECatId(e.target.value)} style={{ ...inp, padding: '8px 10px' }}>
+                <select value={eCatId} onChange={e => setECatId(e.target.value)} style={sel(false)}>
                   <option value=''>— None —</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
               </div>
-            )}
-            <div>
-              <label style={{ ...LS, color: T.muted }}>Source</label>
-              <select value={eSource} onChange={e => setESource(e.target.value)} style={{ ...inp, padding: '8px 10px' }}>
-                <option value='petty_cash'>Petty Cash</option>
-                <option value='owner'>Owner</option>
-              </select>
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Source</label>
+                <select value={eSource} onChange={e => setESource(e.target.value)} style={sel(false)}>
+                  <option value='petty_cash'>Petty Cash</option>
+                  <option value='owner'>Owner</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Amount (IDR) *</label>
+                <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
+                  <span style={{ padding: '9px 10px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
+                  <input type="number" value={eAmount} onChange={e => { setEAmount(e.target.value); setErrors(v => ({ ...v, amount: false })) }}
+                    style={{ flex: 1, padding: '9px 10px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Date</label>
+                <input type="date" value={eDate} onChange={e => setEDate(e.target.value)} style={inp(false)} />
+              </div>
             </div>
-          </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ ...LS, color: errors.desc ? T.danger : T.muted }}>Description *</label>
+              <input value={eDesc} onChange={e => { setEDesc(e.target.value); setErrors(v => ({ ...v, desc: false })) }} style={inp(errors.desc)} />
+            </div>
+          </>
         )}
-        {err && <div style={{ fontSize: 12, color: T.danger, marginBottom: 10 }}>{err}</div>}
+
+        {/* Inventory */}
+        {isInventory && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Total Purchase (IDR) *</label>
+                <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
+                  <span style={{ padding: '9px 10px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
+                  <input type="number" value={eAmount} onChange={e => { setEAmount(e.target.value); setErrors(v => ({ ...v, amount: false })) }}
+                    style={{ flex: 1, padding: '9px 10px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Source</label>
+                <select value={eSource} onChange={e => setESource(e.target.value)} style={sel(false)}>
+                  <option value='petty_cash'>Petty Cash</option>
+                  <option value='owner'>Owner</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Date</label>
+                <input type="date" value={eDate} onChange={e => setEDate(e.target.value)} style={inp(false)} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ ...LS, color: errors.desc ? T.danger : T.muted }}>Description *</label>
+              <input value={eDesc} onChange={e => { setEDesc(e.target.value); setErrors(v => ({ ...v, desc: false })) }} style={inp(errors.desc)} />
+            </div>
+            <div style={{ padding: '10px 14px', borderRadius: 8, background: T.surface, border: '1px solid ' + T.border, fontSize: 12, color: T.muted, marginBottom: 16 }}>
+              Stock distribution lines cannot be changed after creation.
+            </div>
+          </>
+        )}
+
+        {/* Kasbon */}
+        {isKasbon && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 0.8fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ ...LS, color: errors.barber ? T.danger : T.muted }}>Barber *</label>
+                <select value={eBarberId} onChange={e => setEBarberId(e.target.value)} style={sel(errors.barber)}>
+                  <option value=''>— Select barber —</option>
+                  {barbers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Deduct Period</label>
+                <select value={eDeductPeriod} onChange={e => setEDeductPeriod(e.target.value)} style={sel(false)}>
+                  <option value='current'>This Payroll Period</option>
+                  <option value='next'>Next Payroll Period</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Amount (IDR) *</label>
+                <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
+                  <span style={{ padding: '9px 10px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
+                  <input type="number" value={eAmount} onChange={e => { setEAmount(e.target.value); setErrors(v => ({ ...v, amount: false })) }}
+                    style={{ flex: 1, padding: '9px 10px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Date</label>
+                <input type="date" value={eDate} onChange={e => setEDate(e.target.value)} style={inp(false)} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ ...LS, color: T.muted }}>Note (optional)</label>
+              <input value={eDesc} onChange={e => setEDesc(e.target.value)} placeholder="e.g. Medical emergency advance" style={inp(false)} />
+            </div>
+          </>
+        )}
+
+        {errors.save && <div style={{ fontSize: 12, color: T.danger, marginBottom: 10 }}>Save failed — please try again</div>}
+
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>Cancel</button>
           <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
@@ -532,6 +632,8 @@ export default function Expenses() {
         <EditExpenseModal
           expense={editingExp}
           categories={categories}
+          branches={branches}
+          barbers={barbers}
           onSaved={updated => {
             setExpenses(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e))
             setEditingExp(null)

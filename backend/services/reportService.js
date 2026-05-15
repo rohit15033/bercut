@@ -150,12 +150,13 @@ async function generateMonitoringReportData(branch_id, date) {
   const total_pax = parseInt(paxRows[0].total_pax) || 0
 
   const { rows: svcRows } = await pool.query(
-    `SELECT bs.service_name, COUNT(*) AS cnt
+    `SELECT s.name AS service_name, COUNT(*) AS cnt
      FROM booking_services bs
      JOIN bookings b ON b.id = bs.booking_id
+     JOIN services s ON s.id = bs.service_id
      WHERE b.branch_id = $1 AND b.status = 'completed'
        AND DATE(b.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
-     GROUP BY bs.service_name ORDER BY cnt DESC, bs.service_name`,
+     GROUP BY s.name ORDER BY cnt DESC, s.name`,
     [branch_id, date]
   )
   const services_breakdown = svcRows.length
@@ -166,7 +167,7 @@ async function generateMonitoringReportData(branch_id, date) {
 }
 
 async function sendClosingReport(branch_id, ws, branchName, date) {
-  if (!ws.closing_report_enabled) return
+  if (!ws.closing_report_enabled || !ws.tpl_closing_report) return
   const data = await generateClosingReportData(branch_id, date)
   const vars = {
     branch: branchName,
@@ -188,7 +189,7 @@ async function sendClosingReport(branch_id, ws, branchName, date) {
 }
 
 async function sendMonitoringReport(branch_id, ws, branchName, date) {
-  if (!ws.monitoring_report_enabled) return
+  if (!ws.monitoring_report_enabled || !ws.tpl_monitoring_report) return
   const data = await generateMonitoringReportData(branch_id, date)
   const vars = {
     branch: branchName,

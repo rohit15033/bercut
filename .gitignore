@@ -19,3 +19,4 @@ _ai/decisions-log.md
 .worktrees/
 frontend/test-results/
 .claude/settings.local.json
+.claude/settings.local.json

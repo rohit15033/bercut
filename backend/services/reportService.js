@@ -209,8 +209,8 @@ async function checkAndFireReports(branch_id) {
 
     const today = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Makassar' }).split(',')[0]
 
-    const nowWita = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit', hour12: false })
-    const currentTime = nowWita.replace(',', '').trim()
+    const tParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+    const currentTime = tParts.find(p => p.type === 'hour').value + ':' + tParts.find(p => p.type === 'minute').value
 
     const closingTime = ws.closing_time
       ? String(ws.closing_time).slice(0, 5)

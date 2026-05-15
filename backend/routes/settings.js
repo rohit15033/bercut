@@ -114,8 +114,14 @@ router.post('/whatsapp/send-report/:branch_id', requireAdmin, async (req, res) =
     const branchName = bRows[0].name
     const today = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Makassar' }).split(',')[0]
     const { sendClosingReport, sendMonitoringReport } = require('../services/reportService')
-    if (type === 'closing' || type === 'both') await sendClosingReport(req.params.branch_id, ws, branchName, today)
-    if (type === 'monitoring' || type === 'both') await sendMonitoringReport(req.params.branch_id, ws, branchName, today)
+    if (type === 'closing' || type === 'both') {
+      await sendClosingReport(req.params.branch_id, ws, branchName, today)
+      await pool.query(`UPDATE branches SET closing_report_sent_date = $1 WHERE id = $2`, [today, req.params.branch_id])
+    }
+    if (type === 'monitoring' || type === 'both') {
+      await sendMonitoringReport(req.params.branch_id, ws, branchName, today)
+      await pool.query(`UPDATE branches SET monitoring_report_sent_date = $1 WHERE id = $2`, [today, req.params.branch_id])
+    }
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

@@ -411,8 +411,8 @@ function WhatsAppTab() {
     try {
       await api.post(`/settings/whatsapp/send-report/${sendBranch}`, { type: 'both' })
       setSendMsg('Sent!')
-    } catch { setSendMsg('Failed') }
-    finally { setSendBusy(false); setTimeout(() => setSendMsg(''), 4000) }
+    } catch (err) { setSendMsg(err?.message || 'Failed') }
+    finally { setSendBusy(false); setTimeout(() => setSendMsg(''), 6000) }
   }
 
   async function handleTestSend() {

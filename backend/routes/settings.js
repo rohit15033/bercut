@@ -108,7 +108,15 @@ router.post('/whatsapp/send-report/:branch_id', requireAdmin, async (req, res) =
     const { type = 'both' } = req.body
     const { rows: wRows } = await pool.query('SELECT * FROM whatsapp_settings LIMIT 1')
     const ws = wRows[0]
-    if (!ws) return res.status(400).json({ message: 'WhatsApp settings not configured' })
+    if (!ws || !ws.enabled) return res.status(400).json({ message: 'WhatsApp is disabled. Enable it in settings first.' })
+    if (type === 'closing' || type === 'both') {
+      if (!ws.closing_report_enabled) return res.status(400).json({ message: 'Closing report is disabled. Toggle it on and save.' })
+      if (!ws.tpl_closing_report) return res.status(400).json({ message: 'Closing report template is empty. Load default, then save.' })
+    }
+    if (type === 'monitoring' || type === 'both') {
+      if (!ws.monitoring_report_enabled) return res.status(400).json({ message: 'Monitoring report is disabled. Toggle it on and save.' })
+      if (!ws.tpl_monitoring_report) return res.status(400).json({ message: 'Monitoring report template is empty. Load default, then save.' })
+    }
     const { rows: bRows } = await pool.query('SELECT name FROM branches WHERE id = $1', [req.params.branch_id])
     if (!bRows.length) return res.status(404).json({ message: 'Branch not found' })
     const branchName = bRows[0].name

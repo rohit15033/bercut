@@ -184,6 +184,8 @@ export default function Expenses() {
 
   const [showForm,     setShowForm]     = useState(false)
   const [showCreateCat,setShowCreateCat]= useState(false)
+  const [expandedId,   setExpandedId]   = useState(null)
+  const [expandCache,  setExpandCache]  = useState({})
   const [filterBranch, setFilterBranch] = useState('')
   const [filterType,   setFilterType]   = useState('all')
 
@@ -549,8 +551,8 @@ export default function Expenses() {
 
       {/* Table */}
       <div className="admin-card" style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
-          {['Date','Type','Branch','Description','Source','Amount','By'].map((h, i) => (
+        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
+          {['','Date','Type','Branch','Description','Source','Amount','By'].map((h, i) => (
             <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>{h}</div>
           ))}
         </div>
@@ -561,20 +563,65 @@ export default function Expenses() {
           )}
           {expenses.map((e, i) => {
             const badge = TYPE_BADGE[e.type] || { label: e.type, color: T.muted, bg: T.surface }
-            const branchName = branches.find(b => b.id === e.branch_id)?.name ?? '—'
+            const isInv = e.type === 'inventory'
+            const branchName = isInv && !e.branch_id
+              ? 'Multiple'
+              : (branches.find(b => b.id === e.branch_id)?.name ?? '—')
+            const isExpanded = isInv && expandedId === e.id
+            const sourceLabel = e.source === 'petty_cash' ? 'Petty Cash' : e.source === 'owner' ? 'Owner' : '—'
+
+            async function toggleExpand() {
+              if (!isInv) return
+              const next = expandedId === e.id ? null : e.id
+              setExpandedId(next)
+              if (next && !expandCache[e.id]) {
+                try {
+                  const detail = await api.get('/expenses/' + e.id)
+                  setExpandCache(c => ({ ...c, [e.id]: detail.stock_items || [] }))
+                } catch { setExpandCache(c => ({ ...c, [e.id]: [] })) }
+              }
+            }
+
+            const subRows = isExpanded ? (expandCache[e.id] ?? null) : null
+
             return (
-              <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '12px 18px', borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none', alignItems: 'center' }}
-                onMouseEnter={ev => ev.currentTarget.style.background = T.bg}
-                onMouseLeave={ev => ev.currentTarget.style.background = 'transparent'}>
-                <div style={{ fontSize: 12, color: T.muted }}>{e.expense_date}</div>
-                <div>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: badge.bg, color: badge.color }}>{badge.label}</span>
+              <div key={e.id} style={{ borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '12px 18px', alignItems: 'center', cursor: isInv ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
+                  onClick={toggleExpand}
+                  onMouseEnter={ev => { if (!isExpanded) ev.currentTarget.style.background = T.bg }}
+                  onMouseLeave={ev => { if (!isExpanded) ev.currentTarget.style.background = 'transparent' }}>
+                  <div style={{ fontSize: 11, color: T.muted, userSelect: 'none' }}>{isInv ? (isExpanded ? '▼' : '▶') : ''}</div>
+                  <div style={{ fontSize: 12, color: T.muted }}>{fmtDate((e.expense_date || '').slice(0, 10))}</div>
+                  <div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: badge.bg, color: badge.color }}>{badge.label}</span>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{branchName}</div>
+                  <div style={{ fontSize: 12, color: T.text, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.description || e.category_name || '—'}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{sourceLabel}</div>
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{fmt(e.amount)}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{branchName}</div>
-                <div style={{ fontSize: 12, color: T.text, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.description || e.category_name || '—'}</div>
-                <div style={{ fontSize: 11, color: T.muted }}>{e.notes || '—'}</div>
-                <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{fmt(e.amount)}</div>
-                <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
+                {isExpanded && (
+                  subRows === null
+                    ? <div style={{ padding: '8px 18px 8px 58px', fontSize: 12, color: T.muted, background: T.bg }}>Loading…</div>
+                    : subRows.length === 0
+                      ? <div style={{ padding: '8px 18px 8px 58px', fontSize: 12, color: T.muted, background: T.bg }}>No distribution data</div>
+                      : subRows.map((d, di) => {
+                          const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? d.branch_id ?? '—'
+                          return (
+                            <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
+                              <div />
+                              <div />
+                              <div />
+                              <div style={{ fontSize: 11, fontWeight: 600, color: T.text2, paddingLeft: 8 }}>{dBranch}</div>
+                              <div style={{ fontSize: 11, color: T.muted }}>{d.quantity_received} {d.unit}</div>
+                              <div />
+                              <div style={{ fontSize: 11, color: T.muted }}>{d.cost ? fmt(d.cost) : '—'}</div>
+                              <div />
+                            </div>
+                          )
+                        })
+                )}
               </div>
             )
           })}

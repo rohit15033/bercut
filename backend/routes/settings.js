@@ -88,7 +88,9 @@ router.patch('/whatsapp', requireAdmin, requireOwner, async (req, res) => {
     const allowed = ['enabled','fonnte_token',
       'tpl_booking_confirmed','tpl_booking_reminder','tpl_payment_receipt',
       'tpl_feedback_request','tpl_points_earned','tpl_kasbon_deducted',
-      'tpl_barber_new_booking','tpl_barber_escalation','tpl_autoreply']
+      'tpl_barber_new_booking','tpl_barber_escalation','tpl_autoreply',
+      'closing_time','closing_report_enabled','closing_group_1','closing_group_2','tpl_closing_report',
+      'monitoring_report_enabled','monitoring_group_1','monitoring_group_2','tpl_monitoring_report']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
@@ -98,6 +100,23 @@ router.patch('/whatsapp', requireAdmin, requireOwner, async (req, res) => {
     const { rows } = await pool.query(
       `UPDATE whatsapp_settings SET ${sets.join(', ')} RETURNING *`, vals)
     res.json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+router.post('/whatsapp/send-report/:branch_id', requireAdmin, async (req, res) => {
+  try {
+    const { type = 'both' } = req.body
+    const { rows: wRows } = await pool.query('SELECT * FROM whatsapp_settings LIMIT 1')
+    const ws = wRows[0]
+    if (!ws) return res.status(400).json({ message: 'WhatsApp settings not configured' })
+    const { rows: bRows } = await pool.query('SELECT name FROM branches WHERE id = $1', [req.params.branch_id])
+    if (!bRows.length) return res.status(404).json({ message: 'Branch not found' })
+    const branchName = bRows[0].name
+    const today = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Makassar' }).split(',')[0]
+    const { sendClosingReport, sendMonitoringReport } = require('../services/reportService')
+    if (type === 'closing' || type === 'both') await sendClosingReport(req.params.branch_id, ws, branchName, today)
+    if (type === 'monitoring' || type === 'both') await sendMonitoringReport(req.params.branch_id, ws, branchName, today)
+    res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 

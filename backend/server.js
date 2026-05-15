@@ -80,6 +80,17 @@ cron.schedule('* * * * *', () => {
   autoEndExpiredBreaks().catch(console.error)
 })
 
+const { checkAndFireReports } = require('./services/reportService')
+const pool_main = require('./config/db')
+cron.schedule('* * * * *', async () => {
+  try {
+    const { rows: branches } = await pool_main.query("SELECT id FROM branches WHERE is_active = true")
+    for (const b of branches) {
+      await checkAndFireReports(b.id)
+    }
+  } catch (e) { console.error('[ClosingReport cron]', e.message) }
+})
+
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)

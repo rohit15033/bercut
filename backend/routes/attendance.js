@@ -100,6 +100,10 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
     await pool.query(`UPDATE barbers SET status = 'clocked_out' WHERE id = $1`, [barber_id])
     emitEvent(rows[0].branch_id, 'barber_update', { barber_id, status: 'clocked_out' })
     res.json(rows[0])
+    setImmediate(() => {
+      const { checkAndFireReports } = require('../services/reportService')
+      checkAndFireReports(rows[0].branch_id).catch(() => {})
+    })
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 

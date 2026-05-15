@@ -369,7 +369,7 @@ const DEFAULT_TEMPLATES = {
 }
 
 function WhatsAppTab() {
-  const [cfg,       setCfg]       = useState({ enabled: false, fonnte_token: '' })
+  const [cfg,       setCfg]       = useState({ enabled: false, fonnte_token: '', closing_time: '21:00', closing_report_enabled: false, closing_group_1: '', closing_group_2: '', tpl_closing_report: '', monitoring_report_enabled: false, monitoring_group_1: '', monitoring_group_2: '', tpl_monitoring_report: '' })
   const [activeTpl, setActiveTpl] = useState('tpl_booking_confirmed')
   const [showKey,   setShowKey]   = useState(false)
   const [testPhone, setTestPhone] = useState('')
@@ -377,11 +377,19 @@ function WhatsAppTab() {
   const [loading,   setLoading]   = useState(true)
   const [saved,     setSaved]     = useState(false)
   const [busy,      setBusy]      = useState(false)
+  const [branches,     setBranches]     = useState([])
+  const [sendBranch,   setSendBranch]   = useState('')
+  const [sendBusy,     setSendBusy]     = useState(false)
+  const [sendMsg,      setSendMsg]      = useState('')
 
   useEffect(() => {
     api.get('/settings/whatsapp').then(d => {
       if (d) setCfg(prev => ({ ...prev, ...d }))
     }).catch(() => {}).finally(() => setLoading(false))
+    api.get('/branches').then(rows => {
+      setBranches(Array.isArray(rows) ? rows : [])
+      if (rows?.length) setSendBranch(rows[0].id)
+    })
   }, [])
 
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }))
@@ -392,6 +400,16 @@ function WhatsAppTab() {
       await api.patch('/settings/whatsapp', cfg)
       setSaved(true); setTimeout(() => setSaved(false), 2000)
     } catch { /* ignore */ } finally { setBusy(false) }
+  }
+
+  const handleSendNow = async () => {
+    if (!sendBranch) return
+    setSendBusy(true); setSendMsg('')
+    try {
+      await api.post(`/settings/whatsapp/send-report/${sendBranch}`, { type: 'both' })
+      setSendMsg('Sent!')
+    } catch { setSendMsg('Failed') }
+    finally { setSendBusy(false); setTimeout(() => setSendMsg(''), 4000) }
   }
 
   async function handleTestSend() {
@@ -486,6 +504,102 @@ function WhatsAppTab() {
               style={{ width: '100%', padding: '11px 13px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, lineHeight: 1.7, resize: 'vertical', boxSizing: 'border-box', fontFamily: "'DM Sans',sans-serif" }} />
           </div>
         )}
+      </div>
+
+      <div style={{ marginTop: 28 }}>
+        <SectionTitle
+          title="Daily Reports"
+          sub="Sent automatically when all barbers clock out after closing time, or manually via Send Now."
+        />
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Closing Time</label>
+          <input type="time" value={cfg.closing_time || '21:00'} onChange={e => set('closing_time', e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 14, background: T.card, color: T.text, width: 140 }} />
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>Auto-send fires when all barbers clock out at or after this time (WITA)</div>
+        </div>
+
+        <div style={{ padding: 16, borderRadius: 10, border: `1px solid ${T.border}`, background: T.bg, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!cfg.closing_report_enabled} onChange={e => set('closing_report_enabled', e.target.checked)}
+                style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+              <span style={{ position: 'absolute', inset: 0, borderRadius: 10, background: cfg.closing_report_enabled ? '#2563eb' : '#d1d5db', transition: 'background 0.2s' }} />
+              <span style={{ position: 'absolute', top: 3, left: cfg.closing_report_enabled ? 19 : 3, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+            </label>
+            <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Closing Report (Closingan)</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Group 1 (Fonnte JID)</label>
+              <input value={cfg.closing_group_1 || ''} onChange={e => set('closing_group_1', e.target.value)}
+                placeholder="e.g. 120363xxxxxx@g.us"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Group 2 (Fonnte JID)</label>
+              <input value={cfg.closing_group_2 || ''} onChange={e => set('closing_group_2', e.target.value)}
+                placeholder="e.g. 120363xxxxxx@g.us"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Template</label>
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 5 }}>Placeholders: {'{{branch}}'} {'{{date}}'} {'{{total_penjualan}}'} {'{{total_pax}}'} {'{{cash}}'} {'{{card}}'} {'{{qr}}'} {'{{tip}}'} {'{{beverages_sold}}'} {'{{beverages_stock}}'} {'{{styling_sold}}'} {'{{styling_stock}}'}</div>
+            <textarea value={cfg.tpl_closing_report || ''} onChange={e => set('tpl_closing_report', e.target.value)}
+              rows={10} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }}
+              placeholder={'CLOSING REPORT {{branch}} {{date}}\n\nTotal Penjualan: {{total_penjualan}}\nTotal Pax: {{total_pax}} pax\n\nCASH : {{cash}}\nCARD : {{card}}\nQR   : {{qr}}\nTIP  : {{tip}}\n\nProduk Terjual\n{{beverages_sold}}\n\nSisa Stock Produk\n{{beverages_stock}}\n\nProduk Hair Styling\n{{styling_sold}}'} />
+          </div>
+        </div>
+
+        <div style={{ padding: 16, borderRadius: 10, border: `1px solid ${T.border}`, background: T.bg, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!cfg.monitoring_report_enabled} onChange={e => set('monitoring_report_enabled', e.target.checked)}
+                style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+              <span style={{ position: 'absolute', inset: 0, borderRadius: 10, background: cfg.monitoring_report_enabled ? '#2563eb' : '#d1d5db', transition: 'background 0.2s' }} />
+              <span style={{ position: 'absolute', top: 3, left: cfg.monitoring_report_enabled ? 19 : 3, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+            </label>
+            <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Monitoring Report (Pax & Service)</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Group 1 (Fonnte JID)</label>
+              <input value={cfg.monitoring_group_1 || ''} onChange={e => set('monitoring_group_1', e.target.value)}
+                placeholder="e.g. 120363xxxxxx@g.us"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Group 2 (Fonnte JID)</label>
+              <input value={cfg.monitoring_group_2 || ''} onChange={e => set('monitoring_group_2', e.target.value)}
+                placeholder="e.g. 120363xxxxxx@g.us"
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 5 }}>Template</label>
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 5 }}>Placeholders: {'{{branch}}'} {'{{date}}'} {'{{total_pax}}'} {'{{services_breakdown}}'}</div>
+            <textarea value={cfg.tpl_monitoring_report || ''} onChange={e => set('tpl_monitoring_report', e.target.value)}
+              rows={8} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }}
+              placeholder={'Report Pax & Service {{branch}} {{date}}\n\nPax: {{total_pax}} pax\n{{services_breakdown}}'} />
+          </div>
+        </div>
+
+        <div style={{ padding: 16, borderRadius: 10, border: `1px solid ${T.border}`, background: T.bg }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: T.text, marginBottom: 10 }}>Send Report Now</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={sendBranch} onChange={e => setSendBranch(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, minWidth: 160 }}>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <button onClick={handleSendNow} disabled={sendBusy || !sendBranch}
+              style={{ padding: '8px 18px', borderRadius: 8, background: sendBusy ? T.muted : '#2563eb', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: sendBusy ? 'not-allowed' : 'pointer' }}>
+              {sendBusy ? 'Sending…' : 'Send Now'}
+            </button>
+            {sendMsg && <span style={{ fontSize: 13, color: sendMsg === 'Sent!' ? '#16a34a' : '#dc2626', fontWeight: 600 }}>{sendMsg}</span>}
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Sends both closing and monitoring reports for the selected branch using today's data. Templates must be saved first.</div>
+        </div>
       </div>
 
       {/* Test send */}

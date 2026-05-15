@@ -154,20 +154,70 @@ router.post('/', requireAdmin, async (req, res) => {
 
 // ── PATCH /api/expenses/:id ────────────────────────────────────────────────────
 router.patch('/:id', requireAdmin, async (req, res) => {
+  const client = await pool.connect()
   try {
+    await client.query('BEGIN')
     const allowed = ['branch_id','category_id','description','amount','expense_date','source','barber_id','deduct_period','po_id','po_attribution']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
     }
-    if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
-    sets.push('updated_at = NOW()')
-    vals.push(req.params.id)
-    const { rows } = await pool.query(
-      `UPDATE expenses SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals)
-    if (!rows.length) return res.status(404).json({ message: 'Not found' })
-    res.json(rows[0])
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+    if (!sets.length && req.body.stock_items === undefined) {
+      await client.query('ROLLBACK')
+      return res.status(400).json({ message: 'Nothing to update' })
+    }
+    let expense
+    if (sets.length) {
+      sets.push('updated_at = NOW()')
+      vals.push(req.params.id)
+      const { rows } = await client.query(
+        `UPDATE expenses SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals)
+      if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Not found' }) }
+      expense = rows[0]
+    } else {
+      const { rows } = await client.query('SELECT * FROM expenses WHERE id = $1', [req.params.id])
+      if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Not found' }) }
+      expense = rows[0]
+    }
+    if (req.body.stock_items !== undefined) {
+      const { rows: oldItems } = await client.query(
+        'SELECT * FROM expense_stock_items WHERE expense_id = $1', [req.params.id])
+      for (const item of oldItems) {
+        await client.query(
+          `UPDATE inventory_stock SET current_stock = current_stock - $1, updated_at = NOW()
+           WHERE item_id = $2 AND branch_id = $3`,
+          [item.quantity_received, item.item_id, item.branch_id])
+        await client.query(
+          `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, note, logged_by)
+           VALUES ($1,$2,'out',$3,'Edit reversal',$4)`,
+          [item.item_id, item.branch_id, item.quantity_received, req.user.id])
+      }
+      await client.query('DELETE FROM expense_stock_items WHERE expense_id = $1', [req.params.id])
+      const newItems = (req.body.stock_items || []).filter(i => i.branch_id && (Number(i.qty || i.quantity_received) > 0))
+      for (const item of newItems) {
+        const qty = item.quantity_received ?? item.qty ?? 0
+        await client.query(
+          `INSERT INTO expense_stock_items (expense_id, item_id, branch_id, quantity_received, unit)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [req.params.id, item.item_id, item.branch_id, qty, item.unit || 'pcs'])
+        await client.query(
+          `INSERT INTO inventory_stock (item_id, branch_id, current_stock)
+           VALUES ($1,$2,$3)
+           ON CONFLICT (item_id, branch_id) DO UPDATE SET current_stock = inventory_stock.current_stock + $3, updated_at = NOW()`,
+          [item.item_id, item.branch_id, qty])
+        await client.query(
+          `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, note, logged_by)
+           VALUES ($1,$2,'in',$3,$4,$5)`,
+          [item.item_id, item.branch_id, qty, expense.description || null, req.user.id])
+      }
+    }
+    await client.query('COMMIT')
+    res.json(expense)
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally { client.release() }
 })
 
 // ── DELETE /api/expenses/:id ───────────────────────────────────────────────────

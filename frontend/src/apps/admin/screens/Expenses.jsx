@@ -44,7 +44,15 @@ function computeSmartDist(totalAmount, lines) {
 
 // ── EditExpenseModal ──────────────────────────────────────────────────────────
 
-function EditExpenseModal({ expense, categories, branches, barbers, onSaved, onClose }) {
+function EditExpenseModal({ expense, categories, branches, barbers, items, onSaved, onClose }) {
+  const isInventory = expense.type === 'inventory'
+  const isRegular   = expense.type === 'regular'
+  const isKasbon    = expense.type === 'kasbon'
+
+  const initLines = isInventory && expense._stockItems?.length
+    ? expense._stockItems.map(s => ({ branch_id: String(s.branch_id || ''), qty: String(s.quantity_received || '') }))
+    : [{ branch_id: '', qty: '' }]
+
   const [eDate,         setEDate]         = useState((expense.expense_date || '').slice(0, 10))
   const [eAmount,       setEAmount]       = useState(String(expense.amount || ''))
   const [eDesc,         setEDesc]         = useState(expense.description || '')
@@ -53,15 +61,22 @@ function EditExpenseModal({ expense, categories, branches, barbers, onSaved, onC
   const [eBranchId,     setEBranchId]     = useState(String(expense.branch_id || ''))
   const [eBarberId,     setEBarberId]     = useState(String(expense.barber_id || ''))
   const [eDeductPeriod, setEDeductPeriod] = useState(expense.deduct_period || 'current')
+  const [stockItemId,   setStockItemId]   = useState(isInventory ? String(expense._stockItems?.[0]?.item_id || '') : '')
+  const [distLines,     setDistLines]     = useState(initLines)
   const [saving,        setSaving]        = useState(false)
   const [errors,        setErrors]        = useState({})
 
-  const isRegular   = expense.type === 'regular'
-  const isInventory = expense.type === 'inventory'
-  const isKasbon    = expense.type === 'kasbon'
-
   const TYPE_BADGE = { regular: { label: 'Regular', color: '#2563EB', bg: '#EFF6FF' }, inventory: { label: 'Inventory', color: '#9333EA', bg: '#F3E8FF' }, kasbon: { label: 'Kasbon', color: '#D97706', bg: '#FFFBEB' } }
   const badge = TYPE_BADGE[expense.type] || { label: expense.type, color: T.muted, bg: T.surface }
+
+  const amt         = parseInt(eAmount) || 0
+  const totalQty    = distLines.reduce((s, l) => s + (Number(l.qty) || 0), 0)
+  const smartCosts  = computeSmartDist(amt, distLines)
+  const selectedItem = items.find(i => String(i.id) === stockItemId) ?? null
+
+  function updateDist(idx, field, val) { setDistLines(lines => lines.map((l, i) => i === idx ? { ...l, [field]: val } : l)) }
+  function addDist()       { setDistLines(l => [...l, { branch_id: branches.length === 1 ? String(branches[0].id) : '', qty: '' }]) }
+  function removeDist(idx) { setDistLines(l => l.filter((_, i) => i !== idx)) }
 
   async function handleSave() {
     const e = {}
@@ -69,13 +84,20 @@ function EditExpenseModal({ expense, categories, branches, barbers, onSaved, onC
     if (!isKasbon && !eDesc.trim()) e.desc = true
     if (isRegular && !eBranchId) e.branch = true
     if (isKasbon && !eBarberId) e.barber = true
+    if (isInventory && !stockItemId) e.stockItem = true
+    if (isInventory && !distLines.some(l => l.branch_id && Number(l.qty) > 0)) e.dist = true
     setErrors(e)
     if (Object.keys(e).length) return
     setSaving(true)
     try {
       const body = { expense_date: eDate, amount: parseInt(eAmount), description: eDesc.trim() || null }
       if (isRegular)   { body.branch_id = eBranchId; body.category_id = eCatId || null; body.source = eSource }
-      if (isInventory) { body.source = eSource }
+      if (isInventory) {
+        body.source = eSource
+        body.stock_items = distLines
+          .filter(l => l.branch_id && Number(l.qty) > 0)
+          .map(l => ({ item_id: stockItemId, branch_id: l.branch_id, quantity_received: Number(l.qty), unit: selectedItem?.unit || 'pcs' }))
+      }
       if (isKasbon)    { body.barber_id = eBarberId; body.deduct_period = eDeductPeriod }
       const updated = await api.patch('/expenses/' + expense.id, body)
       onSaved(updated)
@@ -168,12 +190,42 @@ function EditExpenseModal({ expense, categories, branches, barbers, onSaved, onC
                 <input type="date" value={eDate} onChange={e => setEDate(e.target.value)} style={inp(false)} />
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 12 }}>
               <label style={{ ...LS, color: errors.desc ? T.danger : T.muted }}>Description *</label>
               <input value={eDesc} onChange={e => { setEDesc(e.target.value); setErrors(v => ({ ...v, desc: false })) }} style={inp(errors.desc)} />
             </div>
-            <div style={{ padding: '10px 14px', borderRadius: 8, background: T.surface, border: '1px solid ' + T.border, fontSize: 12, color: T.muted, marginBottom: 16 }}>
-              Stock distribution lines cannot be changed after creation.
+            <div style={{ background: T.surface, borderRadius: 10, padding: '14px 16px', marginBottom: 16, border: '1px solid ' + T.border }}>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ ...LS, color: errors.stockItem ? T.danger : T.muted }}>Item Received *</label>
+                <select value={stockItemId} onChange={e => { setStockItemId(e.target.value); setErrors(v => ({ ...v, stockItem: false })) }}
+                  style={{ ...inp(errors.stockItem), padding: '9px 11px' }}>
+                  <option value=''>— Select item —</option>
+                  {items.map(it => <option key={it.id} value={it.id}>{it.name} ({it.unit})</option>)}
+                </select>
+              </div>
+              {amt > 0 && totalQty > 0 && (
+                <div style={{ display: 'flex', gap: 16, marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: T.white, border: '1px solid ' + T.border, alignItems: 'center' }}>
+                  <div style={{ fontSize: 11, color: T.muted }}>Total Qty: <strong style={{ color: T.text }}>{totalQty} {selectedItem?.unit ?? 'pcs'}</strong></div>
+                  <div style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#16A34A' }}>✓ Total: {'Rp ' + amt.toLocaleString('id-ID')}</div>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.text2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Distribution</div>
+                {errors.dist && <span style={{ fontSize: 11, color: T.danger }}>Each row needs a branch and quantity</span>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.8fr 1.2fr auto', gap: 6, marginBottom: 6, paddingLeft: 2 }}>
+                {['Branch / Destination','Qty','Cost',''].map((h, i) => (
+                  <div key={i} style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>{h}</div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {distLines.map((line, idx) => (
+                  <DistLine key={idx} line={line} idx={idx} branches={branches} onUpdate={updateDist} onRemove={removeDist} lineCost={smartCosts[idx] ?? null} />
+                ))}
+              </div>
+              <button onClick={addDist} style={{ marginTop: 8, padding: '6px 12px', borderRadius: 7, background: T.white, border: '1px dashed ' + T.border, fontSize: 12, color: T.text2, fontWeight: 600, cursor: 'pointer' }}>
+                + Add Branch
+              </button>
             </div>
           </>
         )}
@@ -609,6 +661,24 @@ export default function Expenses() {
     XLSX.writeFile(wb, `bercut-expenses-${todayISO()}.xlsx`)
   }
 
+  async function openEdit(exp) {
+    if (exp.type === 'inventory') {
+      const cached = expandCache[exp.id]
+      if (cached) {
+        setEditingExp({ ...exp, _stockItems: cached })
+      } else {
+        try {
+          const detail = await api.get('/expenses/' + exp.id)
+          const si = detail.stock_items || []
+          setExpandCache(c => ({ ...c, [exp.id]: si }))
+          setEditingExp({ ...exp, _stockItems: si })
+        } catch { setEditingExp(exp) }
+      }
+    } else {
+      setEditingExp(exp)
+    }
+  }
+
   const totalExpenses = expenses.reduce((a, e) => a + Number(e.amount || 0), 0)
 
   const TYPE_BADGE = {
@@ -634,8 +704,10 @@ export default function Expenses() {
           categories={categories}
           branches={branches}
           barbers={barbers}
+          items={items}
           onSaved={updated => {
             setExpenses(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e))
+            if (updated.type === 'inventory') setExpandCache(c => { const n = { ...c }; delete n[updated.id]; return n })
             setEditingExp(null)
           }}
           onClose={() => setEditingExp(null)}
@@ -971,7 +1043,7 @@ export default function Expenses() {
                   <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{isExpanded ? '' : fmt(e.amount)}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }} onClick={ev => ev.stopPropagation()}>
-                    <button onClick={() => setEditingExp(e)} title="Edit"
+                    <button onClick={() => openEdit(e)} title="Edit"
                       style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: T.surface, color: T.text2, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✎</button>
                     <button onClick={() => setDeletingExp(e)} title="Delete"
                       style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: '#FEE2E2', color: T.danger, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>

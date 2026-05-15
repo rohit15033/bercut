@@ -56,6 +56,19 @@ router.get('/categories', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+router.post('/categories', requireAdmin, async (req, res) => {
+  try {
+    const { label, color, bg } = req.body
+    if (!label?.trim()) return res.status(400).json({ message: 'label required' })
+    const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')
+    const { rows } = await pool.query(
+      `INSERT INTO expense_categories (key, label, color, bg)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [key, label.trim(), color || '#2563EB', bg || '#EFF6FF'])
+    res.status(201).json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // ── GET /api/expenses/:id ──────────────────────────────────────────────────────
 router.get('/:id', requireAdmin, async (req, res) => {
   try {
@@ -78,39 +91,43 @@ router.post('/', requireAdmin, async (req, res) => {
     await client.query('BEGIN')
     const {
       branch_id, type = 'regular', category_id, description,
-      amount, expense_date, notes,
+      amount, expense_date, source,
       po_id, po_attribution,
       stock_items = []
     } = req.body
 
-    if (!branch_id || !amount || !expense_date) {
-      return res.status(400).json({ message: 'branch_id, amount, expense_date required' })
+    if (!amount || !expense_date) {
+      return res.status(400).json({ message: 'amount, expense_date required' })
+    }
+    if (type !== 'inventory' && !branch_id) {
+      return res.status(400).json({ message: 'branch_id required' })
     }
 
     const { rows } = await client.query(
       `INSERT INTO expenses
-         (branch_id, type, category_id, description, amount, expense_date, notes,
-          po_id, po_attribution, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [branch_id, type, category_id||null, description||null, amount, expense_date,
-       notes||null, po_id||null, po_attribution||null, req.user.id])
+         (branch_id, type, category_id, description, amount, expense_date, source,
+          po_id, po_attribution, submitted_by, receipt_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [branch_id||null, type, category_id||null, description||null, amount, expense_date,
+       source||'petty_cash', po_id||null, po_attribution||null, req.user.id, ''])
     const expense = rows[0]
 
     for (const item of stock_items) {
       const qty = item.quantity_received ?? item.qty ?? 0
+      const itemBranch = item.branch_id || branch_id
       await client.query(
         `INSERT INTO expense_stock_items (expense_id, item_id, branch_id, quantity_received, unit)
          VALUES ($1,$2,$3,$4,$5)`,
-        [expense.id, item.item_id, branch_id, qty, item.unit || 'pcs'])
+        [expense.id, item.item_id, itemBranch, qty, item.unit || 'pcs'])
       await client.query(
         `INSERT INTO inventory_stock (item_id, branch_id, current_stock)
          VALUES ($1,$2,$3)
          ON CONFLICT (item_id, branch_id) DO UPDATE SET current_stock = inventory_stock.current_stock + $3, updated_at = NOW()`,
-        [item.item_id, branch_id, qty])
+        [item.item_id, itemBranch, qty])
       await client.query(
         `INSERT INTO inventory_movements (item_id, branch_id, movement_type, quantity, note, logged_by)
          VALUES ($1,$2,'in',$3,$4,$5)`,
-        [item.item_id, branch_id, qty, expense.description || null, req.user.id])
+        [item.item_id, itemBranch, qty, expense.description || null, req.user.id])
     }
 
     await client.query('COMMIT')
@@ -127,7 +144,7 @@ router.post('/', requireAdmin, async (req, res) => {
 // ── PATCH /api/expenses/:id ────────────────────────────────────────────────────
 router.patch('/:id', requireAdmin, async (req, res) => {
   try {
-    const allowed = ['category_id','description','amount','expense_date','notes','po_id','po_attribution']
+    const allowed = ['category_id','description','amount','expense_date','source','po_id','po_attribution']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }

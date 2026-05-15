@@ -52,7 +52,7 @@ function CategoryModal({ onConfirm, onClose }) {
     if (!label.trim()) return
     setSaving(true)
     try {
-      const cat = await api.post('/expense-categories', { label: label.trim() })
+      const cat = await api.post('/expenses/categories', { label: label.trim(), color })
       onConfirm(cat)
     } catch { setSaving(false) }
   }
@@ -212,9 +212,12 @@ export default function Expenses() {
   useEffect(() => {
     api.get('/branches').then(d => {
       setBranches(d || [])
-      if (d?.[0]) setFBranchId(String(d[0].id))
+      if (d?.[0]) {
+        setFBranchId(String(d[0].id))
+        if (d.length === 1) setDistLines([{ branch_id: String(d[0].id), qty: '' }])
+      }
     }).catch(() => {})
-    api.get('/expense-categories').then(d => {
+    api.get('/expenses/categories').then(d => {
       setCategories(d || [])
       if (d?.[0]) setFCatId(String(d[0].id))
     }).catch(() => {})
@@ -239,13 +242,13 @@ export default function Expenses() {
     setExpType(t)
     setFAmount(''); setFDesc(''); setErrors({})
     setFBarberId(''); setFDeductPeriod('current')
-    setStockItemId(''); setDistLines([{ branch_id: '', qty: '' }])
+    setStockItemId(''); setDistLines([{ branch_id: branches.length === 1 ? String(branches[0].id) : '', qty: '' }])
   }
 
   function updateDistLine(idx, field, val) {
     setDistLines(lines => lines.map((l, i) => i === idx ? { ...l, [field]: val } : l))
   }
-  function addDistLine()       { setDistLines(l => [...l, { branch_id: '', qty: '' }]) }
+  function addDistLine()       { setDistLines(l => [...l, { branch_id: branches.length === 1 ? String(branches[0].id) : '', qty: '' }]) }
   function removeDistLine(idx) { setDistLines(l => l.filter((_, i) => i !== idx)) }
 
   const selectedItem  = items.find(i => String(i.id) === stockItemId) ?? null
@@ -284,16 +287,16 @@ export default function Expenses() {
         description:  fDesc.trim() || null,
       }
       if (expType === 'regular') {
-        payload.branch_id   = parseInt(fBranchId)
-        payload.category_id = fCatId ? parseInt(fCatId) : null
-        payload.notes       = fSource
+        payload.branch_id   = fBranchId
+        payload.category_id = fCatId || null
+        payload.source      = fSource
       } else if (expType === 'inventory') {
         payload.stock_items = distLines
           .filter(l => l.branch_id && Number(l.qty) > 0)
-          .map((l, i) => ({ item_id: parseInt(stockItemId), branch_id: parseInt(l.branch_id), qty: Number(l.qty), cost: smartCosts[i] ?? 0 }))
+          .map((l, i) => ({ item_id: stockItemId, branch_id: l.branch_id, qty: Number(l.qty), cost: smartCosts[i] ?? 0 }))
       } else if (expType === 'kasbon') {
         payload.branch_id    = barbers.find(b => String(b.id) === String(fBarberId))?.branch_id
-        payload.barber_id    = parseInt(fBarberId)
+        payload.barber_id    = fBarberId
         payload.deduct_period= fDeductPeriod
         payload.description  = fDesc.trim() || 'Salary advance'
       }

@@ -2,18 +2,13 @@
 set -e
 
 VPS="bercut-vps"
+APP="/var/www/bercut"
 
 echo "==> Deploying to VPS..."
-ssh "$VPS" bash << 'REMOTE'
-  set -e
-  cd /var/www/bercut
-  git pull origin main
-  cd backend && npm install --omit=dev --silent && cd ..
-  cd frontend && npm ci --silent && npm run build && cd ..
-  pm2 restart bercut-backend
-  echo ""
-  pm2 status
-REMOTE
+ssh "$VPS" "cd $APP && git pull origin main"
+ssh "$VPS" "cd $APP/backend && npm install --omit=dev --silent"
+ssh "$VPS" "cd $APP/frontend && npm ci && npm run build"
+ssh "$VPS" "pm2 restart bercut-backend && pm2 status"
 
 echo ""
 echo "==> Deploy complete. https://systembercut.com"

@@ -736,15 +736,6 @@ function UsersTab() {
               style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid ' + T.border, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
 
-          <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, padding: '8px 10px', borderRadius: 6, background: T.bg, lineHeight: 1.5 }}>
-            Overview is always visible. All other sections can be toggled off individually.
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid ' + T.surface }}>
-            <span style={{ fontSize: 13, color: T.text2 }}>Overview</span>
-            <span style={{ fontSize: 11, color: T.muted }}>Always on</span>
-          </div>
-
           {SECTIONS.map(s => (
             <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid ' + T.surface }}>
               <span style={{ fontSize: 13, color: canView(selectedUser.id, s.key) ? T.text : T.muted }}>{s.label}</span>

@@ -126,6 +126,9 @@ function AdjRow({ adj, onDelete, onToggleDefer, nextPeriodLabel }) {
           )}
         </div>
         {adj.remarks && <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{adj.remarks}</div>}
+        {adj.date && (
+          <div style={{ fontSize: 10, color: T.border, marginTop: 2 }}>{adj.date} · by {adj.logged_by || 'Admin'}</div>
+        )}
       </div>
       <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: isDeferred ? T.muted : (isAdd ? '#16A34A' : '#DC2626'), flexShrink: 0, textDecoration: isDeferred ? 'line-through' : 'none' }}>
         {isAdd ? '+' : '−'}{fmtM(adj.amount)}
@@ -187,6 +190,11 @@ function ManageAdjModal({ entry, adjustments, onDelete, onToggleDefer, onClose, 
           {adjustments.length === 0 && (
             <div style={{ textAlign: 'center', padding: '32px 0', color: T.muted, fontSize: 13 }}>No adjustments for this barber.</div>
           )}
+          {deductions.some(a => a.is_kasbon && a.deduct_period === 'next') && (
+            <div style={{ fontSize: 11, color: T.muted, padding: '8px 12px', borderRadius: 7, background: T.surface, marginTop: 4 }}>
+              Deferred kasbon will appear as a deduction in next payroll period automatically.
+            </div>
+          )}
         </div>
         <div style={{ padding: '14px 24px', borderTop: '1px solid ' + T.border, background: T.bg, flexShrink: 0 }}>
           <button onClick={onClose}
@@ -199,16 +207,54 @@ function ManageAdjModal({ entry, adjustments, onDelete, onToggleDefer, onClose, 
   )
 }
 
+// ── CreateAdjCatModal ─────────────────────────────────────────────────────────
+
+function CreateAdjCatModal({ onConfirm, onClose }) {
+  const [label, setLabel] = useState('')
+  const LS = { display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }
+
+  function handleConfirm() {
+    if (!label.trim()) return
+    const key = label.trim().toLowerCase().replace(/\s+/g, '_') + '_' + Date.now()
+    onConfirm({ key, label: label.trim() })
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="admin-card" style={{ width: 360, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 16, color: T.text }}>New Category</div>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ ...LS, color: T.muted }}>Category Name *</label>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Transport Reimbursement" autoFocus
+            onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+            style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.topBg, fontSize: 13, color: T.text, background: T.white, boxSizing: 'border-box' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: '10px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleConfirm} disabled={!label.trim()}
+            style={{ flex: 2, padding: '10px', borderRadius: 8, background: label.trim() ? T.topBg : T.surface2, color: label.trim() ? T.white : T.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: label.trim() ? 'pointer' : 'not-allowed' }}>
+            Create Category
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── AddAdjModal ───────────────────────────────────────────────────────────────
 
-const ADD_CATS = [
+const ADD_CATS_BASE = [
   { key: 'uang_rajin',      label: 'Uang Rajin'       },
   { key: 'transport',       label: 'Transport'         },
   { key: 'meal_allowance',  label: 'Meal Allowance'    },
   { key: 'performance',     label: 'Performance Bonus' },
   { key: 'other_addition',  label: 'Other'             },
 ]
-const DED_CATS = [
+const DED_CATS_BASE = [
   { key: 'late_arrival',    label: 'Late Arrival'      },
   { key: 'uniform',         label: 'Uniform Deduction' },
   { key: 'equipment',       label: 'Equipment Damage'  },
@@ -216,19 +262,34 @@ const DED_CATS = [
 ]
 
 function AddAdjModal({ entry, onAdd, onClose }) {
-  const [adjType,  setAdjType]  = useState('addition')
-  const [category, setCategory] = useState('uang_rajin')
-  const [remarks,  setRemarks]  = useState('')
-  const [amount,   setAmount]   = useState('')
-  const [errors,   setErrors]   = useState({})
-  const [saving,   setSaving]   = useState(false)
+  const [adjType,       setAdjType]       = useState('addition')
+  const [category,      setCategory]      = useState('uang_rajin')
+  const [remarks,       setRemarks]       = useState('')
+  const [amount,        setAmount]        = useState('')
+  const [errors,        setErrors]        = useState({})
+  const [saving,        setSaving]        = useState(false)
+  const [addCats,       setAddCats]       = useState(ADD_CATS_BASE)
+  const [dedCats,       setDedCats]       = useState(DED_CATS_BASE)
+  const [showCreateCat, setShowCreateCat] = useState(false)
 
-  const cats = adjType === 'addition' ? ADD_CATS : DED_CATS
+  const cats = adjType === 'addition' ? addCats : dedCats
 
   function switchType(t) {
     setAdjType(t)
     setCategory(t === 'addition' ? 'uang_rajin' : 'late_arrival')
     setErrors({})
+  }
+
+  function handleCatChange(val) {
+    if (val === '__create__') { setShowCreateCat(true); return }
+    setCategory(val)
+  }
+
+  function handleCatCreated(newCat) {
+    if (adjType === 'addition') setAddCats(c => [...c, newCat])
+    else                        setDedCats(c => [...c, newCat])
+    setCategory(newCat.key)
+    setShowCreateCat(false)
   }
 
   async function handleAdd() {
@@ -260,66 +321,71 @@ function AddAdjModal({ entry, onAdd, onClose }) {
   const LS = { display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="admin-card" style={{ width: 460, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div>
-            <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text }}>Add Adjustment</div>
-            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{entry.barber_name}</div>
-          </div>
-          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 3, marginBottom: 18, background: T.surface, padding: 3, borderRadius: 9, width: 'fit-content' }}>
-          {[{ key: 'addition', label: 'Addition' }, { key: 'deduction', label: 'Deduction' }].map(t => (
-            <button key={t.key} onClick={() => switchType(t.key)}
-              style={{ padding: '7px 20px', borderRadius: 7, border: 'none', background: adjType === t.key ? T.topBg : 'transparent', color: adjType === t.key ? T.white : T.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={{ ...LS, color: T.muted }}>Category *</label>
-            <select value={category} onChange={e => setCategory(e.target.value)}
-              style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }}>
-              {cats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Amount (IDR) *</label>
-            <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
-              <span style={{ padding: '9px 11px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
-              <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setErrors(v => ({ ...v, amount: false })) }} placeholder="200000" autoFocus
-                style={{ flex: 1, padding: '9px 11px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
+    <>
+      {showCreateCat && <CreateAdjCatModal onConfirm={handleCatCreated} onClose={() => setShowCreateCat(false)} />}
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+        <div className="admin-card" style={{ width: 460, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div>
+              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text }}>Add Adjustment</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{entry.barber_name}</div>
             </div>
+            <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
           </div>
-          <div>
-            <label style={{ ...LS, color: T.muted }}>Remarks <span style={{ textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
-            <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="e.g. Perfect attendance this month"
-              style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, boxSizing: 'border-box' }} />
-          </div>
-          {errors.submit && <div style={{ fontSize: 12, color: T.danger }}>Failed to save. Please try again.</div>}
-        </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-          <button onClick={onClose}
-            style={{ flex: 1, padding: '11px', borderRadius: 9, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleAdd} disabled={saving}
-            style={{ flex: 2, padding: '11px', borderRadius: 9, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 14, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Saving…' : `Add ${adjType === 'addition' ? 'Addition' : 'Deduction'}`}
-          </button>
+          <div style={{ display: 'flex', gap: 3, marginBottom: 18, background: T.surface, padding: 3, borderRadius: 9, width: 'fit-content' }}>
+            {[{ key: 'addition', label: 'Addition' }, { key: 'deduction', label: 'Deduction' }].map(t => (
+              <button key={t.key} onClick={() => switchType(t.key)}
+                style={{ padding: '7px 20px', borderRadius: 7, border: 'none', background: adjType === t.key ? T.topBg : 'transparent', color: adjType === t.key ? T.white : T.muted, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={{ ...LS, color: T.muted }}>Category *</label>
+              <select value={category} onChange={e => handleCatChange(e.target.value)}
+                style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }}>
+                {cats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                <option disabled style={{ color: T.surface2 }}>──────────</option>
+                <option value="__create__">＋ Create Category...</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Amount (IDR) *</label>
+              <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
+                <span style={{ padding: '9px 11px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
+                <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setErrors(v => ({ ...v, amount: false })) }} placeholder="200000" autoFocus
+                  style={{ flex: 1, padding: '9px 11px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
+              </div>
+            </div>
+            <div>
+              <label style={{ ...LS, color: T.muted }}>Remarks <span style={{ textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
+              <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="e.g. Perfect attendance this month"
+                style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white, boxSizing: 'border-box' }} />
+            </div>
+            {errors.submit && <div style={{ fontSize: 12, color: T.danger }}>Failed to save. Please try again.</div>}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+            <button onClick={onClose}
+              style={{ flex: 1, padding: '11px', borderRadius: 9, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleAdd} disabled={saving}
+              style={{ flex: 2, padding: '11px', borderRadius: 9, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 14, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Saving…' : `Add ${adjType === 'addition' ? 'Addition' : 'Deduction'}`}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function Payroll({ onPayroll }) {
+export default function Payroll({ onPayroll, onViewAttendance }) {
   const [branches,      setBranches]      = useState([])
   const [selectedBranch,setSelectedBranch]= useState('')
   const [periods,       setPeriods]       = useState([])
@@ -327,7 +393,6 @@ export default function Payroll({ onPayroll }) {
   const [entries,       setEntries]       = useState([])
   const [adjustments,   setAdjustments]   = useState({})
   const [loading,       setLoading]       = useState(false)
-  const [generating,    setGenerating]    = useState(false)
 
   const [workingDaysOverride, setWorkingDaysOverride] = useState(null)
   const computedWD = selectedPeriod ? computeWorkingDays(selectedPeriod.period_from, selectedPeriod.period_to) : 26
@@ -376,36 +441,12 @@ export default function Payroll({ onPayroll }) {
       .finally(() => setLoading(false))
   }, [selectedPeriod])
 
-  async function generatePeriod() {
-    if (!selectedBranch) return
-    const now   = new Date()
-    const yr    = now.getFullYear()
-    const mo    = now.getMonth()
-    const pad   = n => String(n).padStart(2, '0')
-    const from  = `${yr}-${pad(mo + 1)}-16`
-    const toD   = new Date(yr, mo + 2, 15)
-    const to    = `${toD.getFullYear()}-${pad(toD.getMonth()+1)}-15`
-    const periodMonth = `${yr}-${pad(mo + 1)}`
-    setGenerating(true)
-    try {
-      const result = await api.post('/payroll/periods/generate', {
-        branch_id:    parseInt(selectedBranch),
-        period_month: periodMonth,
-        period_from:  from,
-        period_to:    to,
-      })
-      setPeriods(p => [result.period, ...p])
-      setSelectedPeriod(result.period)
-      setEntries(result.entries || [])
-      setAdjustments(Object.fromEntries((result.entries || []).map(e => [e.id, []])))
-    } catch (err) {
-      alert(err?.message || 'Failed to generate period')
+  function setOverride(entryId, fieldOrObj, val) {
+    if (typeof fieldOrObj === 'object') {
+      setOverrides(prev => ({ ...prev, [entryId]: { ...prev[entryId], ...fieldOrObj } }))
+    } else {
+      setOverrides(prev => ({ ...prev, [entryId]: { ...prev[entryId], [fieldOrObj]: val } }))
     }
-    setGenerating(false)
-  }
-
-  function setOverride(entryId, field, val) {
-    setOverrides(prev => ({ ...prev, [entryId]: { ...prev[entryId], [field]: val } }))
   }
 
   async function patchEntry(entry, field, val) {
@@ -437,11 +478,17 @@ export default function Payroll({ onPayroll }) {
   function calcNetPay(entry) {
     const ov            = overrides[entry.id] || {}
     const lateMin       = ov.lateMin       ?? Number(entry.total_late_minutes || 0)
-    const inexcusedDays = ov.inexcusedDays ?? Number(entry.inexcused_fixed_days || 0)
-    const excusedOver   = Math.max(0, (ov.excusedDays ?? Number(entry.excused_fixed_days || 0)) - EXCUSED_QUOTA)
-    const lateDed       = lateMin * LATE_RATE_PER_MIN
-    const inexcusedDed  = inexcusedDays * FLAT_OFF_RATE
-    const excusedDed    = excusedOver * EXCUSED_OVER_RATE
+    const inexcusedTimes = ov.inexcusedTimes ?? Number(entry.inexcused_fixed_days || 0)
+    const excusedTimes   = ov.excusedTimes   ?? Number(entry.excused_fixed_days  || 0)
+    const excusedOver    = Math.max(0, excusedTimes - EXCUSED_QUOTA)
+    const inexcusedFixed   = ov.inexcusedFixed   ?? inexcusedTimes
+    const inexcusedProrata = ov.inexcusedProrata ?? 0
+    const excusedFixed     = ov.excusedFixed     ?? excusedOver
+    const excusedProrata   = ov.excusedProrata   ?? 0
+    const prorataRate      = Math.round(Number(entry.base_salary || 0) / workingDays)
+    const lateDed          = lateMin * LATE_RATE_PER_MIN
+    const inexcusedDed     = inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate)
+    const excusedDed       = excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate)
     const adjs          = adjustments[entry.id] || []
     const totalAdd      = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
     const totalDed      = adjs.filter(a => a.type === 'deduction' && !(a.is_kasbon && a.deduct_period === 'next')).reduce((s, a) => s + Number(a.amount), 0)
@@ -454,9 +501,8 @@ export default function Payroll({ onPayroll }) {
     window.open(`/api/payroll/periods/${selectedPeriod.id}/export`, '_blank')
   }
 
-  const branchName  = branches.find(b => String(b.id) === selectedBranch)?.name ?? selectedBranch
-  const totalNet    = entries.reduce((s, e) => s + calcNetPay(e), 0)
-  const nextPLabel  = 'next period'
+  const totalNet   = entries.reduce((s, e) => s + calcNetPay(e), 0)
+  const nextPLabel = 'next period'
 
   const PGRID = '1.4fr 0.8fr 0.9fr 0.75fr 0.9fr 1.15fr 1.15fr 0.85fr 0.9fr 0.85fr 0.65fr 0.7fr'
 
@@ -488,9 +534,15 @@ export default function Payroll({ onPayroll }) {
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Period payroll — base salary + commission + deductions</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {onViewAttendance && (
+            <button onClick={onViewAttendance}
+              style={{ padding: '9px 16px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: 'pointer' }}>
+              ← Attendance
+            </button>
+          )}
           <button onClick={exportCSV}
             style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            ↓ Export
+            ↓ Export CSV
           </button>
         </div>
       </div>
@@ -515,10 +567,6 @@ export default function Payroll({ onPayroll }) {
               onReset={() => setWorkingDaysOverride(null)}
             />
           )}
-          <button onClick={generatePeriod} disabled={generating}
-            style={{ padding: '7px 13px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.7 : 1 }}>
-            {generating ? 'Generating…' : '+ Generate Period'}
-          </button>
         </div>
         <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
           style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.white, fontSize: 13, fontWeight: 600, color: T.text, cursor: 'pointer' }}>
@@ -535,8 +583,8 @@ export default function Payroll({ onPayroll }) {
             { label: 'Commission',    sub: 'regular' },
             { label: 'OT Comm.',      sub: 'overtime' },
             { label: 'Late',          sub: 'min · deduction' },
-            { label: 'Excused Off',   sub: 'quota: ' + EXCUSED_QUOTA },
-            { label: 'Inexcused Off', sub: 'flat rate' },
+            { label: 'Excused Off',   sub: 'flat / pro-rata split' },
+            { label: 'Inexcused Off', sub: 'flat / pro-rata split' },
             { label: 'Kasbon',        sub: 'this period' },
             { label: 'Additions' },
             { label: 'Other Ded.' },
@@ -558,22 +606,27 @@ export default function Payroll({ onPayroll }) {
         )}
 
         {entries.map((entry, i) => {
-          const ov            = overrides[entry.id] || {}
-          const lateMin       = ov.lateMin       ?? Number(entry.total_late_minutes   || 0)
-          const excusedDays   = ov.excusedDays   ?? Number(entry.excused_fixed_days   || 0)
-          const inexcusedDays = ov.inexcusedDays ?? Number(entry.inexcused_fixed_days || 0)
-          const excusedOver   = Math.max(0, excusedDays - EXCUSED_QUOTA)
-          const lateDed       = lateMin * LATE_RATE_PER_MIN
-          const excusedDed    = excusedOver * EXCUSED_OVER_RATE
-          const inexcusedDed  = inexcusedDays * FLAT_OFF_RATE
-          const adjs          = adjustments[entry.id] || []
-          const kasbonAdjs    = adjs.filter(a => a.is_kasbon && a.type === 'deduction' && a.deduct_period === 'current')
-          const kasbonDeferred= adjs.filter(a => a.is_kasbon && a.deduct_period === 'next')
-          const kasbonTotal   = kasbonAdjs.reduce((s, a) => s + Number(a.amount), 0)
-          const totalAdd      = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
-          const otherDed      = adjs.filter(a => a.type === 'deduction' && !a.is_kasbon && a.deduct_period === 'current').reduce((s, a) => s + Number(a.amount), 0)
-          const net           = calcNetPay(entry)
-          const ini           = initials(entry.barber_name)
+          const ov             = overrides[entry.id] || {}
+          const lateMin        = ov.lateMin        ?? Number(entry.total_late_minutes   || 0)
+          const excusedTimes   = ov.excusedTimes   ?? Number(entry.excused_fixed_days   || 0)
+          const inexcusedTimes = ov.inexcusedTimes ?? Number(entry.inexcused_fixed_days || 0)
+          const excusedOver    = Math.max(0, excusedTimes - EXCUSED_QUOTA)
+          const excusedFixed     = ov.excusedFixed     ?? excusedOver
+          const excusedProrata   = ov.excusedProrata   ?? 0
+          const inexcusedFixed   = ov.inexcusedFixed   ?? inexcusedTimes
+          const inexcusedProrata = ov.inexcusedProrata ?? 0
+          const prorataRate      = Math.round(Number(entry.base_salary || 0) / workingDays)
+          const lateDed          = lateMin * LATE_RATE_PER_MIN
+          const excusedDed       = excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate)
+          const inexcusedDed     = inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate)
+          const adjs             = adjustments[entry.id] || []
+          const kasbonAdjs       = adjs.filter(a => a.is_kasbon && a.type === 'deduction' && a.deduct_period === 'current')
+          const kasbonDeferred   = adjs.filter(a => a.is_kasbon && a.deduct_period === 'next')
+          const kasbonTotal      = kasbonAdjs.reduce((s, a) => s + Number(a.amount), 0)
+          const totalAdd         = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
+          const otherDed         = adjs.filter(a => a.type === 'deduction' && !a.is_kasbon && a.deduct_period === 'current').reduce((s, a) => s + Number(a.amount), 0)
+          const net              = calcNetPay(entry)
+          const ini              = initials(entry.barber_name)
 
           return (
             <div key={entry.id}
@@ -586,7 +639,7 @@ export default function Payroll({ onPayroll }) {
                 </div>
                 <div>
                   <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: T.text }}>{entry.barber_name}</div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{Number(entry.working_days || 0)}d period</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{Number(entry.present_days || entry.working_days || 0)} days present</div>
                 </div>
               </div>
 
@@ -625,11 +678,26 @@ export default function Payroll({ onPayroll }) {
               {/* Excused Off */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 5 }}>
-                  <InlineNum value={excusedDays} onCommit={v => setOverride(entry.id, 'excusedDays', v)} suffix="×" color="#2563EB" />
-                  <span style={{ fontSize: 9, color: T.muted }}>{excusedOver > 0 ? `${excusedOver} charged` : 'within quota'}</span>
+                  <InlineNum value={excusedTimes}
+                    onCommit={v => setOverride(entry.id, { excusedTimes: v, excusedFixed: Math.max(0, v - EXCUSED_QUOTA), excusedProrata: 0 })}
+                    suffix="×" color="#2563EB" />
+                  <span style={{ fontSize: 9, color: T.muted }}>
+                    {excusedOver > 0 ? `${excusedOver} charged` : 'within quota'}
+                  </span>
                 </div>
-                {excusedDed > 0 ? (
-                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#DC2626' }}>−{fmtM(excusedDed)}</div>
+                {(excusedFixed > 0 || excusedProrata > 0) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <InlineNum value={excusedFixed} onCommit={v => setOverride(entry.id, 'excusedFixed', v)} suffix="× flat" color="#DC2626" />
+                      {excusedFixed > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(excusedFixed * EXCUSED_OVER_RATE)}</span>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <InlineNum value={excusedProrata} onCommit={v => setOverride(entry.id, 'excusedProrata', v)} suffix="× ÷" color="#DC2626" />
+                      <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
+                      {excusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(excusedProrata * prorataRate))}</span>}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>−{fmtM(excusedDed)}</div>
+                  </div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}
@@ -638,11 +706,24 @@ export default function Payroll({ onPayroll }) {
               {/* Inexcused Off */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 5 }}>
-                  <InlineNum value={inexcusedDays} onCommit={v => setOverride(entry.id, 'inexcusedDays', v)} suffix="×" color="#DC2626" />
-                  {inexcusedDays > 0 && <span style={{ fontSize: 9, color: T.muted }}>all charged</span>}
+                  <InlineNum value={inexcusedTimes}
+                    onCommit={v => setOverride(entry.id, { inexcusedTimes: v, inexcusedFixed: v, inexcusedProrata: 0 })}
+                    suffix="×" color="#DC2626" />
+                  {inexcusedTimes > 0 && <span style={{ fontSize: 9, color: T.muted }}>all charged</span>}
                 </div>
-                {inexcusedDed > 0 ? (
-                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#DC2626' }}>−{fmtM(inexcusedDed)}</div>
+                {(inexcusedFixed > 0 || inexcusedProrata > 0) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <InlineNum value={inexcusedFixed} onCommit={v => setOverride(entry.id, 'inexcusedFixed', v)} suffix="× flat" color="#DC2626" />
+                      {inexcusedFixed > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(inexcusedFixed * FLAT_OFF_RATE)}</span>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <InlineNum value={inexcusedProrata} onCommit={v => setOverride(entry.id, 'inexcusedProrata', v)} suffix="× ÷" color="#DC2626" />
+                      <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
+                      {inexcusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(inexcusedProrata * prorataRate))}</span>}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>−{fmtM(inexcusedDed)}</div>
+                  </div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}

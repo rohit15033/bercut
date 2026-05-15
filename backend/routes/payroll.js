@@ -183,7 +183,12 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
 router.get('/periods/:id/entries', requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT pe.*, b.name AS barber_name, b.pay_type
+      `SELECT pe.*, b.name AS barber_name, b.pay_type,
+              (SELECT COUNT(*)::int FROM attendance a
+               JOIN payroll_periods pp ON pp.id = pe.period_id
+               WHERE a.barber_id = pe.barber_id
+                 AND DATE(a.clock_in_at AT TIME ZONE 'Asia/Makassar')
+                     BETWEEN pp.period_from AND pp.period_to) AS present_days
        FROM payroll_entries pe
        JOIN barbers b ON b.id = pe.barber_id
        WHERE pe.period_id = $1 ORDER BY b.name`, [req.params.id])

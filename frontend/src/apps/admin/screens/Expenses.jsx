@@ -564,11 +564,17 @@ export default function Expenses() {
           {expenses.map((e, i) => {
             const badge = TYPE_BADGE[e.type] || { label: e.type, color: T.muted, bg: T.surface }
             const isInv = e.type === 'inventory'
-            const branchName = isInv && !e.branch_id
-              ? 'Multiple'
-              : (branches.find(b => b.id === e.branch_id)?.name ?? '—')
             const isExpanded = isInv && expandedId === e.id
             const sourceLabel = e.source === 'petty_cash' ? 'Petty Cash' : e.source === 'owner' ? 'Owner' : '—'
+            const cachedItems = expandCache[e.id]
+
+            const branchName = !isInv || e.branch_id
+              ? (branches.find(b => b.id === e.branch_id)?.name ?? '—')
+              : cachedItems
+                ? cachedItems.length === 1
+                  ? (branches.find(b => b.id === cachedItems[0].branch_id)?.name ?? '—')
+                  : 'Multiple'
+                : '—'
 
             async function toggleExpand() {
               if (!isInv) return
@@ -582,7 +588,8 @@ export default function Expenses() {
               }
             }
 
-            const subRows = isExpanded ? (expandCache[e.id] ?? null) : null
+            const subRows = isExpanded ? (cachedItems ?? null) : null
+            const subCosts = subRows ? computeSmartDist(Number(e.amount), subRows.map(d => ({ branch_id: d.branch_id, qty: d.quantity_received }))) : []
 
             return (
               <div key={e.id} style={{ borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none' }}>
@@ -598,7 +605,7 @@ export default function Expenses() {
                   <div style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{branchName}</div>
                   <div style={{ fontSize: 12, color: T.text, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.description || e.category_name || '—'}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{sourceLabel}</div>
-                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{fmt(e.amount)}</div>
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{isExpanded ? '—' : fmt(e.amount)}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
                 </div>
                 {isExpanded && (
@@ -607,7 +614,7 @@ export default function Expenses() {
                     : subRows.length === 0
                       ? <div style={{ padding: '8px 18px 8px 58px', fontSize: 12, color: T.muted, background: T.bg }}>No distribution data</div>
                       : subRows.map((d, di) => {
-                          const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? d.branch_id ?? '—'
+                          const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? '—'
                           return (
                             <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
                               <div />
@@ -616,7 +623,7 @@ export default function Expenses() {
                               <div style={{ fontSize: 11, fontWeight: 600, color: T.text2, paddingLeft: 8 }}>{dBranch}</div>
                               <div style={{ fontSize: 11, color: T.muted }}>{d.quantity_received} {d.unit}</div>
                               <div />
-                              <div style={{ fontSize: 11, color: T.muted }}>{d.cost ? fmt(d.cost) : '—'}</div>
+                              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: T.text }}>{subCosts[di] != null ? fmt(subCosts[di]) : '—'}</div>
                               <div />
                             </div>
                           )

@@ -195,6 +195,7 @@ export default function AdminApp() {
   const [screen, setScreen] = useState('overview')
   const [loading, setLoading] = useState(true)
   const [userPerms, setUserPerms] = useState({}) // { section: is_enabled }
+  const [permsLoaded, setPermsLoaded] = useState(false)
 
   useEffect(() => {
     const token = getToken()
@@ -208,17 +209,18 @@ export default function AdminApp() {
   // Load own permissions on login to drive nav filtering
   useEffect(() => {
     if (!user) return
-    if (user.role === 'owner') { setUserPerms({}); return } // owner sees all
+    if (user.role === 'owner') { setPermsLoaded(true); return } // owner sees all
     api.get(`/settings/users/${user.id}/permissions`)
       .then(rows => {
         const map = {}
         ;(Array.isArray(rows) ? rows : []).forEach(r => { map[r.section] = r.is_enabled })
         setUserPerms(map)
       })
-      .catch(() => setUserPerms({}))
+      .catch(() => {})
+      .finally(() => setPermsLoaded(true))
   }, [user])
 
-  const handleLogout = () => { setToken(null); setUser(null); setUserPerms({}) }
+  const handleLogout = () => { setToken(null); setUser(null); setUserPerms({}); setPermsLoaded(false) }
 
   const toSectionKey = key => key === 'live' ? 'live_monitor' : key === 'kiosk' ? 'kiosk_config' : key
 
@@ -228,15 +230,17 @@ export default function AdminApp() {
     return userPerms[sectionKey] !== false
   })
 
+  const allowedScreenKeys = new Set(visibleNav.map(n => n.key))
+  const can = key => user?.role === 'owner' || !permsLoaded || allowedScreenKeys.has(key)
+
   // Redirect to first allowed screen once perms are loaded
   useEffect(() => {
-    if (!user || user.role === 'owner') return
-    if (Object.keys(userPerms).length === 0) return
+    if (!user || user.role === 'owner' || !permsLoaded) return
     const allowedKeys = NAV
       .filter(item => userPerms[toSectionKey(item.key)] !== false)
       .map(item => item.key)
     if (!allowedKeys.includes(screen)) setScreen(allowedKeys[0] || 'overview')
-  }, [userPerms]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [permsLoaded, userPerms]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -254,19 +258,19 @@ export default function AdminApp() {
       <GS />
       <Sidebar screen={screen} onNav={setScreen} user={user} onLogout={handleLogout} visibleNav={visibleNav} />
       <main style={{ flex: 1, overflow: 'auto', minHeight: '100vh', minWidth: 0 }}>
-        {screen === 'overview'   && <Overview   user={user} onNav={setScreen} />}
-        {screen === 'live'       && <LiveMonitor user={user} />}
-        {screen === 'reports'    && <Reports />}
-        {screen === 'barbers'    && <Barbers />}
-        {screen === 'branches'   && <Branches />}
-        {screen === 'services'   && <Services />}
-        {screen === 'customers'  && <Customers />}
-        {screen === 'expenses'   && <Expenses />}
-        {screen === 'inventory'  && <Inventory />}
-        {screen === 'attendance' && <Attendance onPayroll={() => setScreen('payroll')} />}
-        {screen === 'payroll'    && <Payroll onAttendance={() => setScreen('attendance')} user={user} />}
-        {screen === 'kiosk'      && <KioskConfig />}
-        {screen === 'settings'   && <Settings user={user} />}
+        {screen === 'overview'   && can('overview')   && <Overview   user={user} onNav={setScreen} />}
+        {screen === 'live'       && can('live')       && <LiveMonitor user={user} />}
+        {screen === 'reports'    && can('reports')    && <Reports />}
+        {screen === 'barbers'    && can('barbers')    && <Barbers />}
+        {screen === 'branches'   && can('branches')   && <Branches />}
+        {screen === 'services'   && can('services')   && <Services />}
+        {screen === 'customers'  && can('customers')  && <Customers />}
+        {screen === 'expenses'   && can('expenses')   && <Expenses />}
+        {screen === 'inventory'  && can('inventory')  && <Inventory />}
+        {screen === 'attendance' && can('attendance') && <Attendance onPayroll={() => setScreen('payroll')} />}
+        {screen === 'payroll'    && can('payroll')    && <Payroll onAttendance={() => setScreen('attendance')} user={user} />}
+        {screen === 'kiosk'      && can('kiosk')      && <KioskConfig />}
+        {screen === 'settings'   && can('settings')   && <Settings user={user} />}
       </main>
     </div>
   )

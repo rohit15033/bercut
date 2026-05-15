@@ -22,6 +22,40 @@ router.get('/', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// ── Purchase Orders ────────────────────────────────────────────────────────────
+
+router.get('/purchase-orders', requireAdmin, async (req, res) => {
+  try {
+    const { branch_id } = req.query
+    const conds = branch_id ? ['branch_id = $1'] : []
+    const vals  = branch_id ? [branch_id] : []
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
+    const { rows } = await pool.query(
+      `SELECT * FROM purchase_orders ${where} ORDER BY created_at DESC`, vals)
+    res.json(rows)
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+router.post('/purchase-orders', requireAdmin, async (req, res) => {
+  try {
+    const { branch_id, supplier, notes, order_date } = req.body
+    const { rows } = await pool.query(
+      `INSERT INTO purchase_orders (branch_id, supplier, notes, order_date, created_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [branch_id, supplier||null, notes||null, order_date, req.user.id])
+    res.status(201).json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// ── Expense Categories ─────────────────────────────────────────────────────────
+
+router.get('/categories', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY label')
+    res.json(rows)
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // ── GET /api/expenses/:id ──────────────────────────────────────────────────────
 router.get('/:id', requireAdmin, async (req, res) => {
   try {
@@ -113,40 +147,6 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM expenses WHERE id = $1', [req.params.id])
     res.json({ ok: true })
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
-})
-
-// ── Purchase Orders ────────────────────────────────────────────────────────────
-
-router.get('/purchase-orders', requireAdmin, async (req, res) => {
-  try {
-    const { branch_id } = req.query
-    const conds = branch_id ? ['branch_id = $1'] : []
-    const vals  = branch_id ? [branch_id] : []
-    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
-    const { rows } = await pool.query(
-      `SELECT * FROM purchase_orders ${where} ORDER BY created_at DESC`, vals)
-    res.json(rows)
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
-})
-
-router.post('/purchase-orders', requireAdmin, async (req, res) => {
-  try {
-    const { branch_id, supplier, notes, order_date } = req.body
-    const { rows } = await pool.query(
-      `INSERT INTO purchase_orders (branch_id, supplier, notes, order_date, created_by)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [branch_id, supplier||null, notes||null, order_date, req.user.id])
-    res.status(201).json(rows[0])
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
-})
-
-// ── Expense Categories ─────────────────────────────────────────────────────────
-
-router.get('/categories', requireAdmin, async (req, res) => {
-  try {
-    const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY label')
-    res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 

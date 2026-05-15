@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { tokens as T } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
+import * as XLSX from 'xlsx'
 
 const fmt  = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const fmtM = n => {
@@ -209,7 +210,9 @@ export default function Expenses() {
   const [errors,        setErrors]        = useState({})
   const [saving,        setSaving]        = useState(false)
   const [saved,         setSaved]         = useState(false)
-  const formRef = useRef(null)
+  const [exportOpen,    setExportOpen]    = useState(false)
+  const formRef   = useRef(null)
+  const exportRef = useRef(null)
 
   useEffect(() => {
     api.get('/branches').then(d => {
@@ -321,6 +324,74 @@ export default function Expenses() {
     setSaving(false)
   }
 
+  function buildExportRows() {
+    const header = ['Date','Type','Branch','Description','Source','Amount (IDR)','Item','Qty','Unit','Submitted By']
+    const rows = [header]
+    expenses.forEach(e => {
+      const isInv      = e.type === 'inventory'
+      const dateStr    = fmtDate((e.expense_date || '').slice(0, 10))
+      const typeLabel  = TYPE_BADGE[e.type]?.label || e.type
+      const srcLabel   = e.source === 'petty_cash' ? 'Petty Cash' : e.source === 'owner' ? 'Owner' : ''
+      const byName     = e.created_by_name || 'Admin'
+      const amount     = Number(e.amount || 0)
+
+      if (!isInv) {
+        const bName = branches.find(b => b.id === e.branch_id)?.name || ''
+        rows.push([dateStr, typeLabel, bName, e.description || '', srcLabel, amount, '', '', '', byName])
+        return
+      }
+
+      const cached = expandCache[e.id]
+      const isSingle = !!e.branch_id || (cached && cached.length <= 1)
+
+      if (isSingle) {
+        const bName = e.branch_id
+          ? (branches.find(b => b.id === e.branch_id)?.name || '')
+          : cached?.length === 1 ? (branches.find(b => b.id === cached[0].branch_id)?.name || '') : ''
+        const it = cached?.[0]
+        rows.push([dateStr, typeLabel, bName, e.description || '', srcLabel, amount, it?.item_name || '', it?.quantity_received ?? '', it?.unit || '', byName])
+      } else {
+        const totalQty = cached ? cached.reduce((s, d) => s + (d.quantity_received || 0), 0) : ''
+        const itemName = cached?.[0]?.item_name || e.description || ''
+        const unit     = cached?.[0]?.unit || ''
+        rows.push([dateStr, typeLabel, 'Multiple', e.description || '', srcLabel, amount, itemName, totalQty, unit, byName])
+        if (cached) {
+          const subCosts = computeSmartDist(amount, cached.map(d => ({ branch_id: d.branch_id, qty: d.quantity_received })))
+          cached.forEach((d, di) => {
+            const dBranch = branches.find(b => b.id === d.branch_id)?.name || ''
+            rows.push(['', '  ↳', dBranch, `${d.quantity_received} ${d.unit} · ${d.item_name || ''}`, '', subCosts[di] ?? '', d.item_name || '', d.quantity_received ?? '', d.unit || '', ''])
+          })
+        }
+      }
+    })
+    return rows
+  }
+
+  function exportCSV() {
+    setExportOpen(false)
+    const rows = buildExportRows()
+    const escape = v => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s }
+    const csv = rows.map(r => r.map(escape).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
+    a.download = `bercut-expenses-${todayISO()}.csv`
+    a.click()
+  }
+
+  function exportXLSX() {
+    setExportOpen(false)
+    const rows = buildExportRows()
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    const range = XLSX.utils.decode_range(ws['!ref'])
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: 0, c })]
+      if (cell) cell.s = { font: { bold: true } }
+    }
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Expenses')
+    XLSX.writeFile(wb, `bercut-expenses-${todayISO()}.xlsx`)
+  }
+
   const totalExpenses = expenses.reduce((a, e) => a + Number(e.amount || 0), 0)
 
   const TYPE_BADGE = {
@@ -347,10 +418,36 @@ export default function Expenses() {
           <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>Expenses</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Log operating costs, stock purchases, and salary advances</div>
         </div>
-        <button onClick={() => { if (showForm) switchType('regular'); setShowForm(v => !v) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: showForm ? T.surface2 : T.topBg, color: showForm ? T.text : T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', transition: 'all 0.15s' }}>
-          {showForm ? '✕ Cancel' : '+ Add Expense'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div ref={exportRef} style={{ position: 'relative' }}>
+            {exportOpen && <div onClick={() => setExportOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />}
+            <button onClick={() => setExportOpen(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: '1px solid ' + T.border, cursor: 'pointer' }}>
+              ↓ Export <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+            </button>
+            {exportOpen && (
+              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100, background: T.white, borderRadius: 10, border: '1px solid ' + T.border, boxShadow: '0 8px 24px rgba(0,0,0,0.10)', overflow: 'hidden', minWidth: 160 }}>
+                <button onClick={exportCSV}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '11px 16px', background: 'none', border: 'none', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, color: T.text, cursor: 'pointer', textAlign: 'left' }}
+                  onMouseEnter={e => e.currentTarget.style.background = T.bg}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <span style={{ fontSize: 15 }}>📄</span> CSV
+                </button>
+                <div style={{ height: 1, background: T.surface }} />
+                <button onClick={exportXLSX}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '11px 16px', background: 'none', border: 'none', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, color: T.text, cursor: 'pointer', textAlign: 'left' }}
+                  onMouseEnter={e => e.currentTarget.style.background = T.bg}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <span style={{ fontSize: 15 }}>📊</span> Excel (.xlsx)
+                </button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => { if (showForm) switchType('regular'); setShowForm(v => !v) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: showForm ? T.surface2 : T.topBg, color: showForm ? T.text : T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', transition: 'all 0.15s' }}>
+            {showForm ? '✕ Cancel' : '+ Add Expense'}
+          </button>
+        </div>
       </div>
 
       {/* Add form */}

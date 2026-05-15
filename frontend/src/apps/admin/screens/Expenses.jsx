@@ -42,6 +42,124 @@ function computeSmartDist(totalAmount, lines) {
   return lines.map(l => (l.branch_id && (Number(l.qty) || 0) > 0) ? costs[vIdx++] : null)
 }
 
+// ── EditExpenseModal ──────────────────────────────────────────────────────────
+
+function EditExpenseModal({ expense, categories, onSaved, onClose }) {
+  const [eDate,   setEDate]   = useState((expense.expense_date || '').slice(0, 10))
+  const [eAmount, setEAmount] = useState(String(expense.amount || ''))
+  const [eDesc,   setEDesc]   = useState(expense.description || '')
+  const [eCatId,  setECatId]  = useState(String(expense.category_id || ''))
+  const [eSource, setESource] = useState(expense.source || 'petty_cash')
+  const [saving,  setSaving]  = useState(false)
+  const [err,     setErr]     = useState('')
+
+  const isRegular   = expense.type === 'regular'
+  const isInventory = expense.type === 'inventory'
+  const isKasbon    = expense.type === 'kasbon'
+
+  async function handleSave() {
+    if (!eAmount || parseInt(eAmount) <= 0) { setErr('Amount required'); return }
+    setSaving(true)
+    try {
+      const body = { expense_date: eDate, amount: parseInt(eAmount), description: eDesc.trim() || null }
+      if (isRegular)   { body.category_id = eCatId || null; body.source = eSource }
+      if (isInventory) { body.source = eSource }
+      const updated = await api.patch('/expenses/' + expense.id, body)
+      onSaved(updated)
+    } catch { setErr('Save failed') }
+    setSaving(false)
+  }
+
+  const inp = { padding: '8px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, background: T.white, fontSize: 13, color: T.text, width: '100%', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="admin-card" style={{ width: 420, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text }}>Edit Expense</div>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <label style={{ ...LS, color: T.muted }}>Date</label>
+            <input type="date" value={eDate} onChange={e => setEDate(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={{ ...LS, color: err ? T.danger : T.muted }}>Amount (IDR) *</label>
+            <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (err ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
+              <span style={{ padding: '8px 9px', fontSize: 12, color: T.muted, borderRight: '1px solid ' + T.border }}>Rp</span>
+              <input type="number" value={eAmount} onChange={e => { setEAmount(e.target.value); setErr('') }}
+                style={{ flex: 1, padding: '8px 9px', border: 'none', fontSize: 13, color: T.text, background: 'transparent' }} />
+            </div>
+          </div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ ...LS, color: T.muted }}>{isKasbon ? 'Note' : 'Description'}</label>
+          <input value={eDesc} onChange={e => setEDesc(e.target.value)} style={inp} />
+        </div>
+        {(isRegular || isInventory) && (
+          <div style={{ display: 'grid', gridTemplateColumns: isRegular ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 12 }}>
+            {isRegular && (
+              <div>
+                <label style={{ ...LS, color: T.muted }}>Category</label>
+                <select value={eCatId} onChange={e => setECatId(e.target.value)} style={{ ...inp, padding: '8px 10px' }}>
+                  <option value=''>— None —</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label style={{ ...LS, color: T.muted }}>Source</label>
+              <select value={eSource} onChange={e => setESource(e.target.value)} style={{ ...inp, padding: '8px 10px' }}>
+                <option value='petty_cash'>Petty Cash</option>
+                <option value='owner'>Owner</option>
+              </select>
+            </div>
+          </div>
+        )}
+        {err && <div style={{ fontSize: 12, color: T.danger, marginBottom: 10 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── DeleteConfirmModal ────────────────────────────────────────────────────────
+
+function DeleteConfirmModal({ expense, onDeleted, onClose }) {
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await api.delete('/expenses/' + expense.id)
+      onDeleted(expense.id)
+    } catch { setDeleting(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="admin-card" style={{ width: 360, padding: '24px 28px', animation: 'scaleIn 0.18s ease both' }}>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 16, color: T.text, marginBottom: 8 }}>Delete Expense?</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>
+          {expense.description || expense.category_name || 'This expense'} — <strong style={{ color: T.text }}>{'Rp ' + Number(expense.amount || 0).toLocaleString('id-ID')}</strong>. This cannot be undone.
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '10px', borderRadius: 8, background: T.danger, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}>
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Category Modal ────────────────────────────────────────────────────────────
 
 function CategoryModal({ onConfirm, onClose }) {
@@ -211,6 +329,8 @@ export default function Expenses() {
   const [saving,        setSaving]        = useState(false)
   const [saved,         setSaved]         = useState(false)
   const [exportOpen,    setExportOpen]    = useState(false)
+  const [editingExp,    setEditingExp]    = useState(null)
+  const [deletingExp,   setDeletingExp]   = useState(null)
   const formRef   = useRef(null)
   const exportRef = useRef(null)
 
@@ -406,6 +526,27 @@ export default function Expenses() {
         <CategoryModal
           onConfirm={cat => { setCategories(c => [...c, cat]); setFCatId(String(cat.id)); setShowCreateCat(false) }}
           onClose={() => setShowCreateCat(false)}
+        />
+      )}
+      {editingExp && (
+        <EditExpenseModal
+          expense={editingExp}
+          categories={categories}
+          onSaved={updated => {
+            setExpenses(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e))
+            setEditingExp(null)
+          }}
+          onClose={() => setEditingExp(null)}
+        />
+      )}
+      {deletingExp && (
+        <DeleteConfirmModal
+          expense={deletingExp}
+          onDeleted={id => {
+            setExpenses(prev => prev.filter(e => e.id !== id))
+            setDeletingExp(null)
+          }}
+          onClose={() => setDeletingExp(null)}
         />
       )}
 
@@ -653,8 +794,8 @@ export default function Expenses() {
 
       {/* Table */}
       <div className="admin-card" style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
-          {['','Date','Type','Branch','Description','Source','Amount','By'].map((h, i) => (
+        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr 56px', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
+          {['','Date','Type','Branch','Description','Source','Amount','By',''].map((h, i) => (
             <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>{h}</div>
           ))}
         </div>
@@ -711,7 +852,7 @@ export default function Expenses() {
 
             return (
               <div key={e.id} style={{ borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr 56px', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
                   onClick={toggleExpand}
                   onMouseEnter={ev => { if (!isExpanded) ev.currentTarget.style.background = T.bg }}
                   onMouseLeave={ev => { if (!isExpanded) ev.currentTarget.style.background = 'transparent' }}>
@@ -727,12 +868,18 @@ export default function Expenses() {
                   <div style={{ fontSize: 11, color: T.muted }}>{sourceLabel}</div>
                   <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{isExpanded ? '' : fmt(e.amount)}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }} onClick={ev => ev.stopPropagation()}>
+                    <button onClick={() => setEditingExp(e)} title="Edit"
+                      style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: T.surface, color: T.text2, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✎</button>
+                    <button onClick={() => setDeletingExp(e)} title="Delete"
+                      style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: '#FEE2E2', color: T.danger, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                  </div>
                 </div>
                 {isExpanded && subRows && subRows.map((d, di) => {
                   const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? '—'
                   const dDesc = `${d.quantity_received} ${d.unit}${d.item_name ? ' · ' + d.item_name : ''}`
                   return (
-                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
+                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr 56px', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
                       <div />
                       <div />
                       <div />
@@ -740,6 +887,7 @@ export default function Expenses() {
                       <div style={{ fontSize: 11, color: T.muted }}>{dDesc}</div>
                       <div />
                       <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: T.text }}>{subCosts[di] != null ? fmt(subCosts[di]) : '—'}</div>
+                      <div />
                       <div />
                     </div>
                   )

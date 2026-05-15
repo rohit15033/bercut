@@ -74,10 +74,16 @@ router.get('/:id', requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT e.*, ec.label AS category_name,
-              json_agg(esi ORDER BY esi.id) FILTER (WHERE esi.id IS NOT NULL) AS stock_items
+              json_agg(
+                json_build_object(
+                  'id', esi.id, 'item_id', esi.item_id, 'item_name', ii.name,
+                  'branch_id', esi.branch_id, 'quantity_received', esi.quantity_received, 'unit', esi.unit
+                ) ORDER BY esi.id
+              ) FILTER (WHERE esi.id IS NOT NULL) AS stock_items
        FROM expenses e
        LEFT JOIN expense_categories ec ON ec.id = e.category_id
        LEFT JOIN expense_stock_items esi ON esi.expense_id = e.id
+       LEFT JOIN inventory_items ii ON ii.id = esi.item_id
        WHERE e.id = $1 GROUP BY e.id, ec.label`, [req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
     res.json(rows[0])
@@ -104,12 +110,15 @@ router.post('/', requireAdmin, async (req, res) => {
       return res.status(400).json({ message: 'branch_id required' })
     }
 
+    const validItems = stock_items.filter(i => i.branch_id)
+    const resolvedBranchId = branch_id || (type === 'inventory' && validItems.length === 1 ? validItems[0].branch_id : null)
+
     const { rows } = await client.query(
       `INSERT INTO expenses
          (branch_id, type, category_id, description, amount, expense_date, source,
           po_id, po_attribution, barber_id, deduct_period, submitted_by, receipt_url)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [branch_id||null, type, category_id||null, description||null, amount, expense_date,
+      [resolvedBranchId||null, type, category_id||null, description||null, amount, expense_date,
        source||'petty_cash', po_id||null, po_attribution||null,
        barber_id||null, deduct_period||null, req.user.id, ''])
     const expense = rows[0]

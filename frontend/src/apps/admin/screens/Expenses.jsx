@@ -235,7 +235,15 @@ export default function Expenses() {
     if (filterFrom)         qs.set('date_from', filterFrom)
     if (filterTo)           qs.set('date_to', filterTo)
     api.get('/expenses?' + qs.toString())
-      .then(d => setExpenses(d || []))
+      .then(d => {
+        const exps = d || []
+        setExpenses(exps)
+        exps.filter(e => e.type === 'inventory' && !e.branch_id).forEach(e => {
+          api.get('/expenses/' + e.id)
+            .then(detail => setExpandCache(c => ({ ...c, [e.id]: detail.stock_items || [] })))
+            .catch(() => {})
+        })
+      })
       .catch(() => setExpenses([]))
       .finally(() => setLoading(false))
   }, [filterBranch, filterType, filterFrom, filterTo])
@@ -564,20 +572,36 @@ export default function Expenses() {
           {expenses.map((e, i) => {
             const badge = TYPE_BADGE[e.type] || { label: e.type, color: T.muted, bg: T.surface }
             const isInv = e.type === 'inventory'
-            const isExpanded = isInv && expandedId === e.id
             const sourceLabel = e.source === 'petty_cash' ? 'Petty Cash' : e.source === 'owner' ? 'Owner' : '—'
             const cachedItems = expandCache[e.id]
 
-            const branchName = !isInv || e.branch_id
+            // Single-branch: branch_id set on expense OR only 1 stock_item line
+            const isSingleBranch = !isInv || !!e.branch_id || (cachedItems && cachedItems.length <= 1)
+            const isExpandable = isInv && !isSingleBranch
+            const isExpanded = isExpandable && expandedId === e.id
+
+            const branchName = !isInv
               ? (branches.find(b => b.id === e.branch_id)?.name ?? '—')
-              : cachedItems
-                ? cachedItems.length === 1
-                  ? (branches.find(b => b.id === cachedItems[0].branch_id)?.name ?? '—')
-                  : 'Multiple'
-                : '—'
+              : e.branch_id
+                ? (branches.find(b => b.id === e.branch_id)?.name ?? '—')
+                : cachedItems
+                  ? cachedItems.length === 1
+                    ? (branches.find(b => b.id === cachedItems[0].branch_id)?.name ?? '—')
+                    : 'Multiple'
+                  : '…'
+
+            // Collapsed multi-branch inventory description: "total qty · item name"
+            const invCollapsedDesc = isInv && isExpandable && cachedItems
+              ? (() => {
+                  const totalQty = cachedItems.reduce((s, d) => s + (d.quantity_received || 0), 0)
+                  const itemName = cachedItems[0]?.item_name || e.description || '—'
+                  const unit = cachedItems[0]?.unit || 'pcs'
+                  return `${totalQty} ${unit} · ${itemName}`
+                })()
+              : null
 
             async function toggleExpand() {
-              if (!isInv) return
+              if (!isExpandable) return
               const next = expandedId === e.id ? null : e.id
               setExpandedId(next)
               if (next && !expandCache[e.id]) {
@@ -588,47 +612,44 @@ export default function Expenses() {
               }
             }
 
-            const subRows = isExpanded ? (cachedItems ?? null) : null
+            const subRows = isExpanded ? cachedItems : null
             const subCosts = subRows ? computeSmartDist(Number(e.amount), subRows.map(d => ({ branch_id: d.branch_id, qty: d.quantity_received }))) : []
 
             return (
               <div key={e.id} style={{ borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '12px 18px', alignItems: 'center', cursor: isInv ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
                   onClick={toggleExpand}
                   onMouseEnter={ev => { if (!isExpanded) ev.currentTarget.style.background = T.bg }}
                   onMouseLeave={ev => { if (!isExpanded) ev.currentTarget.style.background = 'transparent' }}>
-                  <div style={{ fontSize: 11, color: T.muted, userSelect: 'none' }}>{isInv ? (isExpanded ? '▼' : '▶') : ''}</div>
+                  <div style={{ fontSize: 11, color: T.muted, userSelect: 'none' }}>{isExpandable ? (isExpanded ? '▼' : '▶') : ''}</div>
                   <div style={{ fontSize: 12, color: T.muted }}>{fmtDate((e.expense_date || '').slice(0, 10))}</div>
                   <div>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: badge.bg, color: badge.color }}>{badge.label}</span>
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{branchName}</div>
-                  <div style={{ fontSize: 12, color: T.text, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.description || e.category_name || '—'}</div>
+                  <div style={{ fontSize: 12, color: T.text, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {isExpanded ? '' : (invCollapsedDesc || e.description || e.category_name || '—')}
+                  </div>
                   <div style={{ fontSize: 11, color: T.muted }}>{sourceLabel}</div>
-                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{isExpanded ? '—' : fmt(e.amount)}</div>
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{isExpanded ? '' : fmt(e.amount)}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
                 </div>
-                {isExpanded && (
-                  subRows === null
-                    ? <div style={{ padding: '8px 18px 8px 58px', fontSize: 12, color: T.muted, background: T.bg }}>Loading…</div>
-                    : subRows.length === 0
-                      ? <div style={{ padding: '8px 18px 8px 58px', fontSize: 12, color: T.muted, background: T.bg }}>No distribution data</div>
-                      : subRows.map((d, di) => {
-                          const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? '—'
-                          return (
-                            <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
-                              <div />
-                              <div />
-                              <div />
-                              <div style={{ fontSize: 11, fontWeight: 600, color: T.text2, paddingLeft: 8 }}>{dBranch}</div>
-                              <div style={{ fontSize: 11, color: T.muted }}>{d.quantity_received} {d.unit}</div>
-                              <div />
-                              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: T.text }}>{subCosts[di] != null ? fmt(subCosts[di]) : '—'}</div>
-                              <div />
-                            </div>
-                          )
-                        })
-                )}
+                {isExpanded && subRows && subRows.map((d, di) => {
+                  const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? '—'
+                  const dDesc = `${d.quantity_received} ${d.unit}${d.item_name ? ' · ' + d.item_name : ''}`
+                  return (
+                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
+                      <div />
+                      <div />
+                      <div />
+                      <div style={{ fontSize: 11, fontWeight: 600, color: T.text2, paddingLeft: 8 }}>{dBranch}</div>
+                      <div style={{ fontSize: 11, color: T.muted }}>{dDesc}</div>
+                      <div />
+                      <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: T.text }}>{subCosts[di] != null ? fmt(subCosts[di]) : '—'}</div>
+                      <div />
+                    </div>
+                  )
+                })}
               </div>
             )
           })}

@@ -9,7 +9,7 @@ ssh "$VPS" bash << 'REMOTE'
   cd /var/www/bercut
   git pull origin main
   cd backend && npm install --omit=dev --silent && cd ..
-  cd frontend && npm install --silent && npm run build && cd ..
+  cd frontend && npm ci --silent && npm run build && cd ..
   pm2 restart bercut-backend
   echo ""
   pm2 status

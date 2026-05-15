@@ -516,6 +516,7 @@ function WhatsAppTab() {
 
 // ── Users tab (owner-only) ────────────────────────────────────────────────────
 const SECTIONS = [
+  { key: 'overview',       label: 'Overview'       },
   { key: 'reports',        label: 'Reports'        },
   { key: 'barbers',        label: 'Barbers'        },
   { key: 'services',       label: 'Services'       },

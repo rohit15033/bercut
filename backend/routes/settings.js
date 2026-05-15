@@ -157,7 +157,10 @@ router.patch('/users/:id', requireAdmin, requireOwner, async (req, res) => {
 })
 
 // ── User Permissions ───────────────────────────────────────────────────────────
-router.get('/users/:id/permissions', requireAdmin, requireOwner, async (req, res) => {
+router.get('/users/:id/permissions', requireAdmin, async (req, res) => {
+  if (req.user.role !== 'owner' && String(req.user.id) !== String(req.params.id)) {
+    return res.status(403).json({ message: 'Owner access required' })
+  }
   try {
     const { rows } = await pool.query(
       'SELECT * FROM user_permissions WHERE user_id = $1', [req.params.id])

@@ -220,13 +220,23 @@ export default function AdminApp() {
 
   const handleLogout = () => { setToken(null); setUser(null); setUserPerms({}) }
 
-  // Filter nav: overview always visible; sections where is_enabled=false are hidden
+  const toSectionKey = key => key === 'live' ? 'live_monitor' : key === 'kiosk' ? 'kiosk_config' : key
+
   const visibleNav = NAV.filter(item => {
-    if (item.key === 'overview') return true
-    const sectionKey = item.key === 'live' ? 'live_monitor' : item.key === 'kiosk' ? 'kiosk_config' : item.key === 'settings' ? 'settings' : item.key
     if (user?.role === 'owner') return true
+    const sectionKey = toSectionKey(item.key)
     return userPerms[sectionKey] !== false
   })
+
+  // Redirect to first allowed screen once perms are loaded
+  useEffect(() => {
+    if (!user || user.role === 'owner') return
+    if (Object.keys(userPerms).length === 0) return
+    const allowedKeys = NAV
+      .filter(item => userPerms[toSectionKey(item.key)] !== false)
+      .map(item => item.key)
+    if (!allowedKeys.includes(screen)) setScreen(allowedKeys[0] || 'overview')
+  }, [userPerms]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (

@@ -70,6 +70,21 @@ async function generateClosingReportData(branch_id, date) {
   )
   const tip = parseFloat(tipRows[0].tip) || 0
 
+  const { rows: allSoldRows } = await pool.query(
+    `SELECT ii.name, SUM(im.quantity) AS qty
+     FROM inventory_movements im
+     JOIN inventory_items ii ON ii.id = im.item_id
+     WHERE im.branch_id = $1
+       AND im.movement_type = 'out'
+       AND DATE(im.created_at AT TIME ZONE 'Asia/Makassar') = $2
+       AND ii.category IN ('beverage','product')
+     GROUP BY ii.name ORDER BY ii.name`,
+    [branch_id, date]
+  )
+  const items_sold = allSoldRows.length
+    ? allSoldRows.map(r => `- ${r.name} ${r.qty}`).join('\n')
+    : '-'
+
   const { rows: bevSoldRows } = await pool.query(
     `SELECT ii.name, SUM(im.quantity) AS qty
      FROM inventory_movements im
@@ -77,7 +92,7 @@ async function generateClosingReportData(branch_id, date) {
      WHERE im.branch_id = $1
        AND im.movement_type = 'out'
        AND DATE(im.created_at AT TIME ZONE 'Asia/Makassar') = $2
-       AND ii.category = 'beverages'
+       AND ii.category = 'beverage'
      GROUP BY ii.name ORDER BY ii.name`,
     [branch_id, date]
   )
@@ -90,7 +105,7 @@ async function generateClosingReportData(branch_id, date) {
      FROM inventory_stock ist
      JOIN inventory_items ii ON ii.id = ist.item_id
      WHERE ist.branch_id = $1
-       AND ii.category = 'beverages'
+       AND ii.category = 'beverage'
      ORDER BY ii.name`,
     [branch_id]
   )
@@ -105,7 +120,7 @@ async function generateClosingReportData(branch_id, date) {
      WHERE im.branch_id = $1
        AND im.movement_type = 'out'
        AND DATE(im.created_at AT TIME ZONE 'Asia/Makassar') = $2
-       AND ii.category = 'products'
+       AND ii.category = 'product'
      GROUP BY ii.name ORDER BY ii.name`,
     [branch_id, date]
   )
@@ -118,7 +133,7 @@ async function generateClosingReportData(branch_id, date) {
      FROM inventory_stock ist
      JOIN inventory_items ii ON ii.id = ist.item_id
      WHERE ist.branch_id = $1
-       AND ii.category = 'products'
+       AND ii.category = 'product'
      ORDER BY ii.name`,
     [branch_id]
   )
@@ -133,6 +148,7 @@ async function generateClosingReportData(branch_id, date) {
     card,
     qr,
     tip,
+    items_sold,
     beverages_sold,
     beverages_stock,
     styling_sold,

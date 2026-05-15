@@ -368,7 +368,7 @@ const DEFAULT_TEMPLATES = {
   tpl_autoreply: 'Hi! This number is automated and cannot reply to messages. For directions or to find us, visit: https://maps.app.goo.gl/nheFJ1Mxm76xLaPD6 — Bercut Barbershop Kerobokan',
 }
 
-const DEFAULT_CLOSING_TEMPLATE = 'CLOSING REPORT {{branch}} {{date}}\n\nTotal Penjualan: {{total_penjualan}}\nTotal Pax: {{total_pax}} pax\n\nCASH : {{cash}}\nCARD : {{card}}\nQR   : {{qr}}\nTIP  : {{tip}}\n\nProduk Terjual\n{{beverages_sold}}\n\nSisa Stock Produk\n{{beverages_stock}}\n\nProduk Hair Styling\n{{styling_sold}}'
+const DEFAULT_CLOSING_TEMPLATE = 'CLOSING REPORT {{branch}} {{date}}\n\nTotal Penjualan: {{total_penjualan}}\nTotal Pax: {{total_pax}} pax\n\nCASH : {{cash}}\nCARD : {{card}}\nQR   : {{qr}}\nTIP  : {{tip}}\n\nProduk & Minuman Terjual\n{{items_sold}}\n\nSisa Stok Minuman\n{{beverages_stock}}\n\nSisa Stok Produk\n{{styling_stock}}'
 const DEFAULT_MONITORING_TEMPLATE = 'Report Pax & Service {{branch}} {{date}}\n\nPax: {{total_pax}} pax\n{{services_breakdown}}'
 
 function WhatsAppTab() {
@@ -551,7 +551,7 @@ function WhatsAppTab() {
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted }}>Template</label>
               {!cfg.tpl_closing_report && <button onClick={() => set('tpl_closing_report', DEFAULT_CLOSING_TEMPLATE)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.card, color: T.text, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Load Default</button>}
             </div>
-            <div style={{ fontSize: 11, color: T.muted, marginBottom: 5 }}>Placeholders: {'{{branch}}'} {'{{date}}'} {'{{total_penjualan}}'} {'{{total_pax}}'} {'{{cash}}'} {'{{card}}'} {'{{qr}}'} {'{{tip}}'} {'{{beverages_sold}}'} {'{{beverages_stock}}'} {'{{styling_sold}}'} {'{{styling_stock}}'}</div>
+            <div style={{ fontSize: 11, color: T.muted, marginBottom: 5 }}>Placeholders: {'{{branch}}'} {'{{date}}'} {'{{total_penjualan}}'} {'{{total_pax}}'} {'{{cash}}'} {'{{card}}'} {'{{qr}}'} {'{{tip}}'} {'{{items_sold}}'} {'{{beverages_sold}}'} {'{{beverages_stock}}'} {'{{styling_sold}}'} {'{{styling_stock}}'}</div>
             <textarea value={cfg.tpl_closing_report || ''} onChange={e => set('tpl_closing_report', e.target.value)}
               rows={10} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${T.border}`, fontSize: 13, background: T.card, color: T.text, fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }}
               placeholder={'CLOSING REPORT {{branch}} {{date}}\n\nTotal Penjualan: {{total_penjualan}}\nTotal Pax: {{total_pax}} pax\n\nCASH : {{cash}}\nCARD : {{card}}\nQR   : {{qr}}\nTIP  : {{tip}}\n\nProduk Terjual\n{{beverages_sold}}\n\nSisa Stock Produk\n{{beverages_stock}}\n\nProduk Hair Styling\n{{styling_sold}}'} />

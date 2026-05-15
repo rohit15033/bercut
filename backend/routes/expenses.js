@@ -93,6 +93,7 @@ router.post('/', requireAdmin, async (req, res) => {
       branch_id, type = 'regular', category_id, description,
       amount, expense_date, source,
       po_id, po_attribution,
+      barber_id, deduct_period,
       stock_items = []
     } = req.body
 
@@ -106,10 +107,11 @@ router.post('/', requireAdmin, async (req, res) => {
     const { rows } = await client.query(
       `INSERT INTO expenses
          (branch_id, type, category_id, description, amount, expense_date, source,
-          po_id, po_attribution, submitted_by, receipt_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+          po_id, po_attribution, barber_id, deduct_period, submitted_by, receipt_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [branch_id||null, type, category_id||null, description||null, amount, expense_date,
-       source||'petty_cash', po_id||null, po_attribution||null, req.user.id, ''])
+       source||'petty_cash', po_id||null, po_attribution||null,
+       barber_id||null, deduct_period||null, req.user.id, ''])
     const expense = rows[0]
 
     for (const item of stock_items) {

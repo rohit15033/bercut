@@ -350,18 +350,15 @@ export default function Expenses() {
           : cached?.length === 1 ? (branches.find(b => b.id === cached[0].branch_id)?.name || '') : ''
         const it = cached?.[0]
         rows.push([dateStr, typeLabel, bName, e.description || '', srcLabel, amount, it?.item_name || '', it?.quantity_received ?? '', it?.unit || '', byName])
+      } else if (cached) {
+        const subCosts = computeSmartDist(amount, cached.map(d => ({ branch_id: d.branch_id, qty: d.quantity_received })))
+        cached.forEach((d, di) => {
+          const dBranch = branches.find(b => b.id === d.branch_id)?.name || ''
+          rows.push([dateStr, typeLabel, dBranch, `${d.quantity_received} ${d.unit} · ${d.item_name || e.description || ''}`, srcLabel, subCosts[di] ?? '', d.item_name || '', d.quantity_received ?? '', d.unit || '', byName])
+        })
       } else {
-        const totalQty = cached ? cached.reduce((s, d) => s + (d.quantity_received || 0), 0) : ''
-        const itemName = cached?.[0]?.item_name || e.description || ''
-        const unit     = cached?.[0]?.unit || ''
-        rows.push([dateStr, typeLabel, 'Multiple', e.description || '', srcLabel, amount, itemName, totalQty, unit, byName])
-        if (cached) {
-          const subCosts = computeSmartDist(amount, cached.map(d => ({ branch_id: d.branch_id, qty: d.quantity_received })))
-          cached.forEach((d, di) => {
-            const dBranch = branches.find(b => b.id === d.branch_id)?.name || ''
-            rows.push(['', '  ↳', dBranch, `${d.quantity_received} ${d.unit} · ${d.item_name || ''}`, '', subCosts[di] ?? '', d.item_name || '', d.quantity_received ?? '', d.unit || '', ''])
-          })
-        }
+        // cached not loaded yet — emit a placeholder row
+        rows.push([dateStr, typeLabel, 'Multiple', e.description || '', srcLabel, amount, '', '', '', byName])
       }
     })
     return rows
@@ -422,8 +419,8 @@ export default function Expenses() {
           <div ref={exportRef} style={{ position: 'relative' }}>
             {exportOpen && <div onClick={() => setExportOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />}
             <button onClick={() => setExportOpen(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: '1px solid ' + T.border, cursor: 'pointer' }}>
-              ↓ Export <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+              ↓ Export <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
             </button>
             {exportOpen && (
               <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100, background: T.white, borderRadius: 10, border: '1px solid ' + T.border, boxShadow: '0 8px 24px rgba(0,0,0,0.10)', overflow: 'hidden', minWidth: 160 }}>

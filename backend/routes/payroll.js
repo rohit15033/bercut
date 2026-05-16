@@ -87,6 +87,8 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
       const excusedDays   = offRows.rows.filter(r => r.type === 'excused').length
 
       // Bookings: regular vs OT (by scheduled time)
+      // commission_amount uses snapshotted rate per service, falls back to barber rate
+      const fallbackRate = parseFloat(barber.commission_rate || 40)
       const bkRows = await client.query(
         `SELECT
            EXTRACT(EPOCH FROM (
@@ -94,23 +96,29 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
              COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id), 0) -
              bk.points_redeemed * 100
            )) AS total_amount,
+           COALESCE((
+             SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
+             FROM booking_services bsv
+             WHERE bsv.booking_id = bk.id
+           ), 0) AS commission_amount,
            TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
          FROM bookings bk
          WHERE bk.barber_id = $1
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
            AND bk.status = 'completed'`,
-        [barber.id, period_from, period_to])
+        [barber.id, period_from, period_to, fallbackRate])
 
-      let grossRevReg = 0, grossRevOt = 0
+      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0
       for (const bk of bkRows.rows) {
         const isOt = otEnabled && bk.slot_time >= otThresholdTime
-        const amt = Math.max(0, parseFloat(bk.total_amount || 0))
-        if (isOt) grossRevOt += amt; else grossRevReg += amt
+        const amt  = Math.max(0, parseFloat(bk.total_amount || 0))
+        const comm = Math.max(0, parseFloat(bk.commission_amount || 0))
+        if (isOt) { grossRevOt += amt; commOtBase += comm }
+        else       { grossRevReg += amt; commRegBase += comm }
       }
       const grossRevTotal = grossRevReg + grossRevOt
-      const commRate = parseFloat(barber.commission_rate || 40) / 100
-      const commRegular = Math.round(grossRevReg * commRate)
-      const commOt      = Math.round(grossRevOt  * commRate * (1 + otBonusPct / 100))
+      const commRegular = Math.round(commRegBase)
+      const commOt      = Math.round(commOtBase * (1 + otBonusPct / 100))
 
       // Tips
       const tipsResult = await client.query(

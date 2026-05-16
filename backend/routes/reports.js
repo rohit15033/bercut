@@ -180,9 +180,9 @@ router.get('/transactions', requireAdmin, async (req, res) => {
                   'service_name',    s.name,
                   'price',           bsv.price_charged,
                   'category',        s.category,
-                  'commission_rate', COALESCE(bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate),
+                  'commission_rate', COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate),
                   'commission',      ROUND(bsv.price_charged *
-                                       COALESCE(bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)
+                                       COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)
                 ) ORDER BY s.name
               )
               FROM booking_services bsv

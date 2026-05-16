@@ -98,13 +98,16 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       }
     }
 
-    // fetch branch services (validates + gets price)
+    // fetch branch services (validates + gets price + snapshots commission rate)
     const svcRows = await client.query(
-      `SELECT s.id, COALESCE(bs.price, s.base_price) AS price, s.duration_minutes
+      `SELECT s.id, COALESCE(bs.price, s.base_price) AS price, s.duration_minutes,
+              COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
        FROM services s
        LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+       LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $3
+       LEFT JOIN barbers b ON b.id = $3
        WHERE s.id = ANY($2::uuid[]) AND COALESCE(bs.is_available, true) = true AND s.is_active = true`,
-      [branchId, service_ids]
+      [branchId, service_ids, barberId]
     )
     if (svcRows.rows.length !== service_ids.length) {
       return res.status(400).json({ message: 'One or more services unavailable at this branch' })
@@ -179,8 +182,8 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     // insert booking_services
     for (const svc of svcRows.rows) {
       await client.query(
-        'INSERT INTO booking_services (booking_id, service_id, price_charged) VALUES ($1,$2,$3)',
-        [booking.id, svc.id, svc.price])
+        'INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate) VALUES ($1,$2,$3,$4)',
+        [booking.id, svc.id, svc.price, svc.commission_rate ?? null])
     }
 
     // insert booking_extras
@@ -666,16 +669,19 @@ router.patch('/:id/add-services', requireKiosk, async (req, res) => {
 
     if (newIds.length) {
       const svcRows = await client.query(
-        `SELECT s.id, COALESCE(bs.price, s.base_price) AS price
+        `SELECT s.id, COALESCE(bs.price, s.base_price) AS price,
+                COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
          FROM services s
          LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+         LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $3
+         LEFT JOIN barbers b ON b.id = $3
          WHERE s.id = ANY($2::uuid[]) AND COALESCE(bs.is_available, true) = true AND s.is_active = true`,
-        [booking.branch_id, newIds])
+        [booking.branch_id, newIds, booking.barber_id])
 
       for (const svc of svcRows.rows) {
         await client.query(
-          'INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1,$2,$3,true)',
-          [booking.id, svc.id, svc.price])
+          'INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate, added_mid_cut) VALUES ($1,$2,$3,$4,true)',
+          [booking.id, svc.id, svc.price, svc.commission_rate ?? null])
       }
     }
 
@@ -826,8 +832,8 @@ router.patch('/:id/reopen', requireAdmin, async (req, res) => {
     // Insert new booking_services (marked added_mid_cut; existing services are untouched)
     for (const svc of svcRes.rows) {
       await client.query(
-        `INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1, $2, $3, true)`,
-        [booking.id, svc.id, svc.price]
+        `INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate, added_mid_cut) VALUES ($1, $2, $3, $4, true)`,
+        [booking.id, svc.id, svc.price, svc.commission_rate ?? null]
       )
     }
 
@@ -905,15 +911,18 @@ router.patch('/:id/admin-update', requireAdmin, async (req, res) => {
       const newIds = add_service_ids.filter(id => !existingIds.includes(id))
       if (newIds.length) {
         const svcRows = await client.query(
-          `SELECT s.id, COALESCE(bs.price, s.base_price) AS price
+          `SELECT s.id, COALESCE(bs.price, s.base_price) AS price,
+                  COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
            FROM services s
            LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+           LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $3
+           LEFT JOIN barbers b ON b.id = $3
            WHERE s.id = ANY($2::uuid[]) AND s.is_active = true`,
-          [booking.branch_id, newIds])
+          [booking.branch_id, newIds, booking.barber_id])
         for (const svc of svcRows.rows) {
           await client.query(
-            'INSERT INTO booking_services (booking_id, service_id, price_charged, added_mid_cut) VALUES ($1,$2,$3,true)',
-            [booking.id, svc.id, svc.price])
+            'INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate, added_mid_cut) VALUES ($1,$2,$3,$4,true)',
+            [booking.id, svc.id, svc.price, svc.commission_rate ?? null])
         }
       }
     }
@@ -980,11 +989,14 @@ router.post('/admin-force', requireAdmin, async (req, res) => {
 
     // Services — use branch price if available, otherwise base_price (no availability gate)
     const svcRows = await client.query(
-      `SELECT s.id, s.name, COALESCE(bs.price, s.base_price) AS price
+      `SELECT s.id, s.name, COALESCE(bs.price, s.base_price) AS price,
+              COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
        FROM services s
        LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+       LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $3
+       LEFT JOIN barbers b ON b.id = $3
        WHERE s.id = ANY($2::uuid[]) AND s.is_active = true`,
-      [branch_id, service_ids])
+      [branch_id, service_ids, barber_id])
     if (!svcRows.rows.length) return res.status(400).json({ message: 'No valid services found' })
 
     const subtotal = svcRows.rows.reduce((a, s) => a + parseInt(s.price), 0)
@@ -1004,8 +1016,8 @@ router.post('/admin-force', requireAdmin, async (req, res) => {
 
     for (const svc of svcRows.rows) {
       await client.query(
-        'INSERT INTO booking_services (booking_id, service_id, price_charged) VALUES ($1,$2,$3)',
-        [booking.id, svc.id, svc.price])
+        'INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate) VALUES ($1,$2,$3,$4)',
+        [booking.id, svc.id, svc.price, svc.commission_rate ?? null])
     }
 
     await client.query('COMMIT')

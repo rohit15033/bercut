@@ -32,7 +32,7 @@ function buildPeriodPresets() {
 
     const from = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}-16`
     const to = `${toYear}-${String(toMonth + 1).padStart(2, '0')}-15`
-    const label = `${MONTH_NAMES[fromMonth].slice(0,3)} – ${MONTH_NAMES[toMonth].slice(0,3)} ${toYear}`
+    const label = `16 ${MONTH_NAMES[fromMonth].slice(0,3)} – 15 ${MONTH_NAMES[toMonth].slice(0,3)} ${toYear}`
     const periodMonth = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}`
 
     presets.push({ label, period_from: from, period_to: to, period_month: periodMonth })
@@ -54,8 +54,10 @@ function todayISO() {
 
 function computeWorkingDays(from, to) {
   if (!from || !to) return 26
-  const d1 = new Date(from + 'T00:00:00')
-  const d2 = new Date(to   + 'T00:00:00')
+  const f = String(from).slice(0, 10)
+  const t = String(to).slice(0, 10)
+  const d1 = new Date(f + 'T00:00:00')
+  const d2 = new Date(t + 'T00:00:00')
   const totalDays = Math.round((d2 - d1) / 86400000) + 1
   return Math.round(totalDays * 6 / 7)
 }
@@ -432,7 +434,7 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
 
   const [workingDaysOverride, setWorkingDaysOverride] = useState(null)
   const computedWD = activePeriod
-    ? computeWorkingDays(activePeriod.period_from, activePeriod.period_to)
+    ? computeWorkingDays(activePeriod.period_from.slice(0,10), activePeriod.period_to.slice(0,10))
     : (isCustom && customFrom && customTo ? computeWorkingDays(customFrom, customTo) : 26)
   const workingDays = workingDaysOverride ?? computedWD
 

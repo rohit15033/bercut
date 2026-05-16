@@ -133,21 +133,28 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
       const baseSalary = parseInt(barber.base_salary || 0)
 
       // Deductions
-      const lateDeduction     = totalLateMinutes * lateDeductPerMin
-      const inexcusedDeduct   = inexcusedDays * inexcusedFlatDeduct
-      const excusedDeduct     = excusedDays   * excusedFlatDeduct
+      const lateDeduction = totalLateMinutes * lateDeductPerMin
 
-      // Kasbon from payroll_adjustments (if any existing entry)
+      const prorataRate = Math.round(parseInt(barber.base_salary || 0) / workingDaysStd)
+      const isProrata   = barber.off_deduction_type === 'prorata'
+
+      const inexcusedDeduct = isProrata
+        ? Math.round(inexcusedDays * prorataRate)
+        : inexcusedDays * inexcusedFlatDeduct
+
+      const excusedOver   = Math.max(0, excusedDays - 2)  // EXCUSED_QUOTA = 2
+      const excusedDeduct = isProrata
+        ? Math.round(excusedOver * prorataRate)
+        : excusedOver * excusedFlatDeduct
+
+      // Kasbon total from expenses (used for net_pay calculation)
       let kasbonTotal = 0
-      const existingEntry = await client.query(
-        'SELECT id FROM payroll_entries WHERE period_id = $1 AND barber_id = $2',
-        [period.id, barber.id])
-      if (existingEntry.rows.length) {
-        const adjRes = await client.query(
-          `SELECT COALESCE(SUM(amount),0) AS total FROM payroll_adjustments
-           WHERE payroll_entry_id = $1 AND is_kasbon = true`, [existingEntry.rows[0].id])
-        kasbonTotal = parseInt(adjRes.rows[0].total)
-      }
+      const kasbonResult = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
+         WHERE type = 'kasbon' AND barber_id = $1 AND expense_date BETWEEN $2 AND $3
+         AND (deduct_period = 'current' OR deduct_period IS NULL)`,
+        [barber.id, period_from, period_to])
+      kasbonTotal = parseInt(kasbonResult.rows[0].total)
 
       const netPay = baseSalary + commRegular + commOt + totalTips
                    - lateDeduction - inexcusedDeduct - excusedDeduct - kasbonTotal
@@ -170,6 +177,35 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
          totalLateMinutes, inexcusedDays, excusedDays,
          workingDaysStd, lateDeduction, inexcusedDeduct, excusedDeduct,
          kasbonTotal, netPay])
+
+      // Auto-import kasbon from expenses into payroll_adjustments
+      const kasbonExpenses = await client.query(
+        `SELECT * FROM expenses
+         WHERE type = 'kasbon'
+           AND barber_id = $1
+           AND expense_date BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
+
+      const insertedEntry = await client.query(
+        'SELECT id FROM payroll_entries WHERE period_id = $1 AND barber_id = $2',
+        [period.id, barber.id])
+      const entryId = insertedEntry.rows[0]?.id
+
+      if (entryId) {
+        // Delete existing auto-imported kasbon adjustments, then re-insert fresh
+        await client.query(
+          `DELETE FROM payroll_adjustments
+           WHERE payroll_entry_id = $1 AND is_kasbon = true AND expense_id IS NOT NULL`,
+          [entryId])
+        for (const exp of kasbonExpenses.rows) {
+          await client.query(
+            `INSERT INTO payroll_adjustments
+               (payroll_entry_id, type, category, remarks, amount, by, date, is_kasbon, expense_id, deduct_period)
+             VALUES ($1, 'deduction', 'Kasbon', $2, $3, $4, $5, true, $6, $7)`,
+            [entryId, exp.description || 'Kasbon', exp.amount, exp.submitted_by,
+             exp.expense_date, exp.id, exp.deduct_period || 'current'])
+        }
+      }
     }
 
     await client.query('COMMIT')

@@ -156,8 +156,8 @@ router.post('/', requireAdmin, async (req, res) => {
 // PATCH /api/barbers/:id
 router.patch('/:id', requireAdmin, async (req, res) => {
   try {
-    const { name, branch_id, specialty, specialty_id, phone, pin, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order, is_active } = req.body
-    const updates = { name, branch_id, specialty, specialty_id, phone, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order, is_active }
+    const { name, branch_id, specialty, specialty_id, phone, pin, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order, is_active, off_deduction_type } = req.body
+    const updates = { name, branch_id, specialty, specialty_id, phone, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order, is_active, off_deduction_type }
     if (pin) updates.pin_hash = await bcrypt.hash(String(pin), 10)
 
     const keys = Object.keys(updates).filter(k => updates[k] !== undefined)

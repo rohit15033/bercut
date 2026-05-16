@@ -38,9 +38,11 @@ function BarberModal({ barber, branches, onClose, onSaved }) {
     branch_id: barber.branch_id || '', base_salary: barber.base_salary || 0,
     daily_rate: barber.daily_rate || 350000, pay_type: barber.pay_type || 'salary_plus_commission',
     is_active: barber.is_active !== false, pin: '',
+    off_deduction_type: barber.off_deduction_type || 'flat',
   } : {
     name: '', specialty: '', phone: '', branch_id: branches[0]?.id || '',
     base_salary: 2500000, daily_rate: 350000, pay_type: 'salary_plus_commission', is_active: true, pin: '',
+    off_deduction_type: 'flat',
   })
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -58,6 +60,7 @@ function BarberModal({ barber, branches, onClose, onSaved }) {
         branch_id: isFreelance ? null : form.branch_id,
         base_salary: form.pay_type === 'salary_plus_commission' ? form.base_salary : 0,
         daily_rate: form.daily_rate, pay_type: form.pay_type, is_active: form.is_active,
+        off_deduction_type: form.off_deduction_type,
       }
       if (form.pin) payload.pin = form.pin
       if (isNew) await api.post('/barbers', payload)
@@ -108,6 +111,23 @@ function BarberModal({ barber, branches, onClose, onSaved }) {
             {isFreelance && (
               <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 7, background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 11, color: '#92400E', lineHeight: 1.6 }}>
                 Freelance barbers have no home branch and earn no commission. They are paid a fixed daily rate for each day they work.
+              </div>
+            )}
+            {form.pay_type !== 'daily_rate' && (
+              <div style={{ marginTop: 14 }}>
+                <label style={lblStyle}>Off-day Deduction</label>
+                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  {[
+                    { key: 'flat',    label: 'Flat Rate',  sub: 'Rp 150k/day' },
+                    { key: 'prorata', label: 'Pro-rata',   sub: 'salary ÷ working days' },
+                  ].map(opt => (
+                    <button key={opt.key} onClick={() => set('off_deduction_type', opt.key)}
+                      style={{ flex: 1, padding: '9px 8px', borderRadius: 8, border: `1.5px solid ${form.off_deduction_type === opt.key ? T.topBg : T.border}`, background: form.off_deduction_type === opt.key ? T.topBg : 'transparent', color: form.off_deduction_type === opt.key ? T.white : T.text2, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer', textAlign: 'center' }}>
+                      <div>{opt.label}</div>
+                      <div style={{ fontSize: 10, fontWeight: 400, marginTop: 2, opacity: 0.8 }}>{opt.sub}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

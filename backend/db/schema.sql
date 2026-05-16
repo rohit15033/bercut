@@ -95,9 +95,11 @@ CREATE TABLE IF NOT EXISTS barbers (
                     CHECK (pay_type IN ('salary_plus_commission','commission_only','daily_rate')),
   daily_rate      INTEGER      NOT NULL DEFAULT 0,
   avatar_url      TEXT,
-  sort_order      SMALLINT     NOT NULL DEFAULT 0,
-  is_active       BOOLEAN      NOT NULL DEFAULT true,
-  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  sort_order          SMALLINT     NOT NULL DEFAULT 0,
+  is_active           BOOLEAN      NOT NULL DEFAULT true,
+  off_deduction_type  VARCHAR(10)  NOT NULL DEFAULT 'flat'
+                        CHECK (off_deduction_type IN ('flat','prorata')),
+  created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────

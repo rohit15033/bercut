@@ -12,6 +12,37 @@ const fmtM = n => {
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
+function buildPeriodPresets() {
+  const presets = []
+  const today = new Date()
+  let year = today.getFullYear()
+  let month = today.getMonth() // 0-indexed
+
+  // If today is before the 16th, current cycle started last month
+  if (today.getDate() < 16) {
+    month -= 1
+    if (month < 0) { month = 11; year -= 1 }
+  }
+
+  for (let i = 0; i < 7; i++) {
+    const fromYear = year
+    const fromMonth = month
+    const toMonth = (month + 1) % 12
+    const toYear = month === 11 ? year + 1 : year
+
+    const from = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}-16`
+    const to = `${toYear}-${String(toMonth + 1).padStart(2, '0')}-15`
+    const label = `${MONTH_NAMES[fromMonth].slice(0,3)} – ${MONTH_NAMES[toMonth].slice(0,3)} ${toYear}`
+    const periodMonth = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}`
+
+    presets.push({ label, period_from: from, period_to: to, period_month: periodMonth })
+
+    month -= 1
+    if (month < 0) { month = 11; year -= 1 }
+  }
+  return presets
+}
+
 function initials(name) {
   return (name || '').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase()
 }
@@ -386,16 +417,23 @@ function AddAdjModal({ entry, onAdd, onClose }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function Payroll({ onPayroll, onViewAttendance }) {
+  const PRESETS = buildPeriodPresets()
   const [branches,      setBranches]      = useState([])
   const [selectedBranch,setSelectedBranch]= useState('')
-  const [periods,       setPeriods]       = useState([])
-  const [selectedPeriod,setSelectedPeriod]= useState(null)
+  const [selectedPreset,setSelectedPreset]= useState(PRESETS[0])
+  const [customFrom,    setCustomFrom]    = useState('')
+  const [customTo,      setCustomTo]      = useState('')
+  const [isCustom,      setIsCustom]      = useState(false)
+  const [activePeriod,  setActivePeriod]  = useState(null)
+  const [generating,    setGenerating]    = useState(false)
   const [entries,       setEntries]       = useState([])
   const [adjustments,   setAdjustments]   = useState({})
   const [loading,       setLoading]       = useState(false)
 
   const [workingDaysOverride, setWorkingDaysOverride] = useState(null)
-  const computedWD = selectedPeriod ? computeWorkingDays(selectedPeriod.period_from, selectedPeriod.period_to) : 26
+  const computedWD = activePeriod
+    ? computeWorkingDays(activePeriod.period_from, activePeriod.period_to)
+    : (isCustom && customFrom && customTo ? computeWorkingDays(customFrom, customTo) : 26)
   const workingDays = workingDaysOverride ?? computedWD
 
   const [overrides,  setOverrides]  = useState({})
@@ -412,20 +450,46 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
 
   useEffect(() => {
     if (!selectedBranch) return
-    api.get('/payroll/periods?branch_id=' + selectedBranch)
-      .then(d => {
-        setPeriods(d || [])
-        if (d?.[0]) setSelectedPeriod(d[0])
-      })
-      .catch(() => setPeriods([]))
-  }, [selectedBranch])
+    const preset = isCustom
+      ? (customFrom && customTo ? { period_from: customFrom, period_to: customTo, period_month: customFrom.slice(0,7), label: `${customFrom} → ${customTo}` } : null)
+      : selectedPreset
+    if (!preset) return
 
-  useEffect(() => {
-    if (!selectedPeriod) return
-    setLoading(true)
+    setActivePeriod(null)
+    setEntries([])
+    setAdjustments({})
     setOverrides({})
     setWorkingDaysOverride(null)
-    api.get('/payroll/periods/' + selectedPeriod.id + '/entries')
+    setGenerating(true)
+
+    async function loadPeriod() {
+      try {
+        const existing = await api.get(`/payroll/periods?branch_id=${selectedBranch}`)
+        const found = (existing || []).find(p => p.period_from === preset.period_from && p.period_to === preset.period_to)
+        if (found) {
+          setActivePeriod(found)
+        } else {
+          const result = await api.post('/payroll/periods/generate', {
+            branch_id: selectedBranch,
+            period_month: preset.period_month,
+            period_from: preset.period_from,
+            period_to: preset.period_to,
+          })
+          setActivePeriod(result.period)
+        }
+      } catch (err) {
+        console.error('Period load/generate failed', err)
+      } finally {
+        setGenerating(false)
+      }
+    }
+    loadPeriod()
+  }, [selectedPreset, isCustom, customFrom, customTo, selectedBranch])
+
+  useEffect(() => {
+    if (!activePeriod) return
+    setLoading(true)
+    api.get('/payroll/periods/' + activePeriod.id + '/entries')
       .then(async d => {
         setEntries(d || [])
         const adjMap = {}
@@ -439,7 +503,7 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
       })
       .catch(() => setEntries([]))
       .finally(() => setLoading(false))
-  }, [selectedPeriod])
+  }, [activePeriod])
 
   function setOverride(entryId, fieldOrObj, val) {
     if (typeof fieldOrObj === 'object') {
@@ -497,8 +561,8 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
   }
 
   function exportCSV() {
-    if (!selectedPeriod) return
-    window.open(`/api/payroll/periods/${selectedPeriod.id}/export`, '_blank')
+    if (!activePeriod) return
+    window.open(`/api/payroll/periods/${activePeriod.id}/export`, '_blank')
   }
 
   const totalNet   = entries.reduce((s, e) => s + calcNetPay(e), 0)
@@ -550,16 +614,35 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
       {/* Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <select value={selectedPeriod?.id ?? ''} onChange={e => setSelectedPeriod(periods.find(p => String(p.id) === e.target.value) || null)}
-            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.white, fontSize: 13, fontWeight: 600, color: T.text, cursor: 'pointer' }}>
-            {periods.length === 0 && <option value=''>No periods yet</option>}
-            {periods.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.period_from?.slice(0, 7)} → {p.period_to?.slice(5, 7)}/{p.period_to?.slice(0, 4)}
-              </option>
+          <select
+            value={isCustom ? '__custom__' : (selectedPreset?.period_from ?? '')}
+            onChange={e => {
+              if (e.target.value === '__custom__') {
+                setIsCustom(true)
+              } else {
+                setIsCustom(false)
+                setSelectedPreset(PRESETS.find(p => p.period_from === e.target.value) || PRESETS[0])
+              }
+            }}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.white, fontSize: 13, fontWeight: 600, color: T.text, cursor: 'pointer' }}
+          >
+            {PRESETS.map(p => (
+              <option key={p.period_from} value={p.period_from}>{p.label}</option>
             ))}
+            <option value="__custom__">Custom range…</option>
           </select>
-          {selectedPeriod && (
+
+          {isCustom && (
+            <>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid ' + T.border, fontSize: 13, color: T.text }} />
+              <span style={{ color: T.muted, fontSize: 13 }}>→</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid ' + T.border, fontSize: 13, color: T.text }} />
+            </>
+          )}
+
+          {activePeriod && (
             <WorkingDaysChip
               value={workingDays}
               computedValue={computedWD}
@@ -598,11 +681,16 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
           ))}
         </div>
 
-        {loading && <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>Loading payroll data…</div>}
-        {!loading && entries.length === 0 && (
+        {(loading || generating) && (
           <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>
-            {selectedPeriod ? 'No entries for this period.' : 'Select or generate a payroll period.'}
+            {generating ? 'Calculating payroll…' : 'Loading payroll data…'}
           </div>
+        )}
+        {!loading && !generating && entries.length === 0 && activePeriod && (
+          <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>No entries for this period.</div>
+        )}
+        {!loading && !generating && !activePeriod && (
+          <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>Select a period above.</div>
         )}
 
         {entries.map((entry, i) => {

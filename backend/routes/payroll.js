@@ -91,11 +91,11 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
       const fallbackRate = parseFloat(barber.commission_rate || 40)
       const bkRows = await client.query(
         `SELECT
-           EXTRACT(EPOCH FROM (
+           (
              COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id), 0) +
              COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id), 0) -
              bk.points_redeemed * 100
-           )) AS total_amount,
+           ) AS total_amount,
            COALESCE((
              SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
              FROM booking_services bsv

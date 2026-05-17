@@ -232,13 +232,18 @@ function PayrollTab() {
     ot_bonus_pct:               5,
     working_days_per_week:      6,
   })
+  const [shiftStartTime, setShiftStartTime] = useState('10:00')
   const [loading, setLoading] = useState(true)
   const [saved,   setSaved]   = useState(false)
   const [busy,    setBusy]    = useState(false)
 
   useEffect(() => {
-    api.get('/settings/payroll').then(d => {
-      if (d) setCfg(prev => ({ ...prev, ...d }))
+    Promise.all([
+      api.get('/settings/payroll'),
+      api.get('/settings/global'),
+    ]).then(([payroll, global]) => {
+      if (payroll) setCfg(prev => ({ ...prev, ...payroll }))
+      if (global?.shift_start_time) setShiftStartTime(String(global.shift_start_time).slice(0, 5))
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
@@ -247,7 +252,10 @@ function PayrollTab() {
   async function handleSave() {
     setBusy(true)
     try {
-      await api.patch('/settings/payroll', cfg)
+      await Promise.all([
+        api.patch('/settings/payroll', cfg),
+        api.patch('/settings/global', { shift_start_time: shiftStartTime }),
+      ])
       setSaved(true); setTimeout(() => setSaved(false), 2000)
     } catch { /* ignore */ } finally { setBusy(false) }
   }
@@ -261,6 +269,12 @@ function PayrollTab() {
     <div>
       <SectionTitle title="Attendance Deductions"
         sub="Rates used to auto-calculate deductions from late arrivals and absences each payroll period." />
+
+      <SettingRow label="Shift Start Time"
+        sub="Barbers clocking in after this time (plus grace) are marked late. Used for all branches.">
+        <input type="time" value={shiftStartTime} onChange={e => setShiftStartTime(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid ' + T.border, fontSize: 14, fontFamily: "'Inter', sans-serif", fontWeight: 700, color: T.text, background: T.white }} />
+      </SettingRow>
 
       <SettingRow label="Late Deduction Rate"
         sub="Deducted per minute late. Applied automatically from the late minutes count in Payroll.">

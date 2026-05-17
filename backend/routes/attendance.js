@@ -39,9 +39,14 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
     if (existing.rows.length && !force) return res.status(409).json({ message: 'Already clocked in today' })
 
     // Compute late_minutes: shift starts 09:00 WITA (540 min), grace from payroll_settings
-    const ps = await pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1')
+    const [ps, gs] = await Promise.all([
+      pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1'),
+      pool.query('SELECT shift_start_time FROM global_settings LIMIT 1'),
+    ])
     const grace = parseInt(ps.rows[0]?.late_grace_period_minutes || 5)
-    const SHIFT_START_MIN = 10 * 60  // 10:00 WITA
+    const shiftStr = gs.rows[0]?.shift_start_time || '10:00:00'
+    const [shH, shM] = shiftStr.split(':').map(Number)
+    const SHIFT_START_MIN = shH * 60 + shM
 
     // Clock-in is NOW() — compute minutes late
     const clockInLocal = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })
@@ -156,7 +161,23 @@ router.patch('/:id', requireAdmin, async (req, res) => {
   try {
     const { clock_in_at, clock_out_at } = req.body
     const sets = []; const vals = []; let idx = 1
-    if (clock_in_at)  { sets.push(`clock_in_at = $${idx++}`);  vals.push(clock_in_at) }
+    if (clock_in_at) {
+      sets.push(`clock_in_at = $${idx++}`)
+      vals.push(clock_in_at)
+      const [ps, gs] = await Promise.all([
+        pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1'),
+        pool.query('SELECT shift_start_time FROM global_settings LIMIT 1'),
+      ])
+      const grace    = parseInt(ps.rows[0]?.late_grace_period_minutes || 5)
+      const shiftStr = gs.rows[0]?.shift_start_time || '10:00:00'
+      const [shH, shM] = shiftStr.split(':').map(Number)
+      const localStr = new Date(clock_in_at).toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })
+      const ciHour = parseInt(localStr.slice(11, 13))
+      const ciMin  = parseInt(localStr.slice(14, 16))
+      const lateMins = Math.max(0, ciHour * 60 + ciMin - shH * 60 - shM - grace)
+      sets.push(`late_minutes = $${idx++}`)
+      vals.push(lateMins)
+    }
     if (clock_out_at) { sets.push(`clock_out_at = $${idx++}`); vals.push(clock_out_at) }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
     vals.push(req.params.id)
@@ -164,7 +185,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
       `UPDATE attendance SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals)
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
     res.json(rows[0])
-  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
 module.exports = router

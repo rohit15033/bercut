@@ -467,7 +467,10 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
     async function loadPeriod() {
       try {
         const existing = await api.get(`/payroll/periods?branch_id=${selectedBranch}`)
-        const found = (existing || []).find(p => p.period_from === preset.period_from && p.period_to === preset.period_to)
+        const found = (existing || []).find(p =>
+          String(p.period_from).slice(0, 10) === preset.period_from &&
+          String(p.period_to).slice(0, 10) === preset.period_to
+        )
         if (found) {
           setActivePeriod(found)
         } else {

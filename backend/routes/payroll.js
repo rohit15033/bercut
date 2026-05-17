@@ -29,7 +29,7 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     const periodInsert = await client.query(
       `INSERT INTO payroll_periods (branch_id, period_month, period_from, period_to, generated_by)
        VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT DO NOTHING RETURNING *`,
+       ON CONFLICT (branch_id, period_from, period_to) DO NOTHING RETURNING *`,
       [branch_id || null, period_month, period_from, period_to, req.user.id])
     if (!periodInsert.rows.length) {
       await client.query('ROLLBACK')
@@ -48,9 +48,6 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 5)
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
 
-    // shift start assumed 09:00 WITA — no branch-level config
-    const SHIFT_START = '09:00'
-
     const barberCond = branch_id
       ? 'WHERE branch_id = $1 AND is_active = true'
       : 'WHERE is_active = true'
@@ -60,24 +57,16 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     for (const barber of barbers.rows) {
       const targetBranchId = barber.branch_id
 
-      // Attendance: clock-ins within period
+      // Attendance: clock-ins within period — use stored late_minutes (computed at clock-in using global shift_start_time)
       const attRows = await client.query(
-        `SELECT clock_in_at AT TIME ZONE 'Asia/Makassar' AS clock_in_local,
-                DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') AS work_date
+        `SELECT late_minutes
          FROM attendance
          WHERE barber_id = $1
            AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
         [barber.id, period_from, period_to])
 
       const workedDays = attRows.rows.length
-      let totalLateMinutes = 0
-      for (const att of attRows.rows) {
-        const shiftMins = parseInt(SHIFT_START.split(':')[0]) * 60 + parseInt(SHIFT_START.split(':')[1])
-        const cinLocal = new Date(att.clock_in_local)
-        const cinMins  = cinLocal.getHours() * 60 + cinLocal.getMinutes()
-        const late = Math.max(0, cinMins - shiftMins - lateGrace)
-        totalLateMinutes += late
-      }
+      const totalLateMinutes = attRows.rows.reduce((sum, r) => sum + (parseInt(r.late_minutes) || 0), 0)
 
       // Off records in period
       const offRows = await client.query(

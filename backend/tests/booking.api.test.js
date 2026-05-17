@@ -141,9 +141,10 @@ describe('POST /api/bookings', () => {
     client.query.mockReset()
     pool.query.mockReset()
     // Sequence matches route execution for request WITHOUT customer_phone:
-    // BEGIN → durRes → svcRows → global_settings → branchRow → COUNT → INSERT booking → INSERT booking_services → COMMIT
+    // BEGIN → dupCheck → durRes → svcRows → global_settings → branchRow → COUNT → INSERT booking → INSERT booking_services → COMMIT
     client.query
       .mockResolvedValueOnce(undefined)                          // BEGIN
+      .mockResolvedValueOnce({ rows: [] })                       // dedup check (no duplicate)
       .mockResolvedValueOnce({ rows: [{ dur: 30 }] })           // duration calc (any_available path)
       .mockResolvedValueOnce({                                   // svcRows
         rows: [{ id: 'svc-1', price: '50000', duration_minutes: 30 }],

@@ -48,6 +48,21 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     const bookingDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
+    // Dedup guard: reject if identical booking (same branch, name, slot) created within last 10 seconds
+    const dupCheck = await client.query(
+      `SELECT id FROM bookings
+       WHERE branch_id = $1
+         AND LOWER(guest_name) = LOWER($2)
+         AND scheduled_at = $3::timestamptz
+         AND created_at > NOW() - INTERVAL '10 seconds'
+       LIMIT 1`,
+      [req.branchId, customer_name || '', scheduledAt(bookingDate, slot_time)]
+    )
+    if (dupCheck.rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ message: 'Duplicate booking — please wait a moment before trying again.' })
+    }
+
     // resolve or create customer for loyalty
     let customerId = null
     let customerPoints = 0
@@ -315,7 +330,7 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
                    'name', s.name,
                    'price', bs.price_charged,
                    'added_mid_cut', bs.added_mid_cut,
-                   'commission_rate', COALESCE(bar_svc.commission_rate, brs.commission_rate, b_inner.commission_rate, 35)
+                   'commission_rate', COALESCE(bs.commission_rate, bar_svc.commission_rate, brs.commission_rate, b_inner.commission_rate, 35)
                  )) AS booking_services,
                  STRING_AGG(s.name, ', ') AS service_names,
                  SUM(s.duration_minutes) AS est_duration_min

@@ -404,6 +404,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
   const [activeField,   setActiveField]   = useState(null)
   const nameRef = useRef(null)
   const phoneRef = useRef(null)
+  const submittingRef = useRef(false)
 
   useEffect(() => { setActiveField('name') }, [])
 
@@ -461,7 +462,8 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
   }, [phone, country.code])
 
   const handleConfirm = async () => {
-    if (!valid) return
+    if (!valid || submittingRef.current) return
+    submittingRef.current = true
     setLoading(true); setError('')
     try {
       const e164 = country.code + phone.replace(/\D/g, '').replace(/^0/, '')
@@ -482,6 +484,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
     } catch (err) {
       setError(err.message || 'Booking failed. Please try again.')
     } finally {
+      submittingRef.current = false
       setLoading(false)
     }
   }

@@ -553,9 +553,12 @@ function BarberDetail({ barber, branchId, onBack, onHome, lastQueueUpdate }) {
               const accent = isCompleted ? '#4caf50' : isActive ? C.accent : isUpcoming ? '#888' : '#555'
               const labelText = isCompleted ? 'Selesai' : isActive ? 'Dilayani' : isUpcoming ? (b.slot_time || 'Antri') : b.status === 'no_show' ? 'Tidak Hadir' : 'Dibatalkan'
               const labelBg = isCompleted ? '#0d1f0d' : isActive ? '#1a1a0a' : isUpcoming ? '#1a1a1a' : '#1a0d0d'
-              const commission = isCompleted ? Math.round(parseFloat(b.total_amount || 0) * commissionRate / 100) : null
-
               const rawSvcs = b.booking_services || b.services || []
+              const commission = isCompleted
+                ? (Array.isArray(rawSvcs) && rawSvcs.length > 0
+                    ? rawSvcs.reduce((acc, s) => acc + Math.round((parseFloat(s.price) || 0) * (parseFloat(s.commission_rate) || commissionRate) / 100), 0)
+                    : Math.round(parseFloat(b.total_amount || 0) * commissionRate / 100))
+                : null
               const svcList = Array.isArray(rawSvcs)
                 ? rawSvcs.map(s => ({ name: s.service_name || s.name || '', dur: parseInt(s.duration_minutes || s.duration_min || 0) }))
                 : []

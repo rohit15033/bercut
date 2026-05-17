@@ -197,7 +197,7 @@ function buildCalendarData(attendanceRows, offRows, barberId, year, month) {
     if (d.getMonth() + 1 !== month || d.getFullYear() !== year) continue
     const day = d.getDate()
     const lateMin = row.late_minutes || 0
-    records[day] = { s: lateMin > 0 ? 'L' : 'P', lateMin }
+    if (!records[day]) records[day] = { s: lateMin > 0 ? 'L' : 'P', lateMin }
   }
 
   for (const row of offRows) {

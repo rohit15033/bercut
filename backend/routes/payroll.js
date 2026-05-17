@@ -31,11 +31,23 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (branch_id, period_from, period_to) DO NOTHING RETURNING *`,
       [branch_id || null, period_month, period_from, period_to, req.user.id])
-    if (!periodInsert.rows.length) {
-      await client.query('ROLLBACK')
-      return res.status(409).json({ message: 'Period already exists' })
+
+    let period
+    if (periodInsert.rows.length) {
+      period = periodInsert.rows[0]
+    } else {
+      // Period already exists — fetch it and recalculate entries
+      const existing = await client.query(
+        `SELECT * FROM payroll_periods
+         WHERE period_from = $1 AND period_to = $2
+           AND (branch_id = $3 OR (branch_id IS NULL AND $3 IS NULL))`,
+        [period_from, period_to, branch_id || null])
+      if (!existing.rows.length) {
+        await client.query('ROLLBACK')
+        return res.status(500).json({ message: 'Period conflict but not found' })
+      }
+      period = existing.rows[0]
     }
-    const period = periodInsert.rows[0]
 
     const ps = await client.query('SELECT * FROM payroll_settings LIMIT 1')
     const cfg = ps.rows[0] || {}

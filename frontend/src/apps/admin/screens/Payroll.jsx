@@ -466,22 +466,13 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
 
     async function loadPeriod() {
       try {
-        const existing = await api.get(`/payroll/periods?branch_id=${selectedBranch}`)
-        const found = (existing || []).find(p =>
-          String(p.period_from).slice(0, 10) === preset.period_from &&
-          String(p.period_to).slice(0, 10) === preset.period_to
-        )
-        if (found) {
-          setActivePeriod(found)
-        } else {
-          const result = await api.post('/payroll/periods/generate', {
-            branch_id: selectedBranch,
-            period_month: preset.period_month,
-            period_from: preset.period_from,
-            period_to: preset.period_to,
-          })
-          setActivePeriod(result.period)
-        }
+        const result = await api.post('/payroll/periods/generate', {
+          branch_id: selectedBranch,
+          period_month: preset.period_month,
+          period_from: preset.period_from,
+          period_to: preset.period_to,
+        })
+        setActivePeriod(result.period)
       } catch (err) {
         console.error('Period load/generate failed', err)
       } finally {

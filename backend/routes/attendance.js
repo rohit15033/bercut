@@ -112,6 +112,39 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// POST /api/attendance/backdate-clock-in — admin logs a missed clock-in on a past date
+router.post('/backdate-clock-in', requireAdmin, async (req, res) => {
+  try {
+    const { barber_id, branch_id, clock_in_at, clock_out_at } = req.body
+    if (!barber_id || !branch_id || !clock_in_at) {
+      return res.status(400).json({ message: 'barber_id, branch_id, clock_in_at required' })
+    }
+    const [ps, gs] = await Promise.all([
+      pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1'),
+      pool.query('SELECT shift_start_time FROM global_settings LIMIT 1'),
+    ])
+    const grace    = parseInt(ps.rows[0]?.late_grace_period_minutes || 5)
+    const shiftStr = gs.rows[0]?.shift_start_time || '10:00:00'
+    const [shH, shM] = shiftStr.split(':').map(Number)
+    const localStr = new Date(clock_in_at).toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })
+    const ciHour   = parseInt(localStr.slice(11, 13))
+    const ciMin    = parseInt(localStr.slice(14, 16))
+    const lateMins = Math.max(0, ciHour * 60 + ciMin - shH * 60 - shM - grace)
+    const { rows } = await pool.query(
+      `INSERT INTO attendance (barber_id, branch_id, clock_in_at, clock_out_at, late_minutes)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [barber_id, branch_id, clock_in_at, clock_out_at || null, lateMins])
+    try {
+      await pool.query(
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [req.user?.id || null, 'backdate_clock_in', 'attendance', rows[0].id,
+         JSON.stringify(rows[0]), branch_id])
+    } catch (e) { console.error('[AuditLog] failed:', e.message) }
+    res.status(201).json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // POST /api/attendance/log-off — admin logs a barber's day off
 router.post('/log-off', requireAdmin, async (req, res) => {
   try {
@@ -140,13 +173,15 @@ router.post('/log-off', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
-// GET /api/attendance/off-records?barber_id=&branch_id=
+// GET /api/attendance/off-records?barber_id=&branch_id=&month=&year=
 router.get('/off-records', requireAdmin, async (req, res) => {
   try {
-    const { barber_id, branch_id } = req.query
+    const { barber_id, branch_id, month, year } = req.query
     const conds = []; const vals = []; let idx = 1
     if (barber_id) { conds.push(`o.barber_id = $${idx++}`); vals.push(barber_id) }
     if (branch_id) { conds.push(`o.branch_id = $${idx++}`); vals.push(branch_id) }
+    if (month) { conds.push(`EXTRACT(MONTH FROM o.date) = $${idx++}`); vals.push(month) }
+    if (year)  { conds.push(`EXTRACT(YEAR FROM o.date) = $${idx++}`);  vals.push(year) }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
     const { rows } = await pool.query(
       `SELECT o.*, b.name AS barber_name FROM off_records o
@@ -156,11 +191,83 @@ router.get('/off-records', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// PATCH /api/attendance/off-records/:id — update type, has_doctor_note, note
+router.patch('/off-records/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    let { type, has_doctor_note, note } = req.body
+
+    // Fetch existing record first
+    const existing = await pool.query('SELECT * FROM off_records WHERE id = $1', [id])
+    if (!existing.rows.length) return res.status(404).json({ message: 'Off record not found' })
+
+    // Business rule: setting has_doctor_note=true auto-promotes type to excused
+    if (has_doctor_note === true) { type = 'excused' }
+
+    // Validate type if provided
+    if (type !== undefined && !['excused', 'inexcused'].includes(type)) {
+      return res.status(400).json({ message: 'type must be excused or inexcused' })
+    }
+
+    const sets = []; const vals = []; let idx = 1
+    if (type !== undefined)            { sets.push(`type = $${idx++}`);            vals.push(type) }
+    if (has_doctor_note !== undefined) { sets.push(`has_doctor_note = $${idx++}`); vals.push(has_doctor_note) }
+    if (note !== undefined)            { sets.push(`note = $${idx++}`);            vals.push(note) }
+
+    if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
+
+    vals.push(id)
+    const { rows } = await pool.query(
+      `UPDATE off_records SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals)
+
+    try {
+      const before = existing.rows[0]
+      const after  = rows[0]
+      await pool.query(
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [req.user?.id || null, 'updated_off_record',
+         'off_records', id,
+         JSON.stringify({ before: { type: before.type, has_doctor_note: before.has_doctor_note, note: before.note },
+                          after:  { type: after.type,  has_doctor_note: after.has_doctor_note,  note: after.note } }),
+         rows[0].branch_id])
+    } catch (e) { console.error('[AuditLog] failed:', e.message) }
+
+    res.json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// DELETE /api/attendance/off-records/:id — hard delete
+router.delete('/off-records/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    const existing = await pool.query('SELECT * FROM off_records WHERE id = $1', [id])
+    if (!existing.rows.length) return res.status(404).json({ message: 'Off record not found' })
+
+    try {
+      await pool.query(
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, diff, branch_id)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [req.user?.id || null, 'deleted_off_record',
+         'off_records', id,
+         JSON.stringify(existing.rows[0]),
+         existing.rows[0].branch_id])
+    } catch (e) { console.error('[AuditLog] failed:', e.message) }
+
+    await pool.query('DELETE FROM off_records WHERE id = $1', [id])
+    res.status(204).send()
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // PATCH /api/attendance/:id — admin manual correction
 router.patch('/:id', requireAdmin, async (req, res) => {
   try {
-    const { clock_in_at, clock_out_at } = req.body
+    const { clock_in_at, clock_out_at, late_minutes } = req.body
     const sets = []; const vals = []; let idx = 1
+    if (typeof late_minutes === 'number' && !clock_in_at) {
+      sets.push(`late_minutes = $${idx++}`)
+      vals.push(Math.max(0, late_minutes))
+    }
     if (clock_in_at) {
       sets.push(`clock_in_at = $${idx++}`)
       vals.push(clock_in_at)

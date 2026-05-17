@@ -388,6 +388,7 @@ CREATE TABLE IF NOT EXISTS off_records (
   has_doctor_note BOOLEAN     NOT NULL DEFAULT false,
   note            TEXT,
   logged_by       UUID        REFERENCES users(id) ON DELETE SET NULL,
+  is_auto         BOOLEAN     NOT NULL DEFAULT false,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -644,7 +645,9 @@ CREATE TABLE IF NOT EXISTS global_settings (
   points_earn_rate           DECIMAL(8,4) NOT NULL DEFAULT 0.0001,  -- 1 point per Rp 10,000
   points_redemption_rate     INTEGER      NOT NULL DEFAULT 10000,    -- 1 point = Rp 10,000
   points_expiry_months       SMALLINT     NOT NULL DEFAULT 12,       -- 0 = never expire
-  points_expiry_warning_days SMALLINT     NOT NULL DEFAULT 30
+  points_expiry_warning_days SMALLINT     NOT NULL DEFAULT 30,
+  -- Operations
+  shift_start_time           TIME         NOT NULL DEFAULT '10:00'
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────

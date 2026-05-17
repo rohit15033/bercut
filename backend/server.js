@@ -50,14 +50,20 @@ app.use((err, req, res, _next) => {
 })
 
 // ── Background jobs ───────────────────────────────────────────────────────────
-const { runPointsExpiry } = require('./services/pointsExpiry')
-const { runAutoCancel } = require('./services/autoCancel')
-const { checkEscalations } = require('./services/escalation')
+const { runPointsExpiry }      = require('./services/pointsExpiry')
+const { runAutoCancel }        = require('./services/autoCancel')
+const { checkEscalations }     = require('./services/escalation')
 const { assignUpcomingDeferred, autoEndExpiredBreaks } = require('./services/deferredScheduler')
+const { runAutoOffClassifier } = require('./services/autoOffClassifier')
 
 // Points expiry — nightly at 00:05 WITA (UTC+8 = 16:05 UTC prev day)
 cron.schedule('5 16 * * *', () => {
   runPointsExpiry().catch(console.error)
+})
+
+// Auto-off classifier — nightly at 00:05 WITA (UTC+8 = 16:05 UTC prev day)
+cron.schedule('5 16 * * *', () => {
+  runAutoOffClassifier().catch(console.error)
 })
 
 // Auto-cancel — every 2 minutes

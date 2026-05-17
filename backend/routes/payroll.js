@@ -69,12 +69,14 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     for (const barber of barbers.rows) {
       const targetBranchId = barber.branch_id
 
-      // Attendance: clock-ins within period — use stored late_minutes (computed at clock-in using global shift_start_time)
+      // One row per work-date (latest clock-in wins) — matches what Attendance screen shows
       const attRows = await client.query(
-        `SELECT late_minutes
+        `SELECT DISTINCT ON (DATE(clock_in_at AT TIME ZONE 'Asia/Makassar'))
+           late_minutes
          FROM attendance
          WHERE barber_id = $1
-           AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
+           AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
+         ORDER BY DATE(clock_in_at AT TIME ZONE 'Asia/Makassar'), clock_in_at DESC`,
         [barber.id, period_from, period_to])
 
       const workedDays = attRows.rows.length

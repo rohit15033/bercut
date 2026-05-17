@@ -31,10 +31,10 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
     const { barber_id, branch_id, force = false } = req.body
     if (!barber_id || !branch_id) return res.status(400).json({ message: 'barber_id and branch_id required' })
     const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
-    // Check if already clocked in today (WITA)
+    // Block any same-day clock-in regardless of clock_out status — one record per barber per day
     const existing = await pool.query(
       `SELECT id FROM attendance
-       WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2 AND clock_out_at IS NULL`,
+       WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2`,
       [barber_id, today])
     if (existing.rows.length && !force) return res.status(409).json({ message: 'Already clocked in today' })
 

@@ -1177,8 +1177,12 @@ export default function LiveMonitor() {
         try {
           await api.post('/attendance/clock-out', { barber_id: barber.id })
         } catch (e) {
-          // No open attendance record — force status directly
-          await api.patch(`/barbers/${barber.id}/status`, { status: 'clocked_out' })
+          // No open attendance record — patch status directly so LiveMonitor reflects reality
+          if (e.status === 409 || e?.response?.status === 409 || /no open/i.test(e.message)) {
+            await api.patch(`/barbers/${barber.id}/status`, { status: 'clocked_out' })
+          } else {
+            throw e
+          }
         }
       } else if (action === 'break') {
         await api.post('/barber-breaks', { barber_id: barber.id, duration_minutes: 30, note: 'Admin Force Break' })

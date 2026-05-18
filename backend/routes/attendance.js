@@ -31,14 +31,31 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
     const { barber_id, branch_id, force = false } = req.body
     if (!barber_id || !branch_id) return res.status(400).json({ message: 'barber_id and branch_id required' })
     const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
-    // Block any same-day clock-in regardless of clock_out status — one record per barber per day
     const existing = await pool.query(
-      `SELECT id FROM attendance
-       WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2`,
+      `SELECT id, clock_out_at FROM attendance
+       WHERE barber_id = $1 AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') = $2
+       ORDER BY clock_in_at DESC LIMIT 1`,
       [barber_id, today])
-    if (existing.rows.length && !force) return res.status(409).json({ message: 'Already clocked in today' })
 
-    // Compute late_minutes: shift starts 09:00 WITA (540 min), grace from payroll_settings
+    if (existing.rows.length) {
+      if (!force) return res.status(409).json({ message: 'Already clocked in today' })
+      // force=true + existing record: reuse it instead of creating a duplicate
+      const rec = existing.rows[0]
+      let finalRow = rec
+      if (rec.clock_out_at !== null) {
+        // Was clocked out — reopen by clearing clock_out_at
+        const { rows: updated } = await pool.query(
+          `UPDATE attendance SET clock_out_at = NULL WHERE id = $1 RETURNING *`,
+          [rec.id])
+        finalRow = updated[0]
+      }
+      await pool.query(`DELETE FROM off_records WHERE barber_id = $1 AND date = $2`, [barber_id, today])
+      await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [barber_id])
+      emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
+      return res.json(finalRow)
+    }
+
+    // No existing record — compute late_minutes and insert
     const [ps, gs] = await Promise.all([
       pool.query('SELECT late_grace_period_minutes FROM payroll_settings LIMIT 1'),
       pool.query('SELECT shift_start_time FROM global_settings LIMIT 1'),
@@ -48,7 +65,6 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
     const [shH, shM] = shiftStr.split(':').map(Number)
     const SHIFT_START_MIN = shH * 60 + shM
 
-    // Clock-in is NOW() — compute minutes late
     const clockInLocal = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' })
     const ciHour = parseInt(clockInLocal.slice(11, 13))
     const ciMin  = parseInt(clockInLocal.slice(14, 16))
@@ -59,6 +75,7 @@ router.post('/clock-in', requireKioskOrAdmin, async (req, res) => {
       `INSERT INTO attendance (barber_id, branch_id, clock_in_at, late_minutes)
        VALUES ($1,$2,NOW(),$3) RETURNING *`,
       [barber_id, branch_id, lateMins])
+    await pool.query(`DELETE FROM off_records WHERE barber_id = $1 AND date = $2`, [barber_id, today])
     await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1`, [barber_id])
     emitEvent(branch_id, 'barber_update', { barber_id, status: 'available' })
     res.status(201).json(rows[0])

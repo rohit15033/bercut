@@ -489,7 +489,7 @@ CREATE TABLE IF NOT EXISTS payroll_settings (
   late_grace_period_minutes        SMALLINT NOT NULL DEFAULT 5,
   inexcused_off_flat_deduction     INTEGER  NOT NULL DEFAULT 150000,
   excused_off_flat_deduction       INTEGER  NOT NULL DEFAULT 150000,
-  off_quota_per_month              SMALLINT NOT NULL DEFAULT 4,
+  off_quota_per_week               SMALLINT NOT NULL DEFAULT 1,
   -- Overtime commission
   ot_commission_enabled            BOOLEAN  NOT NULL DEFAULT false,
   ot_threshold_time                TIME     NOT NULL DEFAULT '19:00',

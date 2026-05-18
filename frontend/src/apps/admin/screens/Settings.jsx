@@ -226,7 +226,7 @@ function PayrollTab() {
     late_grace_period_minutes:  5,
     inexcused_off_flat_deduction: 150000,
     excused_off_flat_deduction:   150000,
-    off_quota_per_month:        2,
+    off_quota_per_week:         1,
     ot_commission_enabled:      false,
     ot_threshold_time:          '19:00',
     ot_bonus_pct:               5,
@@ -303,13 +303,13 @@ function PayrollTab() {
         </div>
       </SettingRow>
 
-      <SettingRow label="Monthly Excused Off Limit"
-        sub="How many excused absences per period are free. Any excused offs above this number will be charged.">
-        <Stepper value={Number(cfg.off_quota_per_month)} onChange={v => set('off_quota_per_month', v)} min={0} max={10} unit="days free" />
+      <SettingRow label="Weekly Excused Off Quota"
+        sub="Free excused offs per calendar week (Mon–Sun). Payroll deducts excused offs above this × complete weeks in the period.">
+        <Stepper value={Number(cfg.off_quota_per_week)} onChange={v => set('off_quota_per_week', v)} min={0} max={7} unit="per week" />
       </SettingRow>
 
-      <SettingRow label="Charge Per Excused Off Above Limit"
-        sub={`Each excused off day beyond the ${cfg.off_quota_per_month}-day limit is deducted at this rate.`}>
+      <SettingRow label="Charge Per Excused Off Above Quota"
+        sub={`Each excused off day beyond the free quota is deducted at this rate.`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: T.muted }}>Rp</span>
           <input type="number" value={cfg.excused_off_flat_deduction} min={0} step={25000}

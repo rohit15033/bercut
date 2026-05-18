@@ -65,7 +65,6 @@ function computeWorkingDays(from, to) {
 const LATE_RATE_PER_MIN = 2_000
 const FLAT_OFF_RATE     = 150_000
 const EXCUSED_OVER_RATE = 100_000
-const EXCUSED_QUOTA     = 2
 
 // ── InlineNum ─────────────────────────────────────────────────────────────────
 
@@ -438,17 +437,24 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
     : (isCustom && customFrom && customTo ? computeWorkingDays(customFrom, customTo) : 26)
   const workingDays = workingDaysOverride ?? computedWD
 
-  const [overrides,  setOverrides]  = useState({})
-  const [showManage, setShowManage] = useState(false)
-  const [showAdd,    setShowAdd]    = useState(false)
-  const [modalEntry, setModalEntry] = useState(null)
+  const [overrides,      setOverrides]      = useState({})
+  const [showManage,     setShowManage]     = useState(false)
+  const [showAdd,        setShowAdd]        = useState(false)
+  const [modalEntry,     setModalEntry]     = useState(null)
+  const [payrollSettings,setPayrollSettings]= useState({})
 
   useEffect(() => {
     api.get('/branches').then(d => {
       setBranches(d || [])
       if (d?.[0]) setSelectedBranch(String(d[0].id))
     }).catch(() => {})
+    api.get('/settings/payroll').then(d => { if (d) setPayrollSettings(d) }).catch(() => {})
   }, [])
+
+  const periodDays = activePeriod
+    ? Math.round((new Date(activePeriod.period_to) - new Date(activePeriod.period_from)) / 86400000) + 1
+    : 0
+  const excusedQuota = Math.floor(periodDays / 7) * (payrollSettings.off_quota_per_week || 1)
 
   useEffect(() => {
     if (!selectedBranch) return
@@ -540,7 +546,7 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
     const lateMin       = ov.lateMin       ?? Number(entry.total_late_minutes || 0)
     const inexcusedTimes = ov.inexcusedTimes ?? Number(entry.inexcused_fixed_days || 0)
     const excusedTimes   = ov.excusedTimes   ?? Number(entry.excused_fixed_days  || 0)
-    const excusedOver    = Math.max(0, excusedTimes - EXCUSED_QUOTA)
+    const excusedOver    = Math.max(0, excusedTimes - excusedQuota)
     const inexcusedFixed   = ov.inexcusedFixed   ?? inexcusedTimes
     const inexcusedProrata = ov.inexcusedProrata ?? 0
     const excusedFixed     = ov.excusedFixed     ?? excusedOver
@@ -694,7 +700,7 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
           const lateMin        = ov.lateMin        ?? Number(entry.total_late_minutes   || 0)
           const excusedTimes   = ov.excusedTimes   ?? Number(entry.excused_fixed_days   || 0)
           const inexcusedTimes = ov.inexcusedTimes ?? Number(entry.inexcused_fixed_days || 0)
-          const excusedOver    = Math.max(0, excusedTimes - EXCUSED_QUOTA)
+          const excusedOver    = Math.max(0, excusedTimes - excusedQuota)
           const excusedFixed     = ov.excusedFixed     ?? excusedOver
           const excusedProrata   = ov.excusedProrata   ?? 0
           const inexcusedFixed   = ov.inexcusedFixed   ?? inexcusedTimes
@@ -763,7 +769,7 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
               <div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 5 }}>
                   <InlineNum value={excusedTimes}
-                    onCommit={v => setOverride(entry.id, { excusedTimes: v, excusedFixed: Math.max(0, v - EXCUSED_QUOTA), excusedProrata: 0 })}
+                    onCommit={v => setOverride(entry.id, { excusedTimes: v, excusedFixed: Math.max(0, v - excusedQuota), excusedProrata: 0 })}
                     suffix="×" color="#2563EB" />
                   <span style={{ fontSize: 9, color: T.muted }}>
                     {excusedOver > 0 ? `${excusedOver} charged` : 'within quota'}

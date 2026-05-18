@@ -55,6 +55,10 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     const lateGrace              = parseInt(cfg.late_grace_period_minutes  || 5)
     const inexcusedFlatDeduct    = parseInt(cfg.inexcused_off_flat_deduction || 150000)
     const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction   || 150000)
+    const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week || 1)
+
+    const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
+    const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
     const otEnabled              = cfg.ot_commission_enabled || false
     const otThresholdTime        = cfg.ot_threshold_time || '19:00'
     const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 5)
@@ -145,7 +149,7 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
         ? Math.round(inexcusedDays * prorataRate)
         : inexcusedDays * inexcusedFlatDeduct
 
-      const excusedOver   = Math.max(0, excusedDays - 2)  // EXCUSED_QUOTA = 2
+      const excusedOver   = Math.max(0, excusedDays - periodQuota)
       const excusedDeduct = isProrata
         ? Math.round(excusedOver * prorataRate)
         : excusedOver * excusedFlatDeduct

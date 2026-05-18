@@ -30,7 +30,7 @@ const computeLateMin = (timeStr, shiftStart = '10:00', grace = 5) => {
 
 function OffTypeRadioGroup({ value, onChange }) {
   const TYPE_OPTIONS = [
-    { key: 'OE', label: 'Excused Off',         desc: 'Approved absence — counts toward monthly quota' },
+    { key: 'OE', label: 'Excused Off',         desc: 'Approved absence — counts toward weekly quota'  },
     { key: 'OI', label: 'Inexcused Off',        desc: 'No prior approval — flat deduction applies'    },
     { key: 'OS', label: 'Off with Doctor Note', desc: 'Medical — no deduction'                       },
   ]

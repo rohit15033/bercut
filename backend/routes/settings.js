@@ -27,7 +27,7 @@ router.get('/global', requireAdmin, async (req, res) => {
 router.patch('/global', requireAdmin, requireOwner, async (req, res) => {
   try {
     const allowed = ['points_earn_rate','points_redemption_rate',
-      'points_expiry_months','points_expiry_warning_days']
+      'points_expiry_months','points_expiry_warning_days','shift_start_time']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
@@ -52,7 +52,7 @@ router.patch('/payroll', requireAdmin, requireOwner, async (req, res) => {
   try {
     const allowed = ['late_deduction_per_minute','late_grace_period_minutes',
       'inexcused_off_flat_deduction','excused_off_flat_deduction',
-      'off_quota_per_month','ot_commission_enabled','ot_threshold_time',
+      'off_quota_per_week','ot_commission_enabled','ot_threshold_time',
       'ot_bonus_pct','working_days_per_week']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {

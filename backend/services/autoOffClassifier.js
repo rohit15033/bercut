@@ -35,6 +35,11 @@ async function runAutoOffClassifier() {
   const weekStart = monday.toISOString().slice(0, 10)
   const weekEnd   = sunday.toISOString().slice(0, 10)
 
+  // Weekly quota from settings — how many auto-excused offs are free per Mon–Sun week
+  const { rows: settingsRows } = await pool.query(
+    'SELECT off_quota_per_week FROM payroll_settings LIMIT 1')
+  const weeklyQuota = parseInt(settingsRows[0]?.off_quota_per_week || 1)
+
   // Fetch all active barbers with their branch (only active branches)
   const { rows: barbers } = await pool.query(
     `SELECT ba.id AS barber_id, ba.branch_id
@@ -76,7 +81,7 @@ async function runAutoOffClassifier() {
       [barber_id, weekStart, weekEnd])
 
     const autoExcusedCount = parseInt(weekAutoExcused[0].cnt, 10)
-    const offType = autoExcusedCount === 0 ? 'excused' : 'inexcused'
+    const offType = autoExcusedCount < weeklyQuota ? 'excused' : 'inexcused'
 
     try {
       await pool.query(

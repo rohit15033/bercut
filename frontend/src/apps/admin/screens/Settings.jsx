@@ -231,8 +231,10 @@ function PayrollTab() {
     ot_threshold_time:          '19:00',
     ot_bonus_pct:               5,
     working_days_per_week:      6,
+    ot_excluded_service_ids:    [],
   })
   const [shiftStartTime, setShiftStartTime] = useState('10:00')
+  const [allServices, setAllServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [saved,   setSaved]   = useState(false)
   const [busy,    setBusy]    = useState(false)
@@ -245,6 +247,9 @@ function PayrollTab() {
       if (payroll) setCfg(prev => ({ ...prev, ...payroll }))
       if (global?.shift_start_time) setShiftStartTime(String(global.shift_start_time).slice(0, 5))
     }).catch(() => {}).finally(() => setLoading(false))
+    api.get('/services').then(d => {
+      setAllServices((d || []).filter(s => s.is_active).sort((a, b) => a.name.localeCompare(b.name)))
+    }).catch(() => {})
   }, [])
 
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }))
@@ -347,6 +352,51 @@ function PayrollTab() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Stepper value={Number(cfg.ot_bonus_pct)} onChange={v => set('ot_bonus_pct', v)} min={1} max={50} unit="%" />
                 <span style={{ fontSize: 12, color: T.muted }}>e.g. 35% + {cfg.ot_bonus_pct}% = {35 + Number(cfg.ot_bonus_pct)}% effective rate</span>
+              </div>
+            </SettingRow>
+
+            <SettingRow label="Exclude Services from OT Commission"
+              sub="Selected services earn standard commission only, even when booked after the threshold.">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 280 }}>
+                {/* selected chips */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(cfg.ot_excluded_service_ids || []).map(id => {
+                    const svc = allServices.find(s => s.id === id)
+                    if (!svc) return null
+                    return (
+                      <span key={id} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '3px 10px', borderRadius: 999,
+                        background: '#FEF3C7', border: '1px solid #FDE68A',
+                        fontSize: 12, fontWeight: 600, color: '#92400E'
+                      }}>
+                        {svc.name}
+                        <button onClick={() => set('ot_excluded_service_ids',
+                          (cfg.ot_excluded_service_ids || []).filter(x => x !== id))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer',
+                            color: '#92400E', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+                      </span>
+                    )
+                  })}
+                </div>
+                {/* add service dropdown */}
+                <select
+                  value=""
+                  onChange={e => {
+                    if (!e.target.value) return
+                    if (!(cfg.ot_excluded_service_ids || []).includes(e.target.value))
+                      set('ot_excluded_service_ids', [...(cfg.ot_excluded_service_ids || []), e.target.value])
+                  }}
+                  style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid ' + T.border,
+                    fontSize: 13, color: T.text, background: T.white, maxWidth: 280 }}>
+                  <option value="">＋ Add service to exclude…</option>
+                  {allServices
+                    .filter(s => !(cfg.ot_excluded_service_ids || []).includes(s.id))
+                    .map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                {(cfg.ot_excluded_service_ids || []).length === 0 && (
+                  <div style={{ fontSize: 11, color: T.muted }}>No exclusions — all services qualify for OT bonus.</div>
+                )}
               </div>
             </SettingRow>
           </>

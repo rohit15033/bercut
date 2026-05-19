@@ -53,10 +53,18 @@ router.patch('/payroll', requireAdmin, requireOwner, async (req, res) => {
     const allowed = ['late_deduction_per_minute','late_grace_period_minutes',
       'inexcused_off_flat_deduction','excused_off_flat_deduction',
       'off_quota_per_week','ot_commission_enabled','ot_threshold_time',
-      'ot_bonus_pct','working_days_per_week']
+      'ot_bonus_pct','working_days_per_week','ot_excluded_service_ids']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
-      if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
+      if (req.body[key] !== undefined) {
+        if (key === 'ot_excluded_service_ids') {
+          sets.push(`${key} = $${idx++}::uuid[]`)
+          vals.push(req.body[key] || [])
+        } else {
+          sets.push(`${key} = $${idx++}`)
+          vals.push(req.body[key])
+        }
+      }
     }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
     sets.push('updated_at = NOW()')

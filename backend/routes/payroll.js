@@ -123,6 +123,12 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
              WHERE bsv.booking_id = bk.id
                AND NOT (bsv.service_id = ANY($5::uuid[]))
            ), 0) AS commission_ot_eligible,
+           COALESCE((
+             SELECT SUM(bsv.price_charged)
+             FROM booking_services bsv
+             WHERE bsv.booking_id = bk.id
+               AND NOT (bsv.service_id = ANY($5::uuid[]))
+           ), 0) AS ot_eligible_revenue,
            TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
          FROM bookings bk
          WHERE bk.barber_id = $1
@@ -130,16 +136,18 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
            AND bk.status = 'completed'`,
         [barber.id, period_from, period_to, fallbackRate, otExcludedIds])
 
-      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0
+      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0, otEligRevBase = 0
       for (const bk of bkRows.rows) {
         const isOt       = otEnabled && bk.slot_time >= otThresholdTime
         const amt        = Math.max(0, parseFloat(bk.total_amount || 0))
         const commExcl   = Math.max(0, parseFloat(bk.commission_excluded   || 0))
         const commOtElig = Math.max(0, parseFloat(bk.commission_ot_eligible || 0))
+        const otEligRev  = Math.max(0, parseFloat(bk.ot_eligible_revenue    || 0))
         if (isOt) {
-          grossRevOt  += amt
-          commRegBase += commExcl     // excluded services → always standard rate
-          commOtBase  += commOtElig   // eligible services → gets OT bonus
+          grossRevOt    += amt
+          commRegBase   += commExcl     // excluded services → always standard rate
+          commOtBase    += commOtElig   // eligible services base commission
+          otEligRevBase += otEligRev    // eligible service revenue for additive bonus
         } else {
           grossRevReg += amt
           commRegBase += commExcl + commOtElig   // non-OT booking → everything standard
@@ -147,7 +155,8 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
       }
       const grossRevTotal = grossRevReg + grossRevOt
       const commRegular = Math.round(commRegBase)
-      const commOt      = Math.round(commOtBase * (1 + otBonusPct / 100))
+      // Additive: standard commission + bonus% of eligible revenue (e.g. 40%+10% = 50%)
+      const commOt      = Math.round(commOtBase + otEligRevBase * otBonusPct / 100)
 
       // Tips
       const tipsResult = await client.query(
@@ -342,6 +351,12 @@ router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, r
              WHERE bsv.booking_id = bk.id
                AND NOT (bsv.service_id = ANY($5::uuid[]))
            ), 0) AS commission_ot_eligible,
+           COALESCE((
+             SELECT SUM(bsv.price_charged)
+             FROM booking_services bsv
+             WHERE bsv.booking_id = bk.id
+               AND NOT (bsv.service_id = ANY($5::uuid[]))
+           ), 0) AS ot_eligible_revenue,
            TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
          FROM bookings bk
          WHERE bk.barber_id = $1
@@ -349,16 +364,18 @@ router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, r
            AND bk.status = 'completed'`,
         [barber.id, period_from, period_to, fallbackRate, otExcludedIds])
 
-      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0
+      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0, otEligRevBase = 0
       for (const bk of bkRows.rows) {
         const isOt       = otEnabled && bk.slot_time >= otThresholdTime
         const amt        = Math.max(0, parseFloat(bk.total_amount || 0))
         const commExcl   = Math.max(0, parseFloat(bk.commission_excluded   || 0))
         const commOtElig = Math.max(0, parseFloat(bk.commission_ot_eligible || 0))
+        const otEligRev  = Math.max(0, parseFloat(bk.ot_eligible_revenue    || 0))
         if (isOt) {
-          grossRevOt  += amt
-          commRegBase += commExcl     // excluded services → always standard rate
-          commOtBase  += commOtElig   // eligible services → gets OT bonus
+          grossRevOt    += amt
+          commRegBase   += commExcl     // excluded services → always standard rate
+          commOtBase    += commOtElig   // eligible services base commission
+          otEligRevBase += otEligRev    // eligible service revenue for additive bonus
         } else {
           grossRevReg += amt
           commRegBase += commExcl + commOtElig   // non-OT booking → everything standard
@@ -366,7 +383,8 @@ router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, r
       }
       const grossRevTotal = grossRevReg + grossRevOt
       const commRegular = Math.round(commRegBase)
-      const commOt      = Math.round(commOtBase * (1 + otBonusPct / 100))
+      // Additive: standard commission + bonus% of eligible revenue (e.g. 40%+10% = 50%)
+      const commOt      = Math.round(commOtBase + otEligRevBase * otBonusPct / 100)
 
       // Tips
       const tipsResult = await client.query(

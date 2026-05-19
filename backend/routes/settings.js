@@ -73,7 +73,6 @@ router.patch('/payroll', requireAdmin, requireOwner, async (req, res) => {
       }
     }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
-    sets.push('updated_at = NOW()')
     await pool.query(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM payroll_settings LIMIT 1) THEN

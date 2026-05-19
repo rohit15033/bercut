@@ -238,6 +238,7 @@ function PayrollTab() {
   const [loading, setLoading] = useState(true)
   const [saved,   setSaved]   = useState(false)
   const [busy,    setBusy]    = useState(false)
+  const [saveErr, setSaveErr] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -255,14 +256,16 @@ function PayrollTab() {
   const set = (k, v) => setCfg(c => ({ ...c, [k]: v }))
 
   async function handleSave() {
-    setBusy(true)
+    setBusy(true); setSaveErr('')
     try {
       await Promise.all([
         api.patch('/settings/payroll', cfg),
         api.patch('/settings/global', { shift_start_time: shiftStartTime }),
       ])
       setSaved(true); setTimeout(() => setSaved(false), 2000)
-    } catch { /* ignore */ } finally { setBusy(false) }
+    } catch (err) {
+      setSaveErr('Save failed — ' + (err?.message || 'unknown error'))
+    } finally { setBusy(false) }
   }
 
   const otEnabled = !!cfg.ot_commission_enabled

@@ -541,8 +541,8 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
   }
 
   function calcNetPay(entry) {
-    const ov            = overrides[entry.id] || {}
-    const lateMin       = ov.lateMin       ?? Number(entry.total_late_minutes || 0)
+    const ov             = overrides[entry.id] || {}
+    const lateMin        = ov.lateMin        ?? Number(entry.total_late_minutes || 0)
     const inexcusedTimes = ov.inexcusedTimes ?? Number(entry.inexcused_fixed_days || 0)
     const excusedTimes   = ov.excusedTimes   ?? Number(entry.excused_fixed_days  || 0)
     const excusedOver    = Math.max(0, excusedTimes - excusedQuota)
@@ -551,12 +551,15 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     const excusedFixed     = ov.excusedFixed     ?? excusedOver
     const excusedProrata   = ov.excusedProrata   ?? 0
     const prorataRate      = Math.round(Number(entry.base_salary || 0) / workingDays)
-    const lateDed          = lateMin * LATE_RATE_PER_MIN
-    const inexcusedDed     = inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate)
-    const excusedDed       = excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate)
-    const adjs          = adjustments[entry.id] || []
-    const totalAdd      = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
-    const totalDed      = adjs.filter(a => a.type === 'deduction' && !(a.is_kasbon && a.deduct_period === 'next')).reduce((s, a) => s + Number(a.amount), 0)
+    const hasLateOv      = ov.lateMin !== undefined
+    const hasExcOv       = ov.excusedTimes !== undefined || ov.excusedFixed !== undefined || ov.excusedProrata !== undefined
+    const hasInexOv      = ov.inexcusedTimes !== undefined || ov.inexcusedFixed !== undefined || ov.inexcusedProrata !== undefined
+    const lateDed        = hasLateOv ? lateMin * LATE_RATE_PER_MIN           : Number(entry.late_deduction          || 0)
+    const inexcusedDed   = hasInexOv ? inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate) : Number(entry.inexcused_off_deduction || 0)
+    const excusedDed     = hasExcOv  ? excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate) : Number(entry.excused_off_deduction   || 0)
+    const adjs     = adjustments[entry.id] || []
+    const totalAdd = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
+    const totalDed = adjs.filter(a => a.type === 'deduction' && !(a.is_kasbon && a.deduct_period === 'next')).reduce((s, a) => s + Number(a.amount), 0)
     return Number(entry.base_salary || 0) + Number(entry.commission_regular || 0) + Number(entry.commission_ot || 0)
          - lateDed - inexcusedDed - excusedDed + totalAdd - totalDed
   }
@@ -739,9 +742,12 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
           const inexcusedFixed   = ov.inexcusedFixed   ?? inexcusedTimes
           const inexcusedProrata = ov.inexcusedProrata ?? 0
           const prorataRate      = Math.round(Number(entry.base_salary || 0) / workingDays)
-          const lateDed          = lateMin * LATE_RATE_PER_MIN
-          const excusedDed       = excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate)
-          const inexcusedDed     = inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate)
+          const hasLateOv  = ov.lateMin !== undefined
+          const hasExcOv   = ov.excusedTimes !== undefined || ov.excusedFixed !== undefined || ov.excusedProrata !== undefined
+          const hasInexOv  = ov.inexcusedTimes !== undefined || ov.inexcusedFixed !== undefined || ov.inexcusedProrata !== undefined
+          const lateDed    = hasLateOv ? lateMin * LATE_RATE_PER_MIN           : Number(entry.late_deduction          || 0)
+          const excusedDed = hasExcOv  ? excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate) : Number(entry.excused_off_deduction   || 0)
+          const inexcusedDed = hasInexOv ? inexcusedFixed * FLAT_OFF_RATE   + Math.round(inexcusedProrata * prorataRate) : Number(entry.inexcused_off_deduction || 0)
           const adjs             = adjustments[entry.id] || []
           const kasbonAdjs       = adjs.filter(a => a.is_kasbon && a.type === 'deduction' && a.deduct_period === 'current')
           const kasbonDeferred   = adjs.filter(a => a.is_kasbon && a.deduct_period === 'next')
@@ -813,7 +819,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                     {excusedOver > 0 ? `${excusedOver} charged` : 'within quota'}
                   </span>
                 </div>
-                {(excusedFixed > 0 || excusedProrata > 0) ? (
+                {hasExcOv && (excusedFixed > 0 || excusedProrata > 0) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <InlineNum value={excusedFixed} onCommit={v => {
@@ -834,6 +840,8 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                     </div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>−{fmtM(excusedDed)}</div>
                   </div>
+                ) : excusedDed > 0 ? (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>−{fmtM(excusedDed)}</div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}
@@ -851,7 +859,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                     suffix="×" color="#DC2626" />
                   {inexcusedTimes > 0 && <span style={{ fontSize: 9, color: T.muted }}>all charged</span>}
                 </div>
-                {(inexcusedFixed > 0 || inexcusedProrata > 0) ? (
+                {hasInexOv && (inexcusedFixed > 0 || inexcusedProrata > 0) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <InlineNum value={inexcusedFixed} onCommit={v => {
@@ -872,6 +880,8 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                     </div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>−{fmtM(inexcusedDed)}</div>
                   </div>
+                ) : inexcusedDed > 0 ? (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>−{fmtM(inexcusedDed)}</div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}

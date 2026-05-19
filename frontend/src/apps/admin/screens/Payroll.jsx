@@ -789,7 +789,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               {/* Late */}
               <div>
                 <div style={{ marginBottom: 4 }}>
-                  <InlineNum value={lateMin} onCommit={v => patchEntry(entry, 'late_deduction', v * LATE_RATE_PER_MIN)} suffix=" min" color="#D97706" />
+                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * LATE_RATE_PER_MIN }).catch(() => {}) }} suffix=" min" color="#D97706" />
                 </div>
                 {lateDed > 0
                   ? <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#DC2626' }}>−{fmtM(lateDed)}</div>
@@ -802,7 +802,12 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               <div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 5 }}>
                   <InlineNum value={excusedTimes}
-                    onCommit={v => setOverride(entry.id, { excusedTimes: v, excusedFixed: Math.max(0, v - excusedQuota), excusedProrata: 0 })}
+                    onCommit={v => {
+                      const newFixed = Math.max(0, v - excusedQuota)
+                      const newDed = newFixed * EXCUSED_OVER_RATE
+                      setOverride(entry.id, { excusedTimes: v, excusedFixed: newFixed, excusedProrata: 0 })
+                      api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed }).catch(() => {})
+                    }}
                     suffix="×" color="#2563EB" />
                   <span style={{ fontSize: 9, color: T.muted }}>
                     {excusedOver > 0 ? `${excusedOver} charged` : 'within quota'}
@@ -811,11 +816,19 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                 {(excusedFixed > 0 || excusedProrata > 0) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <InlineNum value={excusedFixed} onCommit={v => setOverride(entry.id, 'excusedFixed', v)} suffix="× flat" color="#DC2626" />
+                      <InlineNum value={excusedFixed} onCommit={v => {
+                        const newDed = v * EXCUSED_OVER_RATE + Math.round((ov.excusedProrata ?? 0) * prorataRate)
+                        setOverride(entry.id, 'excusedFixed', v)
+                        api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed }).catch(() => {})
+                      }} suffix="× flat" color="#DC2626" />
                       {excusedFixed > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(excusedFixed * EXCUSED_OVER_RATE)}</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <InlineNum value={excusedProrata} onCommit={v => setOverride(entry.id, 'excusedProrata', v)} suffix="× ÷" color="#DC2626" />
+                      <InlineNum value={excusedProrata} onCommit={v => {
+                        const newDed = (ov.excusedFixed ?? excusedOver) * EXCUSED_OVER_RATE + Math.round(v * prorataRate)
+                        setOverride(entry.id, 'excusedProrata', v)
+                        api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed }).catch(() => {})
+                      }} suffix="× ÷" color="#DC2626" />
                       <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
                       {excusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(excusedProrata * prorataRate))}</span>}
                     </div>
@@ -830,18 +843,30 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               <div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 5 }}>
                   <InlineNum value={inexcusedTimes}
-                    onCommit={v => setOverride(entry.id, { inexcusedTimes: v, inexcusedFixed: v, inexcusedProrata: 0 })}
+                    onCommit={v => {
+                      const newDed = v * FLAT_OFF_RATE
+                      setOverride(entry.id, { inexcusedTimes: v, inexcusedFixed: v, inexcusedProrata: 0 })
+                      api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed }).catch(() => {})
+                    }}
                     suffix="×" color="#DC2626" />
                   {inexcusedTimes > 0 && <span style={{ fontSize: 9, color: T.muted }}>all charged</span>}
                 </div>
                 {(inexcusedFixed > 0 || inexcusedProrata > 0) ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <InlineNum value={inexcusedFixed} onCommit={v => setOverride(entry.id, 'inexcusedFixed', v)} suffix="× flat" color="#DC2626" />
+                      <InlineNum value={inexcusedFixed} onCommit={v => {
+                        const newDed = v * FLAT_OFF_RATE + Math.round((ov.inexcusedProrata ?? 0) * prorataRate)
+                        setOverride(entry.id, 'inexcusedFixed', v)
+                        api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed }).catch(() => {})
+                      }} suffix="× flat" color="#DC2626" />
                       {inexcusedFixed > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(inexcusedFixed * FLAT_OFF_RATE)}</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <InlineNum value={inexcusedProrata} onCommit={v => setOverride(entry.id, 'inexcusedProrata', v)} suffix="× ÷" color="#DC2626" />
+                      <InlineNum value={inexcusedProrata} onCommit={v => {
+                        const newDed = (ov.inexcusedFixed ?? inexcusedTimes) * FLAT_OFF_RATE + Math.round(v * prorataRate)
+                        setOverride(entry.id, 'inexcusedProrata', v)
+                        api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed }).catch(() => {})
+                      }} suffix="× ÷" color="#DC2626" />
                       <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
                       {inexcusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(inexcusedProrata * prorataRate))}</span>}
                     </div>

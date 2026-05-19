@@ -70,11 +70,11 @@ function formatPeriodLabel(from, to) {
   return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
 }
 
-async function downloadExport(periodId, label) {
+async function downloadExport(periodId, label, format = 'xlsx') {
   const token = getToken()
   const BASE = import.meta.env.VITE_API_URL ?? '/api'
   try {
-    const res = await fetch(`${BASE}/payroll/periods/${periodId}/export`, {
+    const res = await fetch(`${BASE}/payroll/periods/${periodId}/export?format=${format}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     if (!res.ok) throw new Error('Export failed')
@@ -82,7 +82,7 @@ async function downloadExport(periodId, label) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `payroll_${label.replace(/\s+/g, '_')}.xlsx`
+    a.download = `payroll_${label.replace(/\s+/g, '_')}.${format}`
     a.click()
     URL.revokeObjectURL(url)
   } catch (err) {
@@ -250,7 +250,7 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
       {/* Periods table */}
       <div className="admin-card fu" style={{ overflow: 'hidden', marginBottom: 24 }}>
         {/* Table header */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 1.8fr', padding: '10px 20px', borderBottom: '1px solid ' + T.border }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 2.2fr', padding: '10px 20px', borderBottom: '1px solid ' + T.border }}>
           {['Period', 'Status', 'Generated At', 'Actions'].map(h => (
             <div key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.muted }}>{h}</div>
           ))}
@@ -264,7 +264,7 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
           return (
             <div key={row.period_from}
               style={{
-                display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 1.8fr',
+                display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 2.2fr',
                 padding: '13px 20px',
                 borderBottom: i < rows.length - 1 ? '1px solid ' + T.surface : 'none',
                 alignItems: 'center',
@@ -288,7 +288,8 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button onClick={() => onOpen(row.dbPeriod)} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
                 <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Resetting…' : 'Reset ↺'}</button>
-                <button onClick={() => downloadExport(row.dbPeriod.id, row.label)} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
+                <button onClick={() => downloadExport(row.dbPeriod.id, row.label, 'xlsx')} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
+                <button onClick={() => downloadExport(row.dbPeriod.id, row.label, 'csv')} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ CSV</button>
                 {row.status === 'draft' && (
                   <button
                     onClick={() => setConfirmDelete({ period: row.dbPeriod, label: row.label })}

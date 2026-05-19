@@ -576,13 +576,13 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     }
   }
 
-  async function handleExport() {
+  async function handleExport(format = 'xlsx') {
     if (!activePeriod) return
     const token = getToken()
     const BASE = import.meta.env.VITE_API_URL ?? '/api'
     const label = fmtPeriodLabel(activePeriod).replace(/\s+/g, '_')
     try {
-      const res = await fetch(`${BASE}/payroll/periods/${activePeriod.id}/export`, {
+      const res = await fetch(`${BASE}/payroll/periods/${activePeriod.id}/export?format=${format}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       if (!res.ok) throw new Error('Export failed')
@@ -590,7 +590,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `payroll_${label}.xlsx`
+      a.download = `payroll_${label}.${format}`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -701,9 +701,13 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               {regenerating ? 'Resetting…' : 'Reset ↺'}
             </button>
           )}
-          <button onClick={handleExport}
-            style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            ↓ Export
+          <button onClick={() => handleExport('xlsx')}
+            style={{ padding: '9px 14px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            ↓ Excel
+          </button>
+          <button onClick={() => handleExport('csv')}
+            style={{ padding: '9px 14px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: 'pointer' }}>
+            ↓ CSV
           </button>
         </div>
       </div>

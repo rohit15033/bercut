@@ -479,7 +479,7 @@ router.patch('/entries/:id', requireAdmin, requireOwner, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
-// GET /api/payroll/periods/:id/export — Excel
+// GET /api/payroll/periods/:id/export?format=xlsx|csv — Excel or CSV
 router.get('/periods/:id/export', requireAdmin, async (req, res) => {
   try {
     const period = await pool.query('SELECT * FROM payroll_periods WHERE id = $1', [req.params.id])
@@ -487,34 +487,58 @@ router.get('/periods/:id/export', requireAdmin, async (req, res) => {
     const p = period.rows[0]
 
     const { rows } = await pool.query(
-      `SELECT pe.*, b.name AS barber_name FROM payroll_entries pe
-       JOIN barbers b ON b.id = pe.barber_id WHERE pe.period_id = $1 ORDER BY b.name`,
+      `SELECT pe.*, b.name AS barber_name,
+        ROUND((pp.period_to - pp.period_from + 1) * 6.0 / 7)::int AS computed_working_days,
+        GREATEST(0, ROUND((pp.period_to - pp.period_from + 1) * 6.0 / 7)::int
+          - pe.inexcused_fixed_days - pe.excused_fixed_days) AS days_present
+       FROM payroll_entries pe
+       JOIN barbers b ON b.id = pe.barber_id
+       JOIN payroll_periods pp ON pp.id = pe.period_id
+       WHERE pe.period_id = $1 ORDER BY b.name`,
       [req.params.id])
+
+    const COLS = [
+      { header: 'Barber',              key: 'barber_name'             },
+      { header: 'Pay Type',            key: 'pay_type'                },
+      { header: 'Working Days',        key: 'computed_working_days'   },
+      { header: 'Days Present',        key: 'days_present'            },
+      { header: 'Base Salary',         key: 'base_salary'             },
+      { header: 'Service Revenue',     key: 'gross_service_revenue'   },
+      { header: 'Commission Regular',  key: 'commission_regular'      },
+      { header: 'Commission OT',       key: 'commission_ot'           },
+      { header: 'Tips',                key: 'total_tips'              },
+      { header: 'Late Minutes',        key: 'total_late_minutes'      },
+      { header: 'Late Deduction',      key: 'late_deduction'          },
+      { header: 'Inexcused Off Days',  key: 'inexcused_fixed_days'    },
+      { header: 'Inexcused Deduction', key: 'inexcused_off_deduction' },
+      { header: 'Excused Off Days',    key: 'excused_fixed_days'      },
+      { header: 'Excused Deduction',   key: 'excused_off_deduction'   },
+      { header: 'Kasbon',              key: 'kasbon_total'            },
+      { header: 'Net Pay',             key: 'net_pay'                 },
+    ]
+
+    const fmt = (req.query.format || 'xlsx').toLowerCase()
+    const fileBase = `payroll_${p.period_from}_${p.period_to}`
+
+    if (fmt === 'csv') {
+      const escape = v => {
+        const s = v === null || v === undefined ? '' : String(v)
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const header = COLS.map(c => escape(c.header)).join(',')
+      const body   = rows.map(r => COLS.map(c => escape(r[c.key])).join(',')).join('\r\n')
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename=${fileBase}.csv`)
+      res.send('﻿' + header + '\r\n' + body)
+      return
+    }
 
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('Payroll')
-    ws.columns = [
-      { header: 'Barber',              key: 'barber_name',             width: 20 },
-      { header: 'Pay Type',            key: 'pay_type',                width: 14 },
-      { header: 'Working Days',        key: 'working_days',            width: 14 },
-      { header: 'Base Salary',         key: 'base_salary',             width: 16 },
-      { header: 'Service Revenue',     key: 'gross_service_revenue',   width: 18 },
-      { header: 'Commission Regular',  key: 'commission_regular',      width: 20 },
-      { header: 'Commission OT',       key: 'commission_ot',           width: 16 },
-      { header: 'Tips',                key: 'total_tips',              width: 12 },
-      { header: 'Late Minutes',        key: 'total_late_minutes',      width: 14 },
-      { header: 'Late Deduction',      key: 'late_deduction',          width: 16 },
-      { header: 'Inexcused Off Days',  key: 'inexcused_fixed_days',    width: 18 },
-      { header: 'Inexcused Deduction', key: 'inexcused_off_deduction', width: 20 },
-      { header: 'Excused Off Days',    key: 'excused_fixed_days',      width: 18 },
-      { header: 'Excused Deduction',   key: 'excused_off_deduction',   width: 18 },
-      { header: 'Kasbon',              key: 'kasbon_total',            width: 12 },
-      { header: 'Net Pay',             key: 'net_pay',                 width: 14 }
-    ]
+    ws.columns = COLS.map(c => ({ ...c, width: Math.max(c.header.length + 4, 14) }))
     rows.forEach(r => ws.addRow(r))
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    res.setHeader('Content-Disposition', `attachment; filename=payroll_${p.period_from}_${p.period_to}.xlsx`)
+    res.setHeader('Content-Disposition', `attachment; filename=${fileBase}.xlsx`)
     await wb.xlsx.write(res)
     res.end()
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }

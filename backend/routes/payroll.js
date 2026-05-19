@@ -123,7 +123,7 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
              WHERE bsv.booking_id = bk.id
                AND NOT (bsv.service_id = ANY($5::uuid[]))
            ), 0) AS commission_ot_eligible,
-           TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
+           TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
          FROM bookings bk
          WHERE bk.barber_id = $1
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
@@ -342,7 +342,7 @@ router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, r
              WHERE bsv.booking_id = bk.id
                AND NOT (bsv.service_id = ANY($5::uuid[]))
            ), 0) AS commission_ot_eligible,
-           TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
+           TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
          FROM bookings bk
          WHERE bk.barber_id = $1
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3

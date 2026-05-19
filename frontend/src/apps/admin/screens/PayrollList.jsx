@@ -142,15 +142,10 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
     setGeneratingId(period.period_from?.slice(0, 10))
     setError('')
     try {
-      const result = await api.post('/payroll/periods/generate', {
-        branch_id:    String(period.branch_id),
-        period_month: String(period.period_from).slice(0, 7),
-        period_from:  String(period.period_from).slice(0, 10),
-        period_to:    String(period.period_to).slice(0, 10),
-      })
+      const result = await api.post('/payroll/periods/' + period.id + '/regenerate', {})
       onOpen(result.period)
     } catch (err) {
-      setError('Failed to regenerate period. Please try again.')
+      setError('Failed to reset period. Please try again.')
     } finally {
       setGeneratingId(null)
     }
@@ -209,11 +204,11 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
 
       {confirmRegen && (
         <ConfirmDialog
-          title={`Regenerate ${confirmRegen.label}?`}
-          message={`Are you sure you want to regenerate ${confirmRegen.label}?\nThis will recalculate all values from raw attendance and booking data.\nAny manual edits to this period will be reset. Status will return to Draft.`}
+          title={`Reset ${confirmRegen.label}?`}
+          message={`Are you sure you want to reset ${confirmRegen.label}?\nThis will recalculate all values from raw attendance and booking data.\nAny manual edits to this period will be reset. Status will return to Draft.`}
           onConfirm={() => handleRegenerate(confirmRegen.period, confirmRegen.label)}
           onCancel={() => setConfirmRegen(null)}
-          confirmLabel="Yes, Regenerate"
+          confirmLabel="Yes, Reset"
           confirmDanger
         />
       )}
@@ -294,7 +289,7 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
               {/* Actions */}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button onClick={() => onOpen(row.dbPeriod)} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
-                <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Regenerating…' : 'Regenerate ↺'}</button>
+                <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Resetting…' : 'Reset ↺'}</button>
                 <button onClick={() => downloadExport(row.dbPeriod.id, row.label)} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
                 {row.status === 'draft' && (
                   <button

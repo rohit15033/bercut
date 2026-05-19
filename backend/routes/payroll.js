@@ -237,6 +237,201 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
   }
 })
 
+// POST /api/payroll/periods/:id/regenerate
+router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, res) => {
+  const client = await pool.connect()
+  try {
+    const periodCheck = await client.query('SELECT * FROM payroll_periods WHERE id = $1', [req.params.id])
+    if (!periodCheck.rows.length) return res.status(404).json({ message: 'Period not found' })
+    const period = periodCheck.rows[0]
+
+    const period_from = period.period_from.toISOString().slice(0, 10)
+    const period_to   = period.period_to.toISOString().slice(0, 10)
+    const branch_id   = period.branch_id
+
+    await client.query('BEGIN')
+    await client.query(
+      `UPDATE payroll_periods SET status = 'draft', generated_at = NOW() WHERE id = $1`,
+      [period.id])
+    await client.query('DELETE FROM payroll_entries WHERE period_id = $1', [period.id])
+
+    const ps = await client.query('SELECT * FROM payroll_settings LIMIT 1')
+    const cfg = ps.rows[0] || {}
+    const lateDeductPerMin       = parseInt(cfg.late_deduction_per_minute || 2000)
+    const lateGrace              = parseInt(cfg.late_grace_period_minutes  || 5)
+    const inexcusedFlatDeduct    = parseInt(cfg.inexcused_off_flat_deduction || 150000)
+    const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction   || 150000)
+    const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week || 1)
+
+    const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
+    const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
+    const otEnabled              = cfg.ot_commission_enabled || false
+    const otThresholdTime        = cfg.ot_threshold_time || '19:00'
+    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 5)
+    const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
+
+    const barberCond = branch_id
+      ? 'WHERE branch_id = $1 AND is_active = true'
+      : 'WHERE is_active = true'
+    const barbers = await client.query(
+      `SELECT * FROM barbers ${barberCond}`, branch_id ? [branch_id] : [])
+
+    for (const barber of barbers.rows) {
+      const targetBranchId = barber.branch_id
+
+      // One row per work-date (latest clock-in wins) — matches what Attendance screen shows
+      const attRows = await client.query(
+        `SELECT DISTINCT ON (DATE(clock_in_at AT TIME ZONE 'Asia/Makassar'))
+           late_minutes
+         FROM attendance
+         WHERE barber_id = $1
+           AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
+         ORDER BY DATE(clock_in_at AT TIME ZONE 'Asia/Makassar'), clock_in_at DESC`,
+        [barber.id, period_from, period_to])
+
+      const workedDays = attRows.rows.length
+      const totalLateMinutes = attRows.rows.reduce((sum, r) => sum + (parseInt(r.late_minutes) || 0), 0)
+
+      // Off records in period
+      const offRows = await client.query(
+        `SELECT type FROM off_records WHERE barber_id = $1 AND date BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
+      const inexcusedDays = offRows.rows.filter(r => r.type === 'inexcused').length
+      const excusedDays   = offRows.rows.filter(r => r.type === 'excused').length
+
+      // Bookings: regular vs OT (by scheduled time)
+      // commission_amount uses snapshotted rate per service, falls back to barber rate
+      const fallbackRate = parseFloat(barber.commission_rate || 40)
+      const bkRows = await client.query(
+        `SELECT
+           (
+             COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id), 0) +
+             COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id), 0) -
+             bk.points_redeemed * 100
+           ) AS total_amount,
+           COALESCE((
+             SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
+             FROM booking_services bsv
+             WHERE bsv.booking_id = bk.id
+           ), 0) AS commission_amount,
+           TO_CHAR(bk.scheduled_at AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
+         FROM bookings bk
+         WHERE bk.barber_id = $1
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
+           AND bk.status = 'completed'`,
+        [barber.id, period_from, period_to, fallbackRate])
+
+      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0
+      for (const bk of bkRows.rows) {
+        const isOt = otEnabled && bk.slot_time >= otThresholdTime
+        const amt  = Math.max(0, parseFloat(bk.total_amount || 0))
+        const comm = Math.max(0, parseFloat(bk.commission_amount || 0))
+        if (isOt) { grossRevOt += amt; commOtBase += comm }
+        else       { grossRevReg += amt; commRegBase += comm }
+      }
+      const grossRevTotal = grossRevReg + grossRevOt
+      const commRegular = Math.round(commRegBase)
+      const commOt      = Math.round(commOtBase * (1 + otBonusPct / 100))
+
+      // Tips
+      const tipsResult = await client.query(
+        `SELECT COALESCE(SUM(t.amount), 0) AS total FROM tips t
+         JOIN bookings bk ON bk.id = t.booking_id
+         WHERE t.barber_id = $1
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
+      const totalTips = parseInt(tipsResult.rows[0].total)
+
+      // Base salary from barber record
+      const baseSalary = parseInt(barber.base_salary || 0)
+
+      // Deductions
+      const lateDeduction = totalLateMinutes * lateDeductPerMin
+
+      const prorataRate = Math.round(parseInt(barber.base_salary || 0) / workingDaysStd)
+      const isProrata   = barber.off_deduction_type === 'prorata'
+
+      const inexcusedDeduct = isProrata
+        ? Math.round(inexcusedDays * prorataRate)
+        : inexcusedDays * inexcusedFlatDeduct
+
+      const excusedOver   = Math.max(0, excusedDays - periodQuota)
+      const excusedDeduct = isProrata
+        ? Math.round(excusedOver * prorataRate)
+        : excusedOver * excusedFlatDeduct
+
+      // Kasbon total from expenses (used for net_pay calculation)
+      let kasbonTotal = 0
+      const kasbonResult = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
+         WHERE type = 'kasbon' AND barber_id = $1 AND expense_date BETWEEN $2 AND $3
+         AND (deduct_period = 'current' OR deduct_period IS NULL)`,
+        [barber.id, period_from, period_to])
+      kasbonTotal = parseInt(kasbonResult.rows[0].total)
+
+      const netPay = baseSalary + commRegular + commOt + totalTips
+                   - lateDeduction - inexcusedDeduct - excusedDeduct - kasbonTotal
+
+      await client.query(
+        `INSERT INTO payroll_entries
+           (period_id, barber_id, branch_id, pay_type, base_salary,
+            gross_service_revenue, commission_regular, commission_ot, total_tips,
+            total_late_minutes, inexcused_fixed_days, excused_fixed_days,
+            working_days, late_deduction, inexcused_off_deduction, excused_off_deduction,
+            kasbon_total, net_pay)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [period.id, barber.id, targetBranchId, barber.pay_type || 'commission',
+         baseSalary, Math.round(grossRevTotal), commRegular, commOt, totalTips,
+         totalLateMinutes, inexcusedDays, excusedDays,
+         workingDaysStd, lateDeduction, inexcusedDeduct, excusedDeduct,
+         kasbonTotal, netPay])
+
+      // Auto-import kasbon from expenses into payroll_adjustments
+      const kasbonExpenses = await client.query(
+        `SELECT * FROM expenses
+         WHERE type = 'kasbon'
+           AND barber_id = $1
+           AND expense_date BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
+
+      const insertedEntry = await client.query(
+        'SELECT id FROM payroll_entries WHERE period_id = $1 AND barber_id = $2',
+        [period.id, barber.id])
+      const entryId = insertedEntry.rows[0]?.id
+
+      if (entryId) {
+        // Delete existing auto-imported kasbon adjustments, then re-insert fresh
+        await client.query(
+          `DELETE FROM payroll_adjustments
+           WHERE payroll_entry_id = $1 AND is_kasbon = true AND expense_id IS NOT NULL`,
+          [entryId])
+        for (const exp of kasbonExpenses.rows) {
+          await client.query(
+            `INSERT INTO payroll_adjustments
+               (payroll_entry_id, type, category, remarks, amount, by, date, is_kasbon, expense_id, deduct_period)
+             VALUES ($1, 'deduction', 'Kasbon', $2, $3, $4, $5, true, $6, $7)`,
+            [entryId, exp.description || 'Kasbon', exp.amount, exp.submitted_by,
+             exp.expense_date, exp.id, exp.deduct_period || 'current'])
+        }
+      }
+    }
+
+    await client.query('COMMIT')
+    const updatedPeriod = await pool.query('SELECT * FROM payroll_periods WHERE id = $1', [period.id])
+    const entries = await pool.query(
+      `SELECT pe.*, b.name AS barber_name FROM payroll_entries pe
+       JOIN barbers b ON b.id = pe.barber_id
+       WHERE pe.period_id = $1 ORDER BY b.name`, [period.id])
+    res.status(200).json({ period: updatedPeriod.rows[0], entries: entries.rows })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
+})
+
 // GET /api/payroll/periods/:id/entries
 router.get('/periods/:id/entries', requireAdmin, async (req, res) => {
   try {

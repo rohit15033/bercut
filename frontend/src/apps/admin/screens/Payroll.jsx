@@ -410,10 +410,10 @@ function RegenConfirmModal({ periodLabel, onConfirm, onCancel }) {
       onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className="admin-card" style={{ width: 460, padding: '28px 30px', animation: 'scaleIn 0.18s ease both' }}>
         <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text, marginBottom: 10 }}>
-          Regenerate {periodLabel}?
+          Reset {periodLabel}?
         </div>
         <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.6, marginBottom: 24 }}>
-          Are you sure you want to regenerate <strong>{periodLabel}</strong>?<br />
+          Are you sure you want to reset <strong>{periodLabel}</strong>?<br />
           This will recalculate all values from raw attendance and booking data.<br />
           Any manual edits to this period will be reset. Status will return to Draft.
         </div>
@@ -424,7 +424,7 @@ function RegenConfirmModal({ periodLabel, onConfirm, onCancel }) {
           </button>
           <button onClick={onConfirm}
             style={{ padding: '9px 20px', borderRadius: 8, background: T.danger, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            Yes, Regenerate
+            Yes, Reset
           </button>
         </div>
       </div>
@@ -591,17 +591,21 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     setShowRegenConfirm(false)
     setRegenerating(true)
     try {
-      const result = await api.post('/payroll/periods/generate', {
-        branch_id:    String(activePeriod.branch_id),
-        period_month: String(activePeriod.period_from).slice(0, 7),
-        period_from:  String(activePeriod.period_from).slice(0, 10),
-        period_to:    String(activePeriod.period_to).slice(0, 10),
-      })
+      const result = await api.post('/payroll/periods/' + activePeriod.id + '/regenerate', {})
       setActivePeriod(result.period)
+      setEntries(result.entries || [])
+      const adjMap = {}
+      await Promise.all((result.entries || []).map(async entry => {
+        try {
+          const adjs = await api.get('/payroll/adjustments?payroll_entry_id=' + entry.id)
+          adjMap[entry.id] = adjs || []
+        } catch { adjMap[entry.id] = [] }
+      }))
+      setAdjustments(adjMap)
       setOverrides({})
       setWorkingDaysOverride(null)
     } catch (err) {
-      console.error('Regenerate failed', err)
+      console.error('Reset failed', err)
     } finally {
       setRegenerating(false)
     }
@@ -674,7 +678,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
             onClick={() => setShowRegenConfirm(true)}
             disabled={regenerating}
             style={{ padding: '9px 14px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: regenerating ? 'not-allowed' : 'pointer', opacity: regenerating ? 0.65 : 1 }}>
-            {regenerating ? 'Regenerating…' : 'Regenerate ↺'}
+            {regenerating ? 'Resetting…' : 'Reset ↺'}
           </button>
           <button onClick={handleExport}
             style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>

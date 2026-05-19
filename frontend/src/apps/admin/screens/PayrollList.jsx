@@ -65,11 +65,9 @@ function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = 'Co
 function formatPeriodLabel(from, to) {
   const f = String(from).slice(0, 10)
   const t = String(to).slice(0, 10)
-  const fd = new Date(f + 'T00:00:00')
-  const td = new Date(t + 'T00:00:00')
-  const fDay = f.slice(8)
-  const tDay = t.slice(8)
-  return `${fDay} ${MONTH_NAMES[fd.getMonth()].slice(0,3)} – ${tDay} ${MONTH_NAMES[td.getMonth()].slice(0,3)} ${td.getFullYear()}`
+  const [, fMo, fDa] = f.split('-').map(Number)
+  const [tYr, tMo, tDa] = t.split('-').map(Number)
+  return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
 }
 
 async function downloadExport(periodId, label) {

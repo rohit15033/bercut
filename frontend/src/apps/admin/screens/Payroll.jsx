@@ -17,9 +17,9 @@ function fmtPeriodLabel(period) {
   if (!period) return ''
   const f = String(period.period_from).slice(0, 10)
   const t = String(period.period_to).slice(0, 10)
-  const fd = new Date(f + 'T00:00:00')
-  const td = new Date(t + 'T00:00:00')
-  return `${fd.getDate()} ${MONTH_NAMES[fd.getMonth()].slice(0,3)} – ${td.getDate()} ${MONTH_NAMES[td.getMonth()].slice(0,3)} ${td.getFullYear()}`
+  const [, fMo, fDa] = f.split('-').map(Number)
+  const [tYr, tMo, tDa] = t.split('-').map(Number)
+  return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
 }
 
 function fmtDateTime(iso) {
@@ -43,8 +43,10 @@ function computeWorkingDays(from, to) {
   if (!from || !to) return 26
   const f = String(from).slice(0, 10)
   const t = String(to).slice(0, 10)
-  const d1 = new Date(f + 'T00:00:00')
-  const d2 = new Date(t + 'T00:00:00')
+  const [fy, fm, fd] = f.split('-').map(Number)
+  const [ty, tm, td] = t.split('-').map(Number)
+  const d1 = Date.UTC(fy, fm-1, fd)
+  const d2 = Date.UTC(ty, tm-1, td)
   const totalDays = Math.round((d2 - d1) / 86400000) + 1
   return Math.round(totalDays * 6 / 7)
 }

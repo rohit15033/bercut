@@ -202,6 +202,249 @@ describe('POST /api/payroll/periods/generate', () => {
   })
 })
 
+// ── POST /api/payroll/periods/generate — kasbon auto-import ─────────────────
+
+describe('POST /api/payroll/periods/generate — kasbon auto-import', () => {
+  let mockClient
+
+  const VALID_BODY = {
+    branch_id:    'branch-1',
+    period_month: '2026-05',
+    period_from:  '2026-05-01',
+    period_to:    '2026-05-31',
+  }
+
+  const FAKE_PERIOD = {
+    id: 'period-new', branch_id: 'branch-1',
+    period_from: '2026-05-01', period_to: '2026-05-31',
+    period_month: '2026-05', status: 'draft', generated_at: new Date().toISOString(),
+  }
+
+  const SETTINGS_ROW = {
+    late_deduction_per_minute: 2000, late_grace_period_minutes: 5,
+    inexcused_off_flat_deduction: 150000, excused_off_flat_deduction: 150000,
+    ot_commission_enabled: false, ot_threshold_time: '19:00',
+    ot_bonus_pct: 5, working_days_per_week: 6, off_quota_per_week: 1,
+  }
+
+  const FAKE_BARBER = {
+    id: 'barber-1', name: 'Barber One', branch_id: 'branch-1',
+    base_salary: 3000000, commission_rate: 0.4, pay_type: 'commission',
+    is_active: true, off_deduction_type: 'flat',
+  }
+
+  const FAKE_ENTRY = {
+    id: 'entry-1', barber_id: 'barber-1', period_id: 'period-new', base_salary: 3000000,
+  }
+
+  const FAKE_KASBON_EXP = {
+    id: 'exp-kas-1', type: 'kasbon', barber_id: 'barber-1',
+    amount: 200000, description: 'Salary advance', submitted_by: 'admin-1',
+    expense_date: '2026-05-05', deduct_period: 'current',
+  }
+
+  const FAKE_ADJ = {
+    id: 'adj-1', payroll_entry_id: 'entry-1', type: 'deduction',
+    category: 'Kasbon', is_kasbon: true, expense_id: 'exp-kas-1',
+    amount: 200000, deduct_period: 'current',
+  }
+
+  // Helper: standard per-barber mocks up to (and including) the upsert INSERT,
+  // with zero bookings and no kasbon SUM for simplicity.
+  function mockPerBarberPreamble(client) {
+    client.query
+      // attendance (late minutes)
+      .mockResolvedValueOnce({ rows: [{ total_late_minutes: 0 }] })
+      // off_records
+      .mockResolvedValueOnce({ rows: [] })
+      // bookings
+      .mockResolvedValueOnce({ rows: [] })
+      // tips
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })
+      // kasbon SUM for net_pay
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })
+      // INSERT payroll_entries (upsert — no RETURNING)
+      .mockResolvedValueOnce({})
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockClient = { query: jest.fn(), release: jest.fn() }
+    pool.connect.mockResolvedValue(mockClient)
+  })
+
+  // ── 1. Single kasbon expense auto-imported as adjustment ────────────────────
+  test('kasbon expense auto-imported as adjustment with correct fields', async () => {
+    mockClient.query
+      .mockResolvedValueOnce({})                              // BEGIN
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })         // INSERT payroll_periods
+      .mockResolvedValueOnce({})                              // UPDATE generated_at
+      .mockResolvedValueOnce({ rows: [SETTINGS_ROW] })        // SELECT payroll_settings
+      .mockResolvedValueOnce({ rows: [FAKE_BARBER] })         // SELECT barbers
+
+    mockPerBarberPreamble(mockClient)
+
+    mockClient.query
+      // SELECT * FROM expenses WHERE type='kasbon'
+      .mockResolvedValueOnce({ rows: [FAKE_KASBON_EXP] })
+      // SELECT id FROM payroll_entries (get entryId)
+      .mockResolvedValueOnce({ rows: [FAKE_ENTRY] })
+      // DELETE existing kasbon adjustments
+      .mockResolvedValueOnce({})
+      // INSERT payroll_adjustments
+      .mockResolvedValueOnce({ rows: [FAKE_ADJ] })
+      // COMMIT
+      .mockResolvedValueOnce({})
+
+    pool.query
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })         // updatedPeriod
+      .mockResolvedValueOnce({ rows: [] })                    // entries
+
+    const res = await supertest(makeApp())
+      .post('/api/payroll/periods/generate')
+      .send(VALID_BODY)
+
+    expect(res.status).toBe(201)
+
+    // Find the INSERT INTO payroll_adjustments call
+    const insertAdjCall = mockClient.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO payroll_adjustments')
+    )
+    expect(insertAdjCall).toBeDefined()
+
+    const sql    = insertAdjCall[0]
+    const params = insertAdjCall[1]
+
+    // SQL shape checks
+    expect(sql).toMatch(/is_kasbon/)
+    expect(sql).toMatch(/'deduction'/)
+    expect(sql).toMatch(/'Kasbon'/)
+
+    // Params: [entryId, remarks, amount, submitted_by, expense_date, expense_id, deduct_period]
+    expect(params[0]).toBe('entry-1')                    // payroll_entry_id
+    expect(params[2]).toBe(200000)                        // amount
+    expect(params[5]).toBe('exp-kas-1')                   // expense_id
+    expect(params[6]).toBe('current')                     // deduct_period
+  })
+
+  // ── 2. Multiple kasbon expenses → multiple adjustment inserts ───────────────
+  test('two kasbon expenses produce two INSERT payroll_adjustments calls', async () => {
+    const KASBON_EXP_2 = {
+      id: 'exp-kas-2', type: 'kasbon', barber_id: 'barber-1',
+      amount: 100000, description: 'Second advance', submitted_by: 'admin-1',
+      expense_date: '2026-05-10', deduct_period: 'current',
+    }
+
+    mockClient.query
+      .mockResolvedValueOnce({})                              // BEGIN
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })         // INSERT payroll_periods
+      .mockResolvedValueOnce({})                              // UPDATE generated_at
+      .mockResolvedValueOnce({ rows: [SETTINGS_ROW] })        // SELECT payroll_settings
+      .mockResolvedValueOnce({ rows: [FAKE_BARBER] })         // SELECT barbers
+
+    mockPerBarberPreamble(mockClient)
+
+    mockClient.query
+      // SELECT * FROM expenses WHERE type='kasbon' — two rows
+      .mockResolvedValueOnce({ rows: [FAKE_KASBON_EXP, KASBON_EXP_2] })
+      // SELECT id FROM payroll_entries
+      .mockResolvedValueOnce({ rows: [FAKE_ENTRY] })
+      // DELETE existing kasbon adjustments
+      .mockResolvedValueOnce({})
+      // INSERT payroll_adjustments — first expense
+      .mockResolvedValueOnce({ rows: [FAKE_ADJ] })
+      // INSERT payroll_adjustments — second expense
+      .mockResolvedValueOnce({ rows: [{ ...FAKE_ADJ, id: 'adj-2', expense_id: 'exp-kas-2', amount: 100000 }] })
+      // COMMIT
+      .mockResolvedValueOnce({})
+
+    pool.query
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const res = await supertest(makeApp())
+      .post('/api/payroll/periods/generate')
+      .send(VALID_BODY)
+
+    expect(res.status).toBe(201)
+
+    const insertAdjCalls = mockClient.query.mock.calls.filter(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO payroll_adjustments')
+    )
+    expect(insertAdjCalls).toHaveLength(2)
+
+    // First insert references exp-kas-1
+    expect(insertAdjCalls[0][1][5]).toBe('exp-kas-1')
+    // Second insert references exp-kas-2
+    expect(insertAdjCalls[1][1][5]).toBe('exp-kas-2')
+  })
+
+  // ── 3. Kasbon expense outside period range → no INSERT ─────────────────────
+  test('kasbon expense outside period range → no INSERT payroll_adjustments', async () => {
+    mockClient.query
+      .mockResolvedValueOnce({})                              // BEGIN
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })         // INSERT payroll_periods
+      .mockResolvedValueOnce({})                              // UPDATE generated_at
+      .mockResolvedValueOnce({ rows: [SETTINGS_ROW] })        // SELECT payroll_settings
+      .mockResolvedValueOnce({ rows: [FAKE_BARBER] })         // SELECT barbers
+
+    mockPerBarberPreamble(mockClient)
+
+    mockClient.query
+      // kasbon expenses query returns empty (expense_date outside period)
+      .mockResolvedValueOnce({ rows: [] })
+      // SELECT id FROM payroll_entries
+      .mockResolvedValueOnce({ rows: [FAKE_ENTRY] })
+      // DELETE existing kasbon adjustments (still runs to clean stale rows)
+      .mockResolvedValueOnce({})
+      // COMMIT
+      .mockResolvedValueOnce({})
+
+    pool.query
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const res = await supertest(makeApp())
+      .post('/api/payroll/periods/generate')
+      .send(VALID_BODY)
+
+    expect(res.status).toBe(201)
+
+    const insertAdjCalls = mockClient.query.mock.calls.filter(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO payroll_adjustments')
+    )
+    expect(insertAdjCalls).toHaveLength(0)
+  })
+
+  // ── 4. No barbers → kasbon SELECT never called ─────────────────────────────
+  test('no barbers → kasbon expenses SELECT never called', async () => {
+    mockClient.query
+      .mockResolvedValueOnce({})                              // BEGIN
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })         // INSERT payroll_periods
+      .mockResolvedValueOnce({})                              // UPDATE generated_at
+      .mockResolvedValueOnce({ rows: [SETTINGS_ROW] })        // SELECT payroll_settings
+      .mockResolvedValueOnce({ rows: [] })                    // SELECT barbers — empty
+      .mockResolvedValueOnce({})                              // COMMIT
+
+    pool.query
+      .mockResolvedValueOnce({ rows: [FAKE_PERIOD] })
+      .mockResolvedValueOnce({ rows: [] })
+
+    const res = await supertest(makeApp())
+      .post('/api/payroll/periods/generate')
+      .send(VALID_BODY)
+
+    expect(res.status).toBe(201)
+
+    const kasbonSelectCall = mockClient.query.mock.calls.find(
+      c => typeof c[0] === 'string' &&
+           c[0].includes("type = 'kasbon'") &&
+           c[0].includes('expense_date BETWEEN')
+    )
+    expect(kasbonSelectCall).toBeUndefined()
+  })
+})
+
 // ── DELETE /api/payroll/adjustments/:id ──────────────────────────────────────
 
 describe('DELETE /api/payroll/adjustments/:id', () => {

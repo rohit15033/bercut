@@ -102,6 +102,8 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
   const [customTo,       setCustomTo]       = useState('')
   const [customGenerating, setCustomGenerating] = useState(false)
   const [confirmRegen,   setConfirmRegen]   = useState(null) // { period, label }
+  const [confirmDelete,  setConfirmDelete]  = useState(null) // { period, label }
+  const [deletingId,     setDeletingId]     = useState(null)
   const [error,          setError]          = useState('')
 
   // Load branches once
@@ -186,6 +188,20 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
     }
   }
 
+  async function handleDelete(period, label) {
+    setConfirmDelete(null)
+    setDeletingId(period.id)
+    setError('')
+    try {
+      await api.delete(`/payroll/periods/${period.id}`)
+      setDbPeriods(prev => prev.filter(p => p.id !== period.id))
+    } catch (err) {
+      setError('Failed to delete period. Please try again.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const isGenerating = id => generatingId === id
 
   return (
@@ -198,6 +214,17 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
           onConfirm={() => handleRegenerate(confirmRegen.period, confirmRegen.label)}
           onCancel={() => setConfirmRegen(null)}
           confirmLabel="Yes, Regenerate"
+          confirmDanger
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete ${confirmDelete.label}?`}
+          message={`This will permanently delete the payroll period "${confirmDelete.label}" and all its entries and adjustments.\nThis cannot be undone.`}
+          onConfirm={() => handleDelete(confirmDelete.period, confirmDelete.label)}
+          onCancel={() => setConfirmDelete(null)}
+          confirmLabel="Yes, Delete"
           confirmDanger
         />
       )}
@@ -266,11 +293,17 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <>
-                  <button onClick={() => onOpen(row.dbPeriod)} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
-                  <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Regenerating…' : 'Regenerate ↺'}</button>
-                  <button onClick={() => downloadExport(row.dbPeriod.id, row.label)} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
-                </>
+                <button onClick={() => onOpen(row.dbPeriod)} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
+                <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Regenerating…' : 'Regenerate ↺'}</button>
+                <button onClick={() => downloadExport(row.dbPeriod.id, row.label)} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
+                {row.status === 'draft' && (
+                  <button
+                    onClick={() => setConfirmDelete({ period: row.dbPeriod, label: row.label })}
+                    disabled={deletingId === row.dbPeriod.id}
+                    style={{ padding: '5px 10px', borderRadius: 6, background: '#FEE2E2', color: T.danger, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid #FECACA', cursor: deletingId === row.dbPeriod.id ? 'not-allowed' : 'pointer', opacity: deletingId === row.dbPeriod.id ? 0.65 : 1 }}>
+                    {deletingId === row.dbPeriod.id ? 'Deleting…' : '✕ Delete'}
+                  </button>
+                )}
               </div>
             </div>
           )

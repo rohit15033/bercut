@@ -372,6 +372,18 @@ router.patch('/adjustments/:id', requireAdmin, requireOwner, async (req, res) =>
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// DELETE /api/payroll/periods/:id  (draft only)
+router.delete('/periods/:id', requireAdmin, requireOwner, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, status FROM payroll_periods WHERE id = $1', [req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    if (rows[0].status !== 'draft') return res.status(400).json({ message: 'Only draft periods can be deleted' })
+    await pool.query('DELETE FROM payroll_periods WHERE id = $1', [req.params.id])
+    res.status(204).end()
+  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
 // PATCH /api/payroll/periods/:id/status
 router.patch('/periods/:id/status', requireAdmin, requireOwner, async (req, res) => {
   try {

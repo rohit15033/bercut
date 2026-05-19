@@ -4,12 +4,7 @@ import { getToken } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
 
 const fmt  = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
-const fmtM = n => {
-  const v = Number(n || 0)
-  if (v >= 1_000_000) return 'Rp ' + (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'jt'
-  if (v >= 1_000)     return 'Rp ' + (v / 1_000).toFixed(0) + 'rb'
-  return 'Rp ' + v
-}
+const fmtM = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 

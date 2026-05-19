@@ -1,5 +1,10 @@
-const { Pool } = require('pg')
+const { Pool, types } = require('pg')
 require('dotenv').config()
+
+// Return DATE columns as plain 'YYYY-MM-DD' strings — never as Date objects.
+// Without this, pg parses DATE as new Date(val) → UTC midnight → JSON serialises
+// with 'Z', and slice(0,10) gives the UTC date which is one day behind in UTC+7/8.
+types.setTypeParser(1082, val => val)
 
 const pool = new Pool({
   host:     process.env.DB_HOST     || 'localhost',

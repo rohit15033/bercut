@@ -513,7 +513,8 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
   generated_by      UUID        REFERENCES users(id) ON DELETE SET NULL,
   communicated_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
   communicated_at   TIMESTAMPTZ,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  generated_at      TIMESTAMPTZ
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────

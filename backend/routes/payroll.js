@@ -35,6 +35,9 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     let period
     if (periodInsert.rows.length) {
       period = periodInsert.rows[0]
+      await client.query(
+        `UPDATE payroll_periods SET generated_at = NOW() WHERE id = $1`,
+        [period.id])
     } else {
       // Period already exists — fetch it and recalculate entries
       const existing = await client.query(
@@ -47,6 +50,9 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
         return res.status(500).json({ message: 'Period conflict but not found' })
       }
       period = existing.rows[0]
+      await client.query(
+        `UPDATE payroll_periods SET status = 'draft', generated_at = NOW() WHERE id = $1`,
+        [period.id])
     }
 
     const ps = await client.query('SELECT * FROM payroll_settings LIMIT 1')
@@ -216,11 +222,12 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     }
 
     await client.query('COMMIT')
+    const updatedPeriod = await pool.query('SELECT * FROM payroll_periods WHERE id = $1', [period.id])
     const entries = await pool.query(
       `SELECT pe.*, b.name AS barber_name FROM payroll_entries pe
        JOIN barbers b ON b.id = pe.barber_id
        WHERE pe.period_id = $1 ORDER BY b.name`, [period.id])
-    res.status(201).json({ period, entries: entries.rows })
+    res.status(201).json({ period: updatedPeriod.rows[0], entries: entries.rows })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error(err)
@@ -335,6 +342,33 @@ router.post('/adjustments', requireAdmin, requireOwner, async (req, res) => {
       [payroll_entry_id, type, category||'', remarks||null, amount, req.user.id,
        date||null, is_kasbon||false, expense_id||null, deduct_period||'current'])
     res.status(201).json(rows[0])
+  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// DELETE /api/payroll/adjustments/:id
+router.delete('/adjustments/:id', requireAdmin, requireOwner, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, is_kasbon FROM payroll_adjustments WHERE id = $1', [req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    if (rows[0].is_kasbon) return res.status(400).json({ message: 'Cannot delete kasbon adjustments' })
+    await pool.query('DELETE FROM payroll_adjustments WHERE id = $1', [req.params.id])
+    res.status(204).end()
+  } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
+})
+
+// PATCH /api/payroll/adjustments/:id
+router.patch('/adjustments/:id', requireAdmin, requireOwner, async (req, res) => {
+  try {
+    const { deduct_period } = req.body
+    if (!['current','next'].includes(deduct_period)) {
+      return res.status(400).json({ message: 'deduct_period must be current or next' })
+    }
+    const { rows } = await pool.query(
+      'UPDATE payroll_adjustments SET deduct_period = $1 WHERE id = $2 RETURNING *',
+      [deduct_period, req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    res.json(rows[0])
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 

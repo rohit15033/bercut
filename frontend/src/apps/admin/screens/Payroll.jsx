@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { tokens as T } from '../../../shared/tokens.js'
+import { getToken } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
 
 const fmt  = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
@@ -12,35 +13,21 @@ const fmtM = n => {
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-function buildPeriodPresets() {
-  const presets = []
-  const today = new Date()
-  let year = today.getFullYear()
-  let month = today.getMonth() // 0-indexed
+function fmtPeriodLabel(period) {
+  if (!period) return ''
+  const f = String(period.period_from).slice(0, 10)
+  const t = String(period.period_to).slice(0, 10)
+  const fd = new Date(f + 'T00:00:00')
+  const td = new Date(t + 'T00:00:00')
+  return `${fd.getDate()} ${MONTH_NAMES[fd.getMonth()].slice(0,3)} – ${td.getDate()} ${MONTH_NAMES[td.getMonth()].slice(0,3)} ${td.getFullYear()}`
+}
 
-  // If today is before the 16th, current cycle started last month
-  if (today.getDate() < 16) {
-    month -= 1
-    if (month < 0) { month = 11; year -= 1 }
-  }
-
-  for (let i = 0; i < 7; i++) {
-    const fromYear = year
-    const fromMonth = month
-    const toMonth = (month + 1) % 12
-    const toYear = month === 11 ? year + 1 : year
-
-    const from = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}-16`
-    const to = `${toYear}-${String(toMonth + 1).padStart(2, '0')}-15`
-    const label = `16 ${MONTH_NAMES[fromMonth].slice(0,3)} – 15 ${MONTH_NAMES[toMonth].slice(0,3)} ${toYear}`
-    const periodMonth = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}`
-
-    presets.push({ label, period_from: from, period_to: to, period_month: periodMonth })
-
-    month -= 1
-    if (month < 0) { month = 11; year -= 1 }
-  }
-  return presets
+function fmtDateTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d)) return '—'
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
 function initials(name) {
@@ -415,26 +402,68 @@ function AddAdjModal({ entry, onAdd, onClose }) {
   )
 }
 
+// ── Regenerate confirmation dialog ────────────────────────────────────────────
+
+function RegenConfirmModal({ periodLabel, onConfirm, onCancel }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+      <div className="admin-card" style={{ width: 460, padding: '28px 30px', animation: 'scaleIn 0.18s ease both' }}>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 17, color: T.text, marginBottom: 10 }}>
+          Regenerate {periodLabel}?
+        </div>
+        <div style={{ fontSize: 13, color: T.text2, lineHeight: 1.6, marginBottom: 24 }}>
+          Are you sure you want to regenerate <strong>{periodLabel}</strong>?<br />
+          This will recalculate all values from raw attendance and booking data.<br />
+          Any manual edits to this period will be reset. Status will return to Draft.
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel}
+            style={{ padding: '9px 20px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm}
+            style={{ padding: '9px 20px', borderRadius: 8, background: T.danger, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            Yes, Regenerate
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }) {
+  const map = {
+    communicated: { bg: '#DCFCE7', color: '#16A34A', label: 'Communicated' },
+    reviewed:     { bg: '#DBEAFE', color: '#2563EB', label: 'Reviewed'     },
+    draft:        { bg: '#FFFBEB', color: '#D97706', label: 'Draft'        },
+  }
+  const s = map[status] || map.draft
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color }}>
+      {s.label}
+    </span>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function Payroll({ onPayroll, onViewAttendance }) {
-  const PRESETS = buildPeriodPresets()
-  const [branches,      setBranches]      = useState([])
-  const [selectedBranch,setSelectedBranch]= useState('')
-  const [selectedPreset,setSelectedPreset]= useState(PRESETS[0])
-  const [customFrom,    setCustomFrom]    = useState('')
-  const [customTo,      setCustomTo]      = useState('')
-  const [isCustom,      setIsCustom]      = useState(false)
-  const [activePeriod,  setActivePeriod]  = useState(null)
-  const [generating,    setGenerating]    = useState(false)
+export default function Payroll({ period: periodProp, onBack, onViewAttendance, user }) {
+  const backFn = onBack || onViewAttendance
+
+  const [activePeriod,  setActivePeriod]  = useState(periodProp || null)
   const [entries,       setEntries]       = useState([])
   const [adjustments,   setAdjustments]   = useState({})
   const [loading,       setLoading]       = useState(false)
+  const [regenerating,  setRegenerating]  = useState(false)
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false)
 
   const [workingDaysOverride, setWorkingDaysOverride] = useState(null)
   const computedWD = activePeriod
-    ? computeWorkingDays(activePeriod.period_from.slice(0,10), activePeriod.period_to.slice(0,10))
-    : (isCustom && customFrom && customTo ? computeWorkingDays(customFrom, customTo) : 26)
+    ? computeWorkingDays(activePeriod.period_from, activePeriod.period_to)
+    : 26
   const workingDays = workingDaysOverride ?? computedWD
 
   const [overrides,      setOverrides]      = useState({})
@@ -443,50 +472,14 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
   const [modalEntry,     setModalEntry]     = useState(null)
   const [payrollSettings,setPayrollSettings]= useState({})
 
+  // Sync if parent passes a different period (shouldn't normally change, but be safe)
   useEffect(() => {
-    api.get('/branches').then(d => {
-      setBranches(d || [])
-      if (d?.[0]) setSelectedBranch(String(d[0].id))
-    }).catch(() => {})
+    if (periodProp) setActivePeriod(periodProp)
+  }, [periodProp])
+
+  useEffect(() => {
     api.get('/settings/payroll').then(d => { if (d) setPayrollSettings(d) }).catch(() => {})
   }, [])
-
-  const periodDays = activePeriod
-    ? Math.round((new Date(activePeriod.period_to) - new Date(activePeriod.period_from)) / 86400000) + 1
-    : 0
-  const excusedQuota = Math.floor(periodDays / 7) * (payrollSettings.off_quota_per_week || 1)
-
-  useEffect(() => {
-    if (!selectedBranch) return
-    const preset = isCustom
-      ? (customFrom && customTo ? { period_from: customFrom, period_to: customTo, period_month: customFrom.slice(0,7), label: `${customFrom} → ${customTo}` } : null)
-      : selectedPreset
-    if (!preset) return
-
-    setActivePeriod(null)
-    setEntries([])
-    setAdjustments({})
-    setOverrides({})
-    setWorkingDaysOverride(null)
-    setGenerating(true)
-
-    async function loadPeriod() {
-      try {
-        const result = await api.post('/payroll/periods/generate', {
-          branch_id: selectedBranch,
-          period_month: preset.period_month,
-          period_from: preset.period_from,
-          period_to: preset.period_to,
-        })
-        setActivePeriod(result.period)
-      } catch (err) {
-        console.error('Period load/generate failed', err)
-      } finally {
-        setGenerating(false)
-      }
-    }
-    loadPeriod()
-  }, [selectedPreset, isCustom, customFrom, customTo, selectedBranch])
 
   useEffect(() => {
     if (!activePeriod) return
@@ -507,6 +500,11 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
       .finally(() => setLoading(false))
   }, [activePeriod])
 
+  const periodDays = activePeriod
+    ? Math.round((new Date(activePeriod.period_to) - new Date(activePeriod.period_from)) / 86400000) + 1
+    : 0
+  const excusedQuota = Math.floor(periodDays / 7) * (payrollSettings.off_quota_per_week || 1)
+
   function setOverride(entryId, fieldOrObj, val) {
     if (typeof fieldOrObj === 'object') {
       setOverrides(prev => ({ ...prev, [entryId]: { ...prev[entryId], ...fieldOrObj } }))
@@ -525,6 +523,7 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
   }
 
   async function deleteAdjustment(entryId, adjId) {
+    try { await api.delete('/payroll/adjustments/' + adjId) } catch {}
     setAdjustments(prev => ({ ...prev, [entryId]: (prev[entryId] || []).filter(a => a.id !== adjId) }))
   }
 
@@ -562,18 +561,65 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
          - lateDed - inexcusedDed - excusedDed + totalAdd - totalDed
   }
 
-  function exportCSV() {
+  async function handleExport() {
     if (!activePeriod) return
-    window.open(`/api/payroll/periods/${activePeriod.id}/export`, '_blank')
+    const token = getToken()
+    const BASE = import.meta.env.VITE_API_URL ?? '/api'
+    const label = fmtPeriodLabel(activePeriod).replace(/\s+/g, '_')
+    try {
+      const res = await fetch(`${BASE}/payroll/periods/${activePeriod.id}/export`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `payroll_${label}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Export error', err)
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!activePeriod) return
+    setShowRegenConfirm(false)
+    setRegenerating(true)
+    try {
+      const result = await api.post('/payroll/periods/generate', {
+        branch_id:    String(activePeriod.branch_id),
+        period_month: String(activePeriod.period_from).slice(0, 7),
+        period_from:  String(activePeriod.period_from).slice(0, 10),
+        period_to:    String(activePeriod.period_to).slice(0, 10),
+      })
+      setActivePeriod(result.period)
+      setOverrides({})
+      setWorkingDaysOverride(null)
+    } catch (err) {
+      console.error('Regenerate failed', err)
+    } finally {
+      setRegenerating(false)
+    }
   }
 
   const totalNet   = entries.reduce((s, e) => s + calcNetPay(e), 0)
   const nextPLabel = 'next period'
+  const periodLabel = fmtPeriodLabel(activePeriod)
 
   const PGRID = '1.4fr 0.8fr 0.9fr 0.75fr 0.9fr 1.15fr 1.15fr 0.85fr 0.9fr 0.85fr 0.65fr 0.7fr'
 
   return (
     <div style={{ padding: '28px 32px' }}>
+
+      {showRegenConfirm && (
+        <RegenConfirmModal
+          periodLabel={periodLabel}
+          onConfirm={handleRegenerate}
+          onCancel={() => setShowRegenConfirm(false)}
+        />
+      )}
 
       {showManage && modalEntry && (
         <ManageAdjModal
@@ -595,68 +641,55 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>Payroll</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Period payroll — base salary + commission + deductions</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {onViewAttendance && (
-            <button onClick={onViewAttendance}
-              style={{ padding: '9px 16px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: 'pointer' }}>
-              ← Attendance
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          {backFn && (
+            <button onClick={backFn}
+              style={{ padding: '9px 14px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: 'pointer', marginTop: 4, flexShrink: 0 }}>
+              ← Back
             </button>
           )}
-          <button onClick={exportCSV}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>
+                {periodLabel || 'Payroll'}
+              </div>
+              {activePeriod && <StatusBadge status={activePeriod.status || 'draft'} />}
+            </div>
+            <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>
+              Period payroll — base salary + commission + deductions
+            </div>
+            {activePeriod?.generated_at && (
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                Generated: {fmtDateTime(activePeriod.generated_at)}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={() => setShowRegenConfirm(true)}
+            disabled={regenerating}
+            style={{ padding: '9px 14px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: regenerating ? 'not-allowed' : 'pointer', opacity: regenerating ? 0.65 : 1 }}>
+            {regenerating ? 'Regenerating…' : 'Regenerate ↺'}
+          </button>
+          <button onClick={handleExport}
             style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            ↓ Export CSV
+            ↓ Export
           </button>
         </div>
       </div>
 
-      {/* Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <select
-            value={isCustom ? '__custom__' : (selectedPreset?.period_from ?? '')}
-            onChange={e => {
-              if (e.target.value === '__custom__') {
-                setIsCustom(true)
-              } else {
-                setIsCustom(false)
-                setSelectedPreset(PRESETS.find(p => p.period_from === e.target.value) || PRESETS[0])
-              }
-            }}
-            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.white, fontSize: 13, fontWeight: 600, color: T.text, cursor: 'pointer' }}
-          >
-            {PRESETS.map(p => (
-              <option key={p.period_from} value={p.period_from}>{p.label}</option>
-            ))}
-            <option value="__custom__">Custom range…</option>
-          </select>
-
-          {isCustom && (
-            <>
-              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid ' + T.border, fontSize: 13, color: T.text }} />
-              <span style={{ color: T.muted, fontSize: 13 }}>→</span>
-              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid ' + T.border, fontSize: 13, color: T.text }} />
-            </>
-          )}
-
-          {activePeriod && (
-            <WorkingDaysChip
-              value={workingDays}
-              computedValue={computedWD}
-              onOverride={n => setWorkingDaysOverride(n)}
-              onReset={() => setWorkingDaysOverride(null)}
-            />
-          )}
-        </div>
-        <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.white, fontSize: 13, fontWeight: 600, color: T.text, cursor: 'pointer' }}>
-          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
+      {/* Working days chip */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        {activePeriod && (
+          <WorkingDaysChip
+            value={workingDays}
+            computedValue={computedWD}
+            onOverride={n => setWorkingDaysOverride(n)}
+            onReset={() => setWorkingDaysOverride(null)}
+          />
+        )}
       </div>
 
       {/* Table */}
@@ -683,16 +716,16 @@ export default function Payroll({ onPayroll, onViewAttendance }) {
           ))}
         </div>
 
-        {(loading || generating) && (
+        {(loading || regenerating) && (
           <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>
-            {generating ? 'Calculating payroll…' : 'Loading payroll data…'}
+            {regenerating ? 'Recalculating payroll…' : 'Loading payroll data…'}
           </div>
         )}
-        {!loading && !generating && entries.length === 0 && activePeriod && (
+        {!loading && !regenerating && entries.length === 0 && activePeriod && (
           <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>No entries for this period.</div>
         )}
-        {!loading && !generating && !activePeriod && (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>Select a period above.</div>
+        {!loading && !regenerating && !activePeriod && (
+          <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>No period loaded.</div>
         )}
 
         {entries.map((entry, i) => {

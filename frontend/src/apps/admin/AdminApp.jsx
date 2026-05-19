@@ -15,6 +15,7 @@ import Expenses     from './screens/Expenses.jsx'
 import Inventory    from './screens/Inventory.jsx'
 import Attendance   from './screens/Attendance.jsx'
 import Payroll      from './screens/Payroll.jsx'
+import PayrollList  from './screens/PayrollList.jsx'
 import Settings     from './screens/Settings.jsx'
 import KioskConfig  from './screens/KioskConfig.jsx'
 
@@ -194,6 +195,7 @@ export default function AdminApp() {
   const [user,   setUser]   = useState(null)
   const [screen, setScreen] = useState('overview')
   const [loading, setLoading] = useState(true)
+  const [payrollPeriod, setPayrollPeriod] = useState(null)
   const [userPerms, setUserPerms] = useState({}) // { section: is_enabled }
   const [permsLoaded, setPermsLoaded] = useState(false)
 
@@ -220,7 +222,12 @@ export default function AdminApp() {
       .finally(() => setPermsLoaded(true))
   }, [user])
 
-  const handleLogout = () => { setToken(null); setUser(null); setUserPerms({}); setPermsLoaded(false) }
+  const handleLogout = () => { setToken(null); setUser(null); setUserPerms({}); setPermsLoaded(false); setPayrollPeriod(null) }
+
+  const handleNav = (key) => {
+    if (key !== 'payroll') setPayrollPeriod(null)
+    setScreen(key)
+  }
 
   const toSectionKey = key => key === 'live' ? 'live_monitor' : key === 'kiosk' ? 'kiosk_config' : key
 
@@ -256,7 +263,7 @@ export default function AdminApp() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
       <GS />
-      <Sidebar screen={screen} onNav={setScreen} user={user} onLogout={handleLogout} visibleNav={visibleNav} />
+      <Sidebar screen={screen} onNav={handleNav} user={user} onLogout={handleLogout} visibleNav={visibleNav} />
       <main style={{ flex: 1, overflow: 'auto', minHeight: '100vh', minWidth: 0 }}>
         {screen === 'overview'   && can('overview')   && <Overview   user={user} onNav={setScreen} />}
         {screen === 'live'       && can('live')       && <LiveMonitor user={user} />}
@@ -268,7 +275,19 @@ export default function AdminApp() {
         {screen === 'expenses'   && can('expenses')   && <Expenses />}
         {screen === 'inventory'  && can('inventory')  && <Inventory />}
         {screen === 'attendance' && can('attendance') && <Attendance onPayroll={() => setScreen('payroll')} />}
-        {screen === 'payroll'    && can('payroll')    && <Payroll onAttendance={() => setScreen('attendance')} user={user} />}
+        {screen === 'payroll'    && can('payroll')    && (
+          payrollPeriod
+            ? <Payroll
+                period={payrollPeriod}
+                onBack={() => setPayrollPeriod(null)}
+                onViewAttendance={() => setScreen('attendance')}
+                user={user}
+              />
+            : <PayrollList
+                onOpen={p => setPayrollPeriod(p)}
+                onViewAttendance={() => setScreen('attendance')}
+              />
+        )}
         {screen === 'kiosk'      && can('kiosk')      && <KioskConfig />}
         {screen === 'settings'   && can('settings')   && <Settings user={user} />}
       </main>

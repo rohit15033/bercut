@@ -33,7 +33,6 @@ router.patch('/global', requireAdmin, requireOwner, async (req, res) => {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }
     }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
-    sets.push('updated_at = NOW()')
     const { rows } = await pool.query(
       `UPDATE global_settings SET ${sets.join(', ')} RETURNING *`, vals)
     res.json(rows[0])
@@ -190,7 +189,6 @@ router.patch('/users/:id', requireAdmin, requireOwner, async (req, res) => {
       vals.push(await bcrypt.hash(req.body.password, 12))
     }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
-    sets.push('updated_at = NOW()')
     vals.push(req.params.id)
     const { rows: before } = await pool.query(
       `SELECT name, role, is_active FROM users WHERE id = $1`, [req.params.id])

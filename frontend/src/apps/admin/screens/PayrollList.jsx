@@ -91,6 +91,16 @@ function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = 'Co
   )
 }
 
+function formatPeriodLabel(from, to) {
+  const f = String(from).slice(0, 10)
+  const t = String(to).slice(0, 10)
+  const fd = new Date(f + 'T00:00:00')
+  const td = new Date(t + 'T00:00:00')
+  const fDay = f.slice(8)
+  const tDay = t.slice(8)
+  return `${fDay} ${MONTH_NAMES[fd.getMonth()].slice(0,3)} – ${tDay} ${MONTH_NAMES[td.getMonth()].slice(0,3)} ${td.getFullYear()}`
+}
+
 async function downloadExport(periodId, label) {
   const token = getToken()
   const BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -117,7 +127,7 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
   const [branches,       setBranches]       = useState([])
   const [selectedBranch, setSelectedBranch] = useState('')
   const [dbPeriods,      setDbPeriods]      = useState([])
-  const [loadingPeriods, setLoadingPeriods] = useState(false)
+  const [loadingPeriods, setLoadingPeriods] = useState(true)
   const [generatingId,   setGeneratingId]   = useState(null) // preset period_from being generated
   const [customFrom,     setCustomFrom]     = useState('')
   const [customTo,       setCustomTo]       = useState('')
@@ -146,7 +156,9 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
   }, [selectedBranch])
 
   // Merge presets with DB periods
-  const rows = PRESETS.map(preset => {
+  const presetKeys = new Set(PRESETS.map(p => p.period_from + '|' + p.period_to))
+
+  const presetRows = PRESETS.map(preset => {
     const match = dbPeriods.find(p =>
       String(p.period_from).slice(0, 10) === preset.period_from &&
       String(p.period_to).slice(0, 10)   === preset.period_to
@@ -156,6 +168,27 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
     }
     return { ...preset, dbPeriod: null, status: 'not_started' }
   })
+
+  const extraRows = dbPeriods
+    .filter(p => !presetKeys.has(
+      String(p.period_from).slice(0, 10) + '|' + String(p.period_to).slice(0, 10)
+    ))
+    .map(p => {
+      const pf = String(p.period_from).slice(0, 10)
+      const pt = String(p.period_to).slice(0, 10)
+      return {
+        label:        formatPeriodLabel(pf, pt),
+        period_from:  pf,
+        period_to:    pt,
+        period_month: pf.slice(0, 7),
+        dbPeriod:     p,
+        status:       p.status || 'draft',
+      }
+    })
+
+  const rows = [...presetRows, ...extraRows].sort(
+    (a, b) => b.period_from.localeCompare(a.period_from)
+  )
 
   // Find the most recent preset not yet in DB
   const nextUngenerated = rows.find(r => r.status === 'not_started')

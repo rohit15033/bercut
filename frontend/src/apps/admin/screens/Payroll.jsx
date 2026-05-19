@@ -52,10 +52,10 @@ const EXCUSED_OVER_RATE = 100_000
 
 // ── InlineNum ─────────────────────────────────────────────────────────────────
 
-function InlineNum({ value, onCommit, suffix = '', color }) {
+function InlineNum({ value, onCommit, suffix = '', color, disabled }) {
   const [editing, setEditing] = useState(false)
   const [draft,   setDraft]   = useState('')
-  function start() { setDraft(String(value)); setEditing(true) }
+  function start() { if (disabled) return; setDraft(String(value)); setEditing(true) }
   function commit() {
     const n = parseInt(draft, 10)
     onCommit(isNaN(n) || n < 0 ? 0 : n)
@@ -68,10 +68,10 @@ function InlineNum({ value, onCommit, suffix = '', color }) {
         style={{ width: 52, padding: '2px 5px', borderRadius: 5, border: '1px solid ' + T.topBg, fontSize: 12, fontFamily: "'Inter', sans-serif", fontWeight: 700, color: T.text, textAlign: 'right' }} />
     )
   }
-  const c = value > 0 ? (color || T.text) : T.border
+  const c = disabled ? T.muted : (value > 0 ? (color || T.text) : T.border)
   return (
-    <span onClick={e => { e.stopPropagation(); start() }} title="Click to edit"
-      style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: c, cursor: 'pointer' }}>
+    <span onClick={e => { if (disabled) return; e.stopPropagation(); start() }} title={disabled ? '' : 'Click to edit'}
+      style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: c, cursor: disabled ? 'default' : 'pointer' }}>
       {value > 0 ? value + suffix : '—'}
     </span>
   )
@@ -463,6 +463,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     : 26
   const workingDays = workingDaysOverride ?? computedWD
 
+  const [updatingStatus, setUpdatingStatus] = useState(false)
   const [overrides,      setOverrides]      = useState({})
   const [showManage,     setShowManage]     = useState(false)
   const [showAdd,        setShowAdd]        = useState(false)
@@ -561,6 +562,20 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
          - lateDed - inexcusedDed - excusedDed + totalAdd - totalDed
   }
 
+  async function handleStatusAdvance() {
+    if (!activePeriod || activePeriod.status === 'communicated' || regenerating) return
+    const next = activePeriod.status === 'draft' ? 'reviewed' : 'communicated'
+    setUpdatingStatus(true)
+    try {
+      const updated = await api.patch('/payroll/periods/' + activePeriod.id + '/status', { status: next })
+      setActivePeriod(updated)
+    } catch (err) {
+      console.error('Status update failed', err)
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
   async function handleExport() {
     if (!activePeriod) return
     const token = getToken()
@@ -608,6 +623,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     }
   }
 
+  const isLocked   = activePeriod?.status === 'communicated'
   const totalNet   = entries.reduce((s, e) => s + calcNetPay(e), 0)
   const nextPLabel = 'next period'
   const periodLabel = fmtPeriodLabel(activePeriod)
@@ -629,8 +645,8 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
         <ManageAdjModal
           entry={modalEntry}
           adjustments={adjustments[modalEntry.id] || []}
-          onDelete={id    => deleteAdjustment(modalEntry.id, id)}
-          onToggleDefer={id => toggleKasbonDefer(modalEntry.id, id)}
+          onDelete={isLocked ? null : id => deleteAdjustment(modalEntry.id, id)}
+          onToggleDefer={isLocked ? null : id => toggleKasbonDefer(modalEntry.id, id)}
           onClose={() => { setShowManage(false); setModalEntry(null) }}
           nextPeriodLabel={nextPLabel}
         />
@@ -670,13 +686,21 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button
-            onClick={() => setShowRegenConfirm(true)}
-            disabled={regenerating}
-            style={{ padding: '9px 14px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: regenerating ? 'not-allowed' : 'pointer', opacity: regenerating ? 0.65 : 1 }}>
-            {regenerating ? 'Resetting…' : 'Reset ↺'}
-          </button>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+          {activePeriod && activePeriod.status !== 'communicated' && (
+            <button onClick={handleStatusAdvance} disabled={updatingStatus}
+              style={{ padding: '9px 14px', borderRadius: 8, background: '#EFF6FF', color: '#2563EB', fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: '1px solid #BFDBFE', cursor: updatingStatus ? 'not-allowed' : 'pointer', opacity: updatingStatus ? 0.65 : 1 }}>
+              {updatingStatus ? 'Updating…' : activePeriod.status === 'draft' ? 'Mark Reviewed →' : 'Mark Communicated →'}
+            </button>
+          )}
+          {!isLocked && (
+            <button
+              onClick={() => setShowRegenConfirm(true)}
+              disabled={regenerating}
+              style={{ padding: '9px 14px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: '1px solid ' + T.border, cursor: regenerating ? 'not-allowed' : 'pointer', opacity: regenerating ? 0.65 : 1 }}>
+              {regenerating ? 'Resetting…' : 'Reset ↺'}
+            </button>
+          )}
           <button onClick={handleExport}
             style={{ padding: '9px 16px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
             ↓ Export
@@ -690,9 +714,14 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
           <WorkingDaysChip
             value={workingDays}
             computedValue={computedWD}
-            onOverride={n => setWorkingDaysOverride(n)}
-            onReset={() => setWorkingDaysOverride(null)}
+            onOverride={n => { if (!isLocked) setWorkingDaysOverride(n) }}
+            onReset={() => { if (!isLocked) setWorkingDaysOverride(null) }}
           />
+        )}
+        {isLocked && (
+          <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: '#DCFCE7', color: '#16A34A', fontWeight: 700 }}>
+            Communicated — read-only
+          </span>
         )}
       </div>
 
@@ -796,7 +825,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               {/* Late */}
               <div>
                 <div style={{ marginBottom: 4 }}>
-                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * LATE_RATE_PER_MIN, total_late_minutes: v }).catch(() => {}) }} suffix=" min" color="#D97706" />
+                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * LATE_RATE_PER_MIN, total_late_minutes: v }).catch(() => {}) }} suffix=" min" color="#D97706" disabled={isLocked} />
                 </div>
                 {lateDed > 0
                   ? <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#DC2626' }}>−{fmtM(lateDed)}</div>
@@ -815,7 +844,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                       setOverride(entry.id, { excusedTimes: v, excusedFixed: newFixed, excusedProrata: 0 })
                       api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed, excused_fixed_days: v }).catch(() => {})
                     }}
-                    suffix="×" color="#2563EB" />
+                    suffix="×" color="#2563EB" disabled={isLocked} />
                   <span style={{ fontSize: 9, color: T.muted }}>
                     {excusedOver > 0 ? `${excusedOver} charged` : 'within quota'}
                   </span>
@@ -827,7 +856,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                         const newDed = v * EXCUSED_OVER_RATE + Math.round((ov.excusedProrata ?? 0) * prorataRate)
                         setOverride(entry.id, 'excusedFixed', v)
                         api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed }).catch(() => {})
-                      }} suffix="× flat" color="#DC2626" />
+                      }} suffix="× flat" color="#DC2626" disabled={isLocked} />
                       {excusedFixed > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(excusedFixed * EXCUSED_OVER_RATE)}</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -835,7 +864,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                         const newDed = (ov.excusedFixed ?? excusedOver) * EXCUSED_OVER_RATE + Math.round(v * prorataRate)
                         setOverride(entry.id, 'excusedProrata', v)
                         api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed }).catch(() => {})
-                      }} suffix="× ÷" color="#DC2626" />
+                      }} suffix="× ÷" color="#DC2626" disabled={isLocked} />
                       <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
                       {excusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(excusedProrata * prorataRate))}</span>}
                     </div>
@@ -857,7 +886,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                       setOverride(entry.id, { inexcusedTimes: v, inexcusedFixed: v, inexcusedProrata: 0 })
                       api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed, inexcused_fixed_days: v }).catch(() => {})
                     }}
-                    suffix="×" color="#DC2626" />
+                    suffix="×" color="#DC2626" disabled={isLocked} />
                   {inexcusedTimes > 0 && <span style={{ fontSize: 9, color: T.muted }}>all charged</span>}
                 </div>
                 {hasInexOv && (inexcusedFixed > 0 || inexcusedProrata > 0) ? (
@@ -867,7 +896,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                         const newDed = v * FLAT_OFF_RATE + Math.round((ov.inexcusedProrata ?? 0) * prorataRate)
                         setOverride(entry.id, 'inexcusedFixed', v)
                         api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed }).catch(() => {})
-                      }} suffix="× flat" color="#DC2626" />
+                      }} suffix="× flat" color="#DC2626" disabled={isLocked} />
                       {inexcusedFixed > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(inexcusedFixed * FLAT_OFF_RATE)}</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -875,7 +904,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                         const newDed = (ov.inexcusedFixed ?? inexcusedTimes) * FLAT_OFF_RATE + Math.round(v * prorataRate)
                         setOverride(entry.id, 'inexcusedProrata', v)
                         api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed }).catch(() => {})
-                      }} suffix="× ÷" color="#DC2626" />
+                      }} suffix="× ÷" color="#DC2626" disabled={isLocked} />
                       <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
                       {inexcusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(inexcusedProrata * prorataRate))}</span>}
                     </div>
@@ -925,14 +954,16 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
 
               {/* Actions */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 2 }}>
-                <button onClick={e => { e.stopPropagation(); setModalEntry(entry); setShowAdd(true) }}
-                  style={{ padding: '3px 10px', borderRadius: 5, border: '1px solid ' + T.border, background: T.white, fontSize: 11, fontWeight: 700, color: T.text2, cursor: 'pointer' }}>
-                  + Add
-                </button>
+                {!isLocked && (
+                  <button onClick={e => { e.stopPropagation(); setModalEntry(entry); setShowAdd(true) }}
+                    style={{ padding: '3px 10px', borderRadius: 5, border: '1px solid ' + T.border, background: T.white, fontSize: 11, fontWeight: 700, color: T.text2, cursor: 'pointer' }}>
+                    + Add
+                  </button>
+                )}
                 {adjs.length > 0 && (
                   <button onClick={e => { e.stopPropagation(); setModalEntry(entry); setShowManage(true) }}
                     style={{ padding: '3px 10px', borderRadius: 5, border: '1px solid ' + T.border, background: T.surface, fontSize: 11, fontWeight: 600, color: T.text2, cursor: 'pointer' }}>
-                    Manage
+                    {isLocked ? 'View' : 'Manage'}
                   </button>
                 )}
               </div>

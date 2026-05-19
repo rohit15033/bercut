@@ -239,14 +239,17 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
 
 // POST /api/payroll/periods/:id/regenerate
 router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, res) => {
+  const precheck = await pool.query('SELECT * FROM payroll_periods WHERE id = $1', [req.params.id])
+  if (!precheck.rows.length) return res.status(404).json({ message: 'Period not found' })
+  const period = precheck.rows[0]
+  if (period.status === 'communicated') {
+    return res.status(403).json({ message: 'Cannot regenerate a communicated period' })
+  }
+
   const client = await pool.connect()
   try {
-    const periodCheck = await client.query('SELECT * FROM payroll_periods WHERE id = $1', [req.params.id])
-    if (!periodCheck.rows.length) return res.status(404).json({ message: 'Period not found' })
-    const period = periodCheck.rows[0]
-
-    const period_from = period.period_from.toISOString().slice(0, 10)
-    const period_to   = period.period_to.toISOString().slice(0, 10)
+    const period_from = String(period.period_from).slice(0, 10)
+    const period_to   = String(period.period_to).slice(0, 10)
     const branch_id   = period.branch_id
 
     await client.query('BEGIN')
@@ -452,6 +455,14 @@ router.get('/periods/:id/entries', requireAdmin, async (req, res) => {
 // PATCH /api/payroll/entries/:id — admin manual override
 router.patch('/entries/:id', requireAdmin, requireOwner, async (req, res) => {
   try {
+    const entryCheck = await pool.query(
+      `SELECT pe.id, pp.status FROM payroll_entries pe
+       JOIN payroll_periods pp ON pp.id = pe.period_id
+       WHERE pe.id = $1`, [req.params.id])
+    if (!entryCheck.rows.length) return res.status(404).json({ message: 'Not found' })
+    if (entryCheck.rows[0].status === 'communicated') {
+      return res.status(403).json({ message: 'Cannot edit a communicated period' })
+    }
     const allowed = ['working_days','late_deduction','total_late_minutes',
       'inexcused_off_deduction','inexcused_fixed_days',
       'excused_off_deduction','excused_fixed_days',
@@ -532,6 +543,12 @@ router.post('/adjustments', requireAdmin, requireOwner, async (req, res) => {
     if (!payroll_entry_id || !type || !amount) {
       return res.status(400).json({ message: 'payroll_entry_id, type, amount required' })
     }
+    const periodCheck = await pool.query(
+      `SELECT pp.status FROM payroll_entries pe JOIN payroll_periods pp ON pp.id = pe.period_id WHERE pe.id = $1`,
+      [payroll_entry_id])
+    if (periodCheck.rows[0]?.status === 'communicated') {
+      return res.status(403).json({ message: 'Cannot edit a communicated period' })
+    }
     const { rows } = await pool.query(
       `INSERT INTO payroll_adjustments
          (payroll_entry_id, type, category, remarks, amount, by, date, is_kasbon, expense_id, deduct_period)
@@ -546,9 +563,14 @@ router.post('/adjustments', requireAdmin, requireOwner, async (req, res) => {
 router.delete('/adjustments/:id', requireAdmin, requireOwner, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, is_kasbon FROM payroll_adjustments WHERE id = $1', [req.params.id])
+      `SELECT pa.id, pa.is_kasbon, pp.status
+       FROM payroll_adjustments pa
+       JOIN payroll_entries pe ON pe.id = pa.payroll_entry_id
+       JOIN payroll_periods pp ON pp.id = pe.period_id
+       WHERE pa.id = $1`, [req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
     if (rows[0].is_kasbon) return res.status(400).json({ message: 'Cannot delete kasbon adjustments' })
+    if (rows[0].status === 'communicated') return res.status(403).json({ message: 'Cannot edit a communicated period' })
     await pool.query('DELETE FROM payroll_adjustments WHERE id = $1', [req.params.id])
     res.status(204).end()
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
@@ -561,6 +583,13 @@ router.patch('/adjustments/:id', requireAdmin, requireOwner, async (req, res) =>
     if (!['current','next'].includes(deduct_period)) {
       return res.status(400).json({ message: 'deduct_period must be current or next' })
     }
+    const check = await pool.query(
+      `SELECT pp.status FROM payroll_adjustments pa
+       JOIN payroll_entries pe ON pe.id = pa.payroll_entry_id
+       JOIN payroll_periods pp ON pp.id = pe.period_id
+       WHERE pa.id = $1`, [req.params.id])
+    if (!check.rows.length) return res.status(404).json({ message: 'Not found' })
+    if (check.rows[0].status === 'communicated') return res.status(403).json({ message: 'Cannot edit a communicated period' })
     const { rows } = await pool.query(
       'UPDATE payroll_adjustments SET deduct_period = $1 WHERE id = $2 RETURNING *',
       [deduct_period, req.params.id])
@@ -585,8 +614,12 @@ router.delete('/periods/:id', requireAdmin, requireOwner, async (req, res) => {
 router.patch('/periods/:id/status', requireAdmin, requireOwner, async (req, res) => {
   try {
     const { status } = req.body
-    const validStatuses = ['draft','reviewed','communicated']
-    if (!validStatuses.includes(status)) return res.status(400).json({ message: 'Invalid status' })
+    const { rows: cur } = await pool.query('SELECT status FROM payroll_periods WHERE id = $1', [req.params.id])
+    if (!cur.length) return res.status(404).json({ message: 'Not found' })
+    const transitions = { draft: 'reviewed', reviewed: 'communicated' }
+    if (transitions[cur[0].status] !== status) {
+      return res.status(400).json({ message: `Cannot transition from ${cur[0].status} to ${status}` })
+    }
     const setCommunicated = status === 'communicated'
       ? ', communicated_by = $2, communicated_at = NOW()' : ''
     const vals = setCommunicated ? [status, req.user.id, req.params.id] : [status, req.params.id]

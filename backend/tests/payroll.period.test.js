@@ -316,3 +316,56 @@ describe('PATCH /api/payroll/adjustments/:id', () => {
     expect(res.body.message).toBe('Internal server error')
   })
 })
+
+// ── DELETE /api/payroll/periods/:id ──────────────────────────────────────────
+
+describe('DELETE /api/payroll/periods/:id', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  test('draft period → 204, DELETE SQL executed', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 'period-1', status: 'draft' }] }) // SELECT
+      .mockResolvedValueOnce({})                                                // DELETE
+
+    const res = await supertest(makeApp())
+      .delete('/api/payroll/periods/period-1')
+
+    expect(res.status).toBe(204)
+    expect(pool.query.mock.calls).toHaveLength(2)
+    const deleteSql = pool.query.mock.calls[1][0]
+    expect(deleteSql).toMatch(/DELETE FROM payroll_periods/)
+    expect(pool.query.mock.calls[1][1]).toContain('period-1')
+  })
+
+  test('non-draft period (status=reviewed) → 400, no DELETE executed', async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 'period-1', status: 'reviewed' }] }) // SELECT
+
+    const res = await supertest(makeApp())
+      .delete('/api/payroll/periods/period-1')
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toBe('Only draft periods can be deleted')
+    expect(pool.query.mock.calls).toHaveLength(1) // only SELECT, no DELETE
+  })
+
+  test('not found → 404', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] })
+
+    const res = await supertest(makeApp())
+      .delete('/api/payroll/periods/nonexistent')
+
+    expect(res.status).toBe(404)
+    expect(res.body.message).toBe('Not found')
+  })
+
+  test('DB error on SELECT → 500', async () => {
+    pool.query.mockRejectedValueOnce(new Error('DB error'))
+
+    const res = await supertest(makeApp())
+      .delete('/api/payroll/periods/period-1')
+
+    expect(res.status).toBe(500)
+    expect(res.body.message).toBe('Internal server error')
+  })
+})

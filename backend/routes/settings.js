@@ -43,6 +43,12 @@ router.patch('/global', requireAdmin, requireOwner, async (req, res) => {
 // ── Payroll Settings ───────────────────────────────────────────────────────────
 router.get('/payroll', requireAdmin, async (req, res) => {
   try {
+    await pool.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM payroll_settings LIMIT 1) THEN
+          INSERT INTO payroll_settings DEFAULT VALUES;
+        END IF;
+      END $$`)
     const { rows } = await pool.query('SELECT * FROM payroll_settings LIMIT 1')
     res.json(rows[0] || {})
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
@@ -68,6 +74,12 @@ router.patch('/payroll', requireAdmin, requireOwner, async (req, res) => {
     }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
     sets.push('updated_at = NOW()')
+    await pool.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM payroll_settings LIMIT 1) THEN
+          INSERT INTO payroll_settings DEFAULT VALUES;
+        END IF;
+      END $$`)
     const { rows } = await pool.query(
       `UPDATE payroll_settings SET ${sets.join(', ')} RETURNING *`, vals)
     res.json(rows[0])

@@ -795,7 +795,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               {/* Late */}
               <div>
                 <div style={{ marginBottom: 4 }}>
-                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * LATE_RATE_PER_MIN }).catch(() => {}) }} suffix=" min" color="#D97706" />
+                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * LATE_RATE_PER_MIN, total_late_minutes: v }).catch(() => {}) }} suffix=" min" color="#D97706" />
                 </div>
                 {lateDed > 0
                   ? <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#DC2626' }}>−{fmtM(lateDed)}</div>
@@ -812,7 +812,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                       const newFixed = Math.max(0, v - excusedQuota)
                       const newDed = newFixed * EXCUSED_OVER_RATE
                       setOverride(entry.id, { excusedTimes: v, excusedFixed: newFixed, excusedProrata: 0 })
-                      api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed }).catch(() => {})
+                      api.patch('/payroll/entries/' + entry.id, { excused_off_deduction: newDed, excused_fixed_days: v }).catch(() => {})
                     }}
                     suffix="×" color="#2563EB" />
                   <span style={{ fontSize: 9, color: T.muted }}>
@@ -854,7 +854,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                     onCommit={v => {
                       const newDed = v * FLAT_OFF_RATE
                       setOverride(entry.id, { inexcusedTimes: v, inexcusedFixed: v, inexcusedProrata: 0 })
-                      api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed }).catch(() => {})
+                      api.patch('/payroll/entries/' + entry.id, { inexcused_off_deduction: newDed, inexcused_fixed_days: v }).catch(() => {})
                     }}
                     suffix="×" color="#DC2626" />
                   {inexcusedTimes > 0 && <span style={{ fontSize: 9, color: T.muted }}>all charged</span>}

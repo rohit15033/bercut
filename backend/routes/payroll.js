@@ -257,8 +257,10 @@ router.get('/periods/:id/entries', requireAdmin, async (req, res) => {
 // PATCH /api/payroll/entries/:id — admin manual override
 router.patch('/entries/:id', requireAdmin, requireOwner, async (req, res) => {
   try {
-    const allowed = ['working_days','late_deduction','inexcused_off_deduction',
-      'excused_off_deduction','kasbon_total','net_pay','base_salary']
+    const allowed = ['working_days','late_deduction','total_late_minutes',
+      'inexcused_off_deduction','inexcused_fixed_days',
+      'excused_off_deduction','excused_fixed_days',
+      'kasbon_total','net_pay','base_salary']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }

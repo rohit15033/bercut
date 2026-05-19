@@ -5,35 +5,6 @@ import { api } from '../../../shared/api.js'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-function buildPeriodPresets() {
-  const presets = []
-  const today = new Date()
-  let year = today.getFullYear()
-  let month = today.getMonth()
-
-  if (today.getDate() < 16) {
-    month -= 1
-    if (month < 0) { month = 11; year -= 1 }
-  }
-
-  for (let i = 0; i < 6; i++) {
-    const fromYear = year
-    const fromMonth = month
-    const toMonth = (month + 1) % 12
-    const toYear = month === 11 ? year + 1 : year
-
-    const from = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}-16`
-    const to = `${toYear}-${String(toMonth + 1).padStart(2, '0')}-15`
-    const label = `16 ${MONTH_NAMES[fromMonth].slice(0,3)} – 15 ${MONTH_NAMES[toMonth].slice(0,3)} ${toYear}`
-    const periodMonth = `${fromYear}-${String(fromMonth + 1).padStart(2, '0')}`
-
-    presets.push({ label, period_from: from, period_to: to, period_month: periodMonth })
-
-    month -= 1
-    if (month < 0) { month = 11; year -= 1 }
-  }
-  return presets
-}
 
 function fmtDateTime(iso) {
   if (!iso) return '—'
@@ -122,8 +93,6 @@ async function downloadExport(periodId, label) {
 }
 
 export default function PayrollList({ onOpen, onViewAttendance }) {
-  const PRESETS = buildPeriodPresets()
-
   const [branches,       setBranches]       = useState([])
   const [selectedBranch, setSelectedBranch] = useState('')
   const [dbPeriods,      setDbPeriods]      = useState([])
@@ -155,61 +124,16 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
       .finally(() => setLoadingPeriods(false))
   }, [selectedBranch])
 
-  // Merge presets with DB periods
-  const presetKeys = new Set(PRESETS.map(p => p.period_from + '|' + p.period_to))
-
-  const presetRows = PRESETS.map(preset => {
-    const match = dbPeriods.find(p =>
-      String(p.period_from).slice(0, 10) === preset.period_from &&
-      String(p.period_to).slice(0, 10)   === preset.period_to
-    )
-    if (match) {
-      return { ...preset, dbPeriod: match, status: match.status || 'draft' }
-    }
-    return { ...preset, dbPeriod: null, status: 'not_started' }
-  })
-
-  const extraRows = dbPeriods
-    .filter(p => !presetKeys.has(
-      String(p.period_from).slice(0, 10) + '|' + String(p.period_to).slice(0, 10)
-    ))
-    .map(p => {
-      const pf = String(p.period_from).slice(0, 10)
-      const pt = String(p.period_to).slice(0, 10)
-      return {
-        label:        formatPeriodLabel(pf, pt),
-        period_from:  pf,
-        period_to:    pt,
-        period_month: pf.slice(0, 7),
-        dbPeriod:     p,
-        status:       p.status || 'draft',
-      }
-    })
-
-  const rows = [...presetRows, ...extraRows].sort(
-    (a, b) => b.period_from.localeCompare(a.period_from)
-  )
-
-  // Find the most recent preset not yet in DB
-  const nextUngenerated = rows.find(r => r.status === 'not_started')
-
-  async function handleGenerate(preset) {
-    setGeneratingId(preset.period_from)
-    setError('')
-    try {
-      const result = await api.post('/payroll/periods/generate', {
-        branch_id:    selectedBranch,
-        period_month: preset.period_month,
-        period_from:  preset.period_from,
-        period_to:    preset.period_to,
-      })
-      onOpen(result.period)
-    } catch (err) {
-      setError('Failed to generate period. Please try again.')
-    } finally {
-      setGeneratingId(null)
-    }
-  }
+  const rows = [...dbPeriods]
+    .map(p => ({
+      label:       formatPeriodLabel(String(p.period_from).slice(0,10), String(p.period_to).slice(0,10)),
+      period_from: String(p.period_from).slice(0,10),
+      period_to:   String(p.period_to).slice(0,10),
+      period_month: String(p.period_from).slice(0,7),
+      dbPeriod:    p,
+      status:      p.status || 'draft',
+    }))
+    .sort((a, b) => b.period_from.localeCompare(a.period_from))
 
   async function handleRegenerate(period, label) {
     setConfirmRegen(null)
@@ -291,28 +215,6 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
         </div>
       </div>
 
-      {/* Quick generate banner */}
-      {nextUngenerated && !loadingPeriods && (
-        <div className="fu" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderRadius: 10, background: '#FFFBEB', border: '1px solid #FDE68A', marginBottom: 20 }}>
-          <div>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#D97706' }}>Next period ready: </span>
-            <span style={{ fontSize: 13, color: T.text2 }}>{nextUngenerated.label}</span>
-          </div>
-          <button
-            onClick={() => handleGenerate(nextUngenerated)}
-            disabled={!!generatingId}
-            style={{ padding: '7px 18px', borderRadius: 7, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>
-            {isGenerating(nextUngenerated.period_from) ? 'Generating…' : 'Generate Now'}
-          </button>
-        </div>
-      )}
-
-      {!nextUngenerated && !loadingPeriods && rows.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 9, background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: 20, fontSize: 13, color: '#16A34A', fontWeight: 600 }}>
-          <span>All periods up to date</span>
-        </div>
-      )}
-
       {error && (
         <div style={{ padding: '10px 16px', borderRadius: 8, background: '#FEE2E2', border: '1px solid #FECACA', color: T.danger, fontSize: 13, marginBottom: 16 }}>{error}</div>
       )}
@@ -331,8 +233,6 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
         )}
 
         {!loadingPeriods && rows.map((row, i) => {
-          const isNotStarted = row.status === 'not_started'
-          const busy = isGenerating(row.period_from)
           return (
             <div key={row.period_from}
               style={{
@@ -340,12 +240,11 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
                 padding: '13px 20px',
                 borderBottom: i < rows.length - 1 ? '1px solid ' + T.surface : 'none',
                 alignItems: 'center',
-                opacity: isNotStarted ? 0.6 : 1,
-                background: isNotStarted ? T.bg : T.white,
+                background: T.white,
               }}>
 
               {/* Period label */}
-              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: isNotStarted ? T.muted : T.text }}>
+              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: T.text }}>
                 {row.label}
               </div>
 
@@ -354,38 +253,16 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
 
               {/* Generated at */}
               <div style={{ fontSize: 12, color: T.muted }}>
-                {row.dbPeriod ? fmtDateTime(row.dbPeriod.generated_at || row.dbPeriod.created_at) : '—'}
+                {fmtDateTime(row.dbPeriod.generated_at || row.dbPeriod.created_at)}
               </div>
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                {isNotStarted ? (
-                  <button
-                    onClick={() => handleGenerate(row)}
-                    disabled={!!generatingId}
-                    style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>
-                    {busy ? 'Generating…' : 'Generate'}
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => onOpen(row.dbPeriod)}
-                      style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>
-                      Open
-                    </button>
-                    <button
-                      onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })}
-                      disabled={!!generatingId}
-                      style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>
-                      {busy ? 'Regenerating…' : 'Regenerate ↺'}
-                    </button>
-                    <button
-                      onClick={() => downloadExport(row.dbPeriod.id, row.label)}
-                      style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>
-                      ↓ Excel
-                    </button>
-                  </>
-                )}
+                <>
+                  <button onClick={() => onOpen(row.dbPeriod)} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
+                  <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Regenerating…' : 'Regenerate ↺'}</button>
+                  <button onClick={() => downloadExport(row.dbPeriod.id, row.label)} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
+                </>
               </div>
             </div>
           )

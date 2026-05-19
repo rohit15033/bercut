@@ -156,6 +156,14 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
 
   async function handleCustomGenerate() {
     if (!customFrom || !customTo) return
+    const duplicate = dbPeriods.find(p =>
+      String(p.period_from).slice(0, 10) === customFrom &&
+      String(p.period_to).slice(0, 10)   === customTo
+    )
+    if (duplicate) {
+      setError('A payroll period for these dates already exists. Open it from the list.')
+      return
+    }
     setCustomGenerating(true)
     setError('')
     try {

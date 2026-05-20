@@ -817,10 +817,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               {/* OT Commission */}
               <div style={{ paddingTop: 2 }}>
                 {Number(entry.commission_ot) > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>+{fmtM(entry.commission_ot)}</div>
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A' }}>OT</span>
-                  </div>
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>+{fmtM(entry.commission_ot)}</div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}

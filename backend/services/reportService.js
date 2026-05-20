@@ -185,6 +185,32 @@ async function generateMonitoringReportData(branch_id, date) {
 async function sendClosingReport(branch_id, ws, branchName, date) {
   if (!ws.closing_report_enabled || !ws.tpl_closing_report) return
   const data = await generateClosingReportData(branch_id, date)
+
+  const { rows: psRows } = await pool.query('SELECT ot_commission_enabled, ot_threshold_time FROM payroll_settings LIMIT 1')
+  const ps = psRows[0] || {}
+  let notes = ''
+  if (ps.ot_commission_enabled) {
+    const otThreshold = String(ps.ot_threshold_time || '19:00').slice(0, 5)
+    const { rows: otRows } = await pool.query(
+      `SELECT u.name AS barber_name,
+              TO_CHAR(MIN(COALESCE(bk.started_at, bk.scheduled_at)) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS first_start,
+              TO_CHAR(MAX(COALESCE(bk.completed_at, bk.started_at, bk.scheduled_at)) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS last_end
+       FROM bookings bk
+       JOIN users u ON u.id = bk.barber_id
+       WHERE bk.branch_id = $1
+         AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
+         AND bk.status = 'completed'
+         AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $3
+       GROUP BY u.id, u.name
+       ORDER BY u.name`,
+      [branch_id, date, otThreshold]
+    )
+    if (otRows.length > 0) {
+      const lines = otRows.map(r => `${r.barber_name} lembur servis dari jam ${r.first_start} sampai jam ${r.last_end}`)
+      notes = 'Notes:\n' + lines.join('\n')
+    }
+  }
+
   const vars = {
     branch: branchName,
     date,
@@ -194,10 +220,12 @@ async function sendClosingReport(branch_id, ws, branchName, date) {
     card: formatRupiah(data.card),
     qr: formatRupiah(data.qr),
     tip: formatRupiah(data.tip),
+    items_sold: data.items_sold,
     beverages_sold: data.beverages_sold,
     beverages_stock: data.beverages_stock,
     styling_sold: data.styling_sold,
     styling_stock: data.styling_stock,
+    notes,
   }
   const message = fillTemplate(ws.tpl_closing_report, vars)
   if (ws.closing_group_1) await sendWhatsApp(ws.closing_group_1, message, ws.fonnte_token)

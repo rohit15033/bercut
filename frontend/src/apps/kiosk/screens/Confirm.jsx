@@ -225,7 +225,7 @@ function CountryPicker({ selected, onSelect, onClose }) {
 
 const NUM_PAD = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']]
 
-const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
+const InlineQwerty = memo(function InlineQwerty({ value, onChange }) {
   const [shifted, setShifted] = useState(true)
   const [pressedKey, setPressedKey] = useState(null)
   const lastPressRef = useRef({})
@@ -299,26 +299,18 @@ const InlineQwerty = memo(function InlineQwerty({ value, onChange, onDone }) {
           {ri === 1 && <div style={{ flex:0.5 }} />}
         </div>
       ))}
-      {/* Space + Done row */}
+      {/* Space bar row — full width, no Done button */}
       <div style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
         <button {...press(' ')}
           style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, fontFamily:"'DM Sans',sans-serif", cursor:'pointer', background: pressedKey === ' ' ? C.accent : '#FFFFFF', color: pressedKey === ' ' ? C.accentText : C.muted, boxShadow: pressedKey === ' ' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: pressedKey === ' ' ? 'scale(0.96)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
           space
-        </button>
-        <button
-          onPointerDown={(e) => { e.preventDefault(); setPressedKey('__done__') }}
-          onPointerUp={() => { setPressedKey(null); onDone() }}
-          onPointerLeave={() => setPressedKey(null)}
-          onPointerCancel={() => setPressedKey(null)}
-          style={{ width:'clamp(80px,10vw,108px)', height:'clamp(44px,5.9vh,56px)', flexShrink:0, borderRadius:8, border:'none', fontSize:'clamp(13px,1.5vw,16px)', fontWeight:800, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: pressedKey === '__done__' ? '#333' : C.topBg, color:'#FFF', boxShadow: pressedKey === '__done__' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: pressedKey === '__done__' ? 'scale(0.94)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
-          Done ✓
         </button>
       </div>
     </div>
   )
 })
 
-const InlineNumpad = memo(function InlineNumpad({ value, onChange, country, onDone }) {
+const InlineNumpad = memo(function InlineNumpad({ value, onChange, country }) {
   const [pressedKey, setPressedKey] = useState(null)
   const lastPressRef = useRef({})
   const deleteTimerRef = useRef(null)
@@ -379,17 +371,6 @@ const InlineNumpad = memo(function InlineNumpad({ value, onChange, country, onDo
         </div>
       ))}
 
-      {/* Done row — mirrors QWERTY space+Done row */}
-      <div style={{ display:'flex', gap:'clamp(4px,0.48vw,5px)' }}>
-        <button
-          onPointerDown={(e) => { e.preventDefault(); setPressedKey('__done__') }}
-          onPointerUp={() => { setPressedKey(null); onDone() }}
-          onPointerLeave={() => setPressedKey(null)}
-          onPointerCancel={() => setPressedKey(null)}
-          style={{ flex:1, height:'clamp(44px,5.9vh,56px)', borderRadius:8, border:'none', fontSize:'clamp(13px,1.5vw,16px)', fontWeight:800, fontFamily:"'Inter',sans-serif", cursor:'pointer', background: pressedKey === '__done__' ? '#333' : C.topBg, color:'#FFF', boxShadow: pressedKey === '__done__' ? 'inset 0 2px 4px rgba(0,0,0,0.22)' : '0 2px 3px rgba(0,0,0,0.14)', transform: pressedKey === '__done__' ? 'scale(0.94)' : 'scale(1)', transition:'transform 60ms, background 60ms', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none', WebkitUserSelect:'none', touchAction:'manipulation' }}>
-          Done ✓
-        </button>
-      </div>
     </div>
   )
 })
@@ -482,9 +463,9 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
       })
       onConfirm(bk, pointsUsed)
     } catch (err) {
+      submittingRef.current = false   // allow retry on error
       setError(err.message || 'Booking failed. Please try again.')
     } finally {
-      submittingRef.current = false
       setLoading(false)
     }
   }
@@ -557,10 +538,10 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
 
           {/* Inline keyboards — part of left column flow */}
           {activeField === 'name' && (
-            <InlineQwerty value={name} onChange={setName} onDone={() => setActiveField(null)} />
+            <InlineQwerty value={name} onChange={setName} />
           )}
           {activeField === 'phone' && (
-            <InlineNumpad value={phone} onChange={setPhone} country={country} onDone={() => setActiveField(null)} />
+            <InlineNumpad value={phone} onChange={setPhone} country={country} />
           )}
 
           {error && (

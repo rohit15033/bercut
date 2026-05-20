@@ -48,13 +48,15 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     const bookingDate = date || new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Makassar' }).slice(0, 10)
 
-    // Dedup guard: reject if identical booking (same branch, name, slot) created within last 10 seconds
+    // Dedup guard: reject if identical booking (same branch, name, slot) created within last 15 seconds.
+    // Use a ±30-second window on scheduled_at to handle "Now" bookings where two rapid requests
+    // produce slightly different timestamps.
     const dupCheck = await client.query(
       `SELECT id FROM bookings
        WHERE branch_id = $1
          AND LOWER(guest_name) = LOWER($2)
-         AND scheduled_at = $3::timestamptz
-         AND created_at > NOW() - INTERVAL '10 seconds'
+         AND scheduled_at BETWEEN $3::timestamptz - INTERVAL '30 seconds' AND $3::timestamptz + INTERVAL '30 seconds'
+         AND created_at > NOW() - INTERVAL '15 seconds'
        LIMIT 1`,
       [req.branchId, customer_name || '', scheduledAt(bookingDate, slot_time)]
     )

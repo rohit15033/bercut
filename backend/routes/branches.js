@@ -150,13 +150,15 @@ router.patch('/:id/chairs/:chairId', requireAdmin, async (req, res) => {
 
 router.post('/:id/chairs/:chairId/overrides', requireAdmin, async (req, res) => {
   try {
-    const { barber_id } = req.body
+    const { barber_id, date_from, date_to } = req.body
+    if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+    if (!date_from) return res.status(400).json({ message: 'date_from required' })
     await pool.query(
       'UPDATE chair_overrides SET resolved_by = $1, resolved_at = NOW() WHERE chair_id = $2 AND resolved_by IS NULL',
       ['admin', req.params.chairId])
     const { rows } = await pool.query(
-      `INSERT INTO chair_overrides (chair_id, barber_id) VALUES ($1, $2) RETURNING *`,
-      [req.params.chairId, barber_id])
+      `INSERT INTO chair_overrides (chair_id, barber_id, date_from, date_to) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.params.chairId, barber_id, date_from, date_to || null])
     res.status(201).json(rows[0])
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

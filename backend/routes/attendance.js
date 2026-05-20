@@ -7,10 +7,14 @@ const { tryAssignDeferred } = require('../services/barberAssignment')
 // GET /api/attendance?branch_id=&barber_id=&month=&year=
 router.get('/', requireAdmin, async (req, res) => {
   try {
-    const { branch_id, barber_id, month, year } = req.query
+    const { branch_id, barber_id, barber_ids, month, year } = req.query
     const conds = []; const vals = []; let idx = 1
     if (branch_id) { conds.push(`a.branch_id = $${idx++}`); vals.push(branch_id) }
     if (barber_id) { conds.push(`a.barber_id = $${idx++}`); vals.push(barber_id) }
+    if (barber_ids) {
+      const ids = barber_ids.split(',').map(s => s.trim()).filter(Boolean)
+      if (ids.length) { conds.push(`a.barber_id = ANY($${idx++})`); vals.push(ids) }
+    }
     if (month) { conds.push(`EXTRACT(MONTH FROM a.clock_in_at AT TIME ZONE 'Asia/Makassar') = $${idx++}`); vals.push(month) }
     if (year)  { conds.push(`EXTRACT(YEAR FROM a.clock_in_at AT TIME ZONE 'Asia/Makassar') = $${idx++}`);  vals.push(year) }
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
@@ -193,9 +197,13 @@ router.post('/log-off', requireAdmin, async (req, res) => {
 // GET /api/attendance/off-records?barber_id=&branch_id=&month=&year=
 router.get('/off-records', requireAdmin, async (req, res) => {
   try {
-    const { barber_id, branch_id, month, year } = req.query
+    const { barber_id, barber_ids, branch_id, month, year } = req.query
     const conds = []; const vals = []; let idx = 1
     if (barber_id) { conds.push(`o.barber_id = $${idx++}`); vals.push(barber_id) }
+    if (barber_ids) {
+      const ids = barber_ids.split(',').map(s => s.trim()).filter(Boolean)
+      if (ids.length) { conds.push(`o.barber_id = ANY($${idx++})`); vals.push(ids) }
+    }
     if (branch_id) { conds.push(`o.branch_id = $${idx++}`); vals.push(branch_id) }
     if (month) { conds.push(`EXTRACT(MONTH FROM o.date) = $${idx++}`); vals.push(month) }
     if (year)  { conds.push(`EXTRACT(YEAR FROM o.date) = $${idx++}`);  vals.push(year) }

@@ -87,7 +87,7 @@ function ModalHeader({ barberName, dayLabel, badge, onClose }) {
 
 // ── CalendarCell ──────────────────────────────────────────────────────────────
 
-function CalendarCell({ day, record, isWeekend, isPast, onClick }) {
+function CalendarCell({ day, record, isWeekend, isPast, onClick, barberBranchId, overrideBranchName }) {
   const [hovered, setHovered] = useState(false)
   if (!day) return <div style={{ minHeight: 78 }} />
   if (record?.s === 'DO') {
@@ -130,6 +130,10 @@ function CalendarCell({ day, record, isWeekend, isPast, onClick }) {
         {record.s === 'L' && record.lateMin > 0 && (
           <span style={{ fontSize: 10, color: cfg.color, fontWeight: 600 }}>{record.lateMin} min</span>
         )}
+        {/* Cross-branch indicator — only for P/L cells where branch differs */}
+        {['P', 'L'].includes(record.s) && overrideBranchName && record.branch_id && record.branch_id !== barberBranchId && (
+          <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, marginTop: 2, letterSpacing: '0.02em' }}>↗ {overrideBranchName}</span>
+        )}
       </div>
     </div>
   )
@@ -137,7 +141,7 @@ function CalendarCell({ day, record, isWeekend, isPast, onClick }) {
 
 // ── BarberSummaryCard ─────────────────────────────────────────────────────────
 
-function BarberSummaryCard({ barber, records, weekends, daysInMonth, isSelected, onClick }) {
+function BarberSummaryCard({ barber, records, weekends, daysInMonth, isSelected, onClick, currentBranchId, homeBranchName }) {
   const days    = records || {}
   const pCount  = Object.values(days).filter(d => d.s === 'P').length
   const lCount  = Object.values(days).filter(d => d.s === 'L').length
@@ -167,6 +171,12 @@ function BarberSummaryCard({ barber, records, weekends, daysInMonth, isSelected,
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 13, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{barber.name}</div>
+          {/* Home branch pill — only for visitors */}
+          {barber.branch_id !== currentBranchId && homeBranchName && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 2, marginBottom: 1, padding: '1px 6px', borderRadius: 4, background: T.surface2, border: `1px solid ${T.border}`, alignSelf: 'flex-start' }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: '0.02em', textTransform: 'uppercase' }}>↗ {homeBranchName}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
             {badges.map((b, i) => (
               <span key={i} style={{ fontSize: 10, fontWeight: 700, color: b.color }}>{b.val}× {b.label}</span>
@@ -583,12 +593,14 @@ export default function Attendance({ onPayroll }) {
     if (!branchId) return
     setLoading(true)
     try {
-      const [bars, att, off] = await Promise.all([
-        api.get(`/barbers?branch_id=${branchId}`),
-        api.get(`/attendance?branch_id=${branchId}&month=${month}&year=${year}`),
-        api.get(`/attendance/off-records?branch_id=${branchId}&month=${month}&year=${year}`),
+      const bars = await api.get(`/barbers?branch_id=${branchId}`)
+      const barList = Array.isArray(bars) ? bars : []
+      setBarbers(barList)
+      const ids = barList.map(b => b.id).join(',')
+      const [att, off] = await Promise.all([
+        ids ? api.get(`/attendance?barber_ids=${ids}&month=${month}&year=${year}`) : Promise.resolve([]),
+        ids ? api.get(`/attendance/off-records?barber_ids=${ids}&month=${month}&year=${year}`) : Promise.resolve([]),
       ])
-      setBarbers(Array.isArray(bars) ? bars : [])
       setAttendance(Array.isArray(att) ? att : [])
       setOffRecords(Array.isArray(off) ? off : [])
     } catch (err) { console.error(err) }
@@ -745,9 +757,12 @@ export default function Attendance({ onPayroll }) {
             )}
             {barbers.map(b => {
               const { records } = buildCalendarData(attendance, offRecords, b.id, year, month)
+              const homeBranchName = branches.find(br => br.id === b.branch_id)?.name ?? ''
               return (
                 <BarberSummaryCard key={b.id} barber={b} records={records} weekends={weekends} daysInMonth={daysInMonth}
                   isSelected={selectedBarber?.id === b.id}
+                  currentBranchId={branchId}
+                  homeBranchName={homeBranchName}
                   onClick={() => setSelectedBarber(selectedBarber?.id === b.id ? null : b)} />
               )
             })}
@@ -778,16 +793,24 @@ export default function Attendance({ onPayroll }) {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
                   {Array.from({ length: calLead }).map((_, i) => <div key={'lead-' + i} style={{ minHeight: 78 }} />)}
-                  {monthDays.map(d => (
-                    <CalendarCell
-                      key={d}
-                      day={d}
-                      record={selectedCalData?.records[d]}
-                      isWeekend={weekends.includes(d)}
-                      isPast={isPast(d)}
-                      onClick={() => handleCellClick(d, selectedCalData?.records[d])}
-                    />
-                  ))}
+                  {monthDays.map(d => {
+                    const rec = selectedCalData?.records[d]
+                    const overrideBranchName = rec && rec.branch_id && rec.branch_id !== selectedBarber?.branch_id
+                      ? (branches.find(b => b.id === rec.branch_id)?.name ?? '')
+                      : ''
+                    return (
+                      <CalendarCell
+                        key={d}
+                        day={d}
+                        record={rec}
+                        isWeekend={weekends.includes(d)}
+                        isPast={isPast(d)}
+                        barberBranchId={selectedBarber?.branch_id ?? ''}
+                        overrideBranchName={overrideBranchName}
+                        onClick={() => handleCellClick(d, rec)}
+                      />
+                    )
+                  })}
                 </div>
 
                 {/* Incidents */}

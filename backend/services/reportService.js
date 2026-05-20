@@ -194,9 +194,12 @@ async function sendClosingReport(branch_id, ws, branchName, date) {
     const { rows: otRows } = await pool.query(
       `SELECT u.name AS barber_name,
               TO_CHAR(MIN(COALESCE(bk.started_at, bk.scheduled_at)) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS first_start,
-              TO_CHAR(MAX(COALESCE(bk.completed_at, bk.started_at, bk.scheduled_at)) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS last_end
+              TO_CHAR(MAX(COALESCE(bk.completed_at, bk.started_at, bk.scheduled_at)) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS last_end,
+              STRING_AGG(DISTINCT s.name, ' + ' ORDER BY s.name) AS service_names
        FROM bookings bk
        JOIN users u ON u.id = bk.barber_id
+       JOIN booking_services bs ON bs.booking_id = bk.id
+       JOIN services s ON s.id = bs.service_id
        WHERE bk.branch_id = $1
          AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
          AND bk.status = 'completed'
@@ -206,7 +209,7 @@ async function sendClosingReport(branch_id, ws, branchName, date) {
       [branch_id, date, otThreshold]
     )
     if (otRows.length > 0) {
-      const lines = otRows.map(r => `${r.barber_name} lembur servis dari jam ${r.first_start} sampai jam ${r.last_end}`)
+      const lines = otRows.map(r => `${r.barber_name} lembur ${r.service_names} dari jam ${r.first_start} sampai jam ${r.last_end}`)
       notes = 'Notes:\n' + lines.join('\n')
     }
   }

@@ -1,7 +1,7 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
 const bcrypt = require('bcrypt')
-const { requireAdmin, requireOwner, checkPermission } = require('../middleware/auth')
+const { requireAdmin, checkPermission } = require('../middleware/auth')
 const { sendWhatsApp } = require('../services/notifications')
 
 // ── Audit log helper ───────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ router.get('/global', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/global', requireAdmin, requireOwner, async (req, res) => {
+router.patch('/global', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['points_earn_rate','points_redemption_rate',
       'points_expiry_months','points_expiry_warning_days','shift_start_time']
@@ -53,7 +53,7 @@ router.get('/payroll', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/payroll', requireAdmin, requireOwner, async (req, res) => {
+router.patch('/payroll', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['late_deduction_per_minute','late_grace_period_minutes',
       'inexcused_off_flat_deduction','excused_off_flat_deduction',
@@ -101,7 +101,7 @@ router.post('/whatsapp/test', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Failed to send test message' }) }
 })
 
-router.patch('/whatsapp', requireAdmin, requireOwner, async (req, res) => {
+router.patch('/whatsapp', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['enabled','fonnte_token',
       'tpl_booking_confirmed','tpl_booking_reminder','tpl_payment_receipt',
@@ -153,7 +153,7 @@ router.post('/whatsapp/send-report/:branch_id', requireAdmin, async (req, res) =
 })
 
 // ── Users (admin accounts) ─────────────────────────────────────────────────────
-router.get('/users', requireAdmin, requireOwner, async (req, res) => {
+router.get('/users', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, email, name, role, is_active, last_login_at, created_at FROM users ORDER BY name')
@@ -161,7 +161,7 @@ router.get('/users', requireAdmin, requireOwner, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/users', requireAdmin, requireOwner, async (req, res) => {
+router.post('/users', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const { email, name, password, role = 'manager' } = req.body
     if (!email || !password || !name) {
@@ -177,7 +177,7 @@ router.post('/users', requireAdmin, requireOwner, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/users/:id', requireAdmin, requireOwner, async (req, res) => {
+router.patch('/users/:id', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['name','role','is_active']
     const sets = []; const vals = []; let idx = 1
@@ -218,7 +218,7 @@ router.get('/users/:id/permissions', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.put('/users/:id/permissions', requireAdmin, requireOwner, async (req, res) => {
+router.put('/users/:id/permissions', requireAdmin, checkPermission('settings'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -295,7 +295,7 @@ router.post('/expense-categories', requireAdmin, async (req, res) => {
 })
 
 // ── Audit Log ──────────────────────────────────────────────────────────────────
-router.get('/audit-log', requireAdmin, requireOwner, async (req, res) => {
+router.get('/audit-log', requireAdmin, checkPermission('settings'), async (req, res) => {
   try {
     const { user_id, table_name, limit = 100 } = req.query
     const conds = []; const vals = []; let idx = 1

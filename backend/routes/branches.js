@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin, requireOwner } = require('../middleware/auth')
+const { requireAdmin, checkPermission } = require('../middleware/auth')
 
 // ── GET /api/branches ──────────────────────────────────────────────────────────
 router.get('/', requireAdmin, async (req, res) => {
@@ -37,7 +37,7 @@ router.get('/slug/:slug', async (req, res) => {
 })
 
 // ── POST /api/branches ─────────────────────────────────────────────────────────
-router.post('/', requireAdmin, requireOwner, async (req, res) => {
+router.post('/', requireAdmin, checkPermission('branches'), async (req, res) => {
   try {
     const {
       name, address, city, timezone = 'Asia/Makassar', is_active = true,
@@ -71,7 +71,7 @@ router.post('/', requireAdmin, requireOwner, async (req, res) => {
 })
 
 // ── PATCH /api/branches/:id ────────────────────────────────────────────────────
-router.patch('/:id', requireAdmin, requireOwner, async (req, res) => {
+router.patch('/:id', requireAdmin, checkPermission('branches'), async (req, res) => {
   try {
     const allowed = ['name','address','city','timezone','is_active','auto_cancel_minutes',
       'backoffice_alert_phone','online_booking_slug','online_booking_enabled','whatsapp_enabled',
@@ -94,7 +94,7 @@ router.patch('/:id', requireAdmin, requireOwner, async (req, res) => {
 })
 
 // ── DELETE /api/branches/:id ───────────────────────────────────────────────────
-router.delete('/:id', requireAdmin, requireOwner, async (req, res) => {
+router.delete('/:id', requireAdmin, checkPermission('branches'), async (req, res) => {
   try {
     await pool.query('UPDATE branches SET is_active = false WHERE id = $1', [req.params.id])
     res.json({ ok: true })
@@ -184,7 +184,7 @@ router.get('/:id/kiosk-tokens', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.delete('/:id/kiosk-tokens/:tokenId', requireAdmin, requireOwner, async (req, res) => {
+router.delete('/:id/kiosk-tokens/:tokenId', requireAdmin, checkPermission('branches'), async (req, res) => {
   try {
     await pool.query('DELETE FROM kiosk_tokens WHERE id = $1 AND branch_id = $2',
       [req.params.tokenId, req.params.id])

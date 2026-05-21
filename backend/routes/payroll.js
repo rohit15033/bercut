@@ -1,7 +1,7 @@
 const router   = require('express').Router()
 const pool     = require('../config/db')
 const ExcelJS  = require('exceljs')
-const { requireAdmin, requireOwner, checkPermission } = require('../middleware/auth')
+const { requireAdmin, checkPermission } = require('../middleware/auth')
 
 // GET /api/payroll/periods?branch_id=
 router.get('/periods', requireAdmin, async (req, res) => {

@@ -158,11 +158,28 @@ router.get('/delay', requireAdmin, async (req, res) => {
 router.get('/transactions', requireAdmin, async (req, res) => {
   try {
     const { branch_id, date_from, date_to, limit = 200, offset = 0 } = req.query
+
+    // Fetch OT settings
+    const ps = await pool.query('SELECT ot_commission_enabled, ot_threshold_time, ot_bonus_pct, ot_excluded_service_ids FROM payroll_settings LIMIT 1')
+    const otEnabled   = ps.rows[0]?.ot_commission_enabled || false
+    const otThreshold = String(ps.rows[0]?.ot_threshold_time || '19:00').slice(0, 5)
+    const otBonusPct  = parseFloat(ps.rows[0]?.ot_bonus_pct || 5)
+    const otExcluded  = Array.isArray(ps.rows[0]?.ot_excluded_service_ids) ? ps.rows[0].ot_excluded_service_ids : []
+
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
     if (branch_id) { conds.push(`bk.branch_id = $${idx++}`); vals.push(branch_id) }
     if (date_from) { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') >= $${idx++}`); vals.push(date_from) }
     if (date_to)   { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') <= $${idx++}`); vals.push(date_to) }
     const where = 'WHERE ' + conds.join(' AND ')
+
+    // OT params come after limit/offset
+    const limitIdx    = idx++   // e.g. $4
+    const offsetIdx   = idx++   // e.g. $5
+    const otEnabledIdx    = idx++   // e.g. $6
+    const otThresholdIdx  = idx++   // e.g. $7
+    const otBonusPctIdx   = idx++   // e.g. $8
+    const otExcludedIdx   = idx++   // e.g. $9
+
     const { rows } = await pool.query(
       `SELECT bk.id, bk.booking_number,
               DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar')              AS date,
@@ -175,14 +192,25 @@ router.get('/transactions', requireAdmin, async (req, res) => {
               bk.payment_method,
               COALESCE(t.amount, 0) AS tip,
               ${totalAmt} AS total_amount,
+              ($${otEnabledIdx}::boolean AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}) AS is_ot,
               (SELECT json_agg(
                 json_build_object(
                   'service_name',    s.name,
                   'price',           bsv.price_charged,
                   'category',        s.category,
                   'commission_rate', COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate),
-                  'commission',      ROUND(bsv.price_charged *
-                                       COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)
+                  'is_ot_service', (
+                    $${otEnabledIdx}::boolean
+                    AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                    AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
+                  ),
+                  'commission', CASE
+                    WHEN $${otEnabledIdx}::boolean
+                      AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                      AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
+                    THEN ROUND(bsv.price_charged * (COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) + $${otBonusPctIdx}) / 100)
+                    ELSE ROUND(bsv.price_charged * COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)
+                  END
                 ) ORDER BY s.name
               )
               FROM booking_services bsv
@@ -201,8 +229,8 @@ router.get('/transactions', requireAdmin, async (req, res) => {
        LEFT JOIN tips t ON t.booking_id = bk.id
        ${where}
        ORDER BY bk.scheduled_at DESC
-       LIMIT $${idx++} OFFSET $${idx++}`,
-      [...vals, limit, offset])
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...vals, limit, offset, otEnabled, otThreshold, otBonusPct, otExcluded])
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

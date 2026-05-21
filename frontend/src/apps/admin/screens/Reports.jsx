@@ -397,7 +397,7 @@ export default function Reports() {
     : filterPeriod === 'today' ? 'Today' : filterPeriod === 'week' ? 'This Week' : 'This Month'
 
   function buildTxRows() {
-    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Category','Rate%','Commission','Amount','Tip','Payment']
+    const headers = ['Date','Booking','Scheduled','Started','Ended','Client','Phone','Barber','Service','Category','Rate%','Commission','OT','Amount','Tip','Payment']
     const rows = [headers]
     txData.forEach(r => {
       const svcs   = Array.isArray(r.services) ? r.services : []
@@ -432,7 +432,7 @@ export default function Reports() {
         r.customer_name || '', r.customer_phone || '', r.barber_name || '',
       ]
       if (svcs.length === 0) {
-        rows.push([...base, '', '', '', '', r.total_amount || '', r.tip || '', r.payment_method || ''])
+        rows.push([...base, '', '', '', '', r.is_ot ? 'OT' : '', r.total_amount || '', r.tip || '', r.payment_method || ''])
       } else {
         svcs.forEach((sv, i) => {
           rows.push([
@@ -441,6 +441,7 @@ export default function Reports() {
             sv.category || '',
             sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
             sv.commission != null ? sv.commission : '',
+            sv.is_ot_service ? 'OT' : '',
             sv.price || '',
             i === 0 ? (r.tip || '') : '',
             r.payment_method || '',
@@ -448,7 +449,7 @@ export default function Reports() {
         })
         extras.forEach(ex => {
           const categoryLabel = ex.category === 'beverage' ? 'Beverage' : ex.category === 'product' ? 'Product' : 'Add-on'
-          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, categoryLabel, '', '', ex.price * ex.quantity, '', r.payment_method || ''])
+          rows.push([...base, `${ex.name}${ex.quantity > 1 ? ` ×${ex.quantity}` : ''}`, categoryLabel, '', '', '', ex.price * ex.quantity, '', r.payment_method || ''])
         })
       }
     })
@@ -457,14 +458,17 @@ export default function Reports() {
 
   function exportCSV() {
     setExportOpen(false)
+    const _bn = branchId ? (branches.find(b => String(b.id) === String(branchId))?.name?.replace(/\s+/g, '') || 'AllBranch') : 'AllBranch'
+    const _prefix = `Bercut${_bn}`
+    const _range = `${dateFrom || todayISO()}_${dateTo || todayISO()}`
     let rows, filename
     if (activeTab === 'transactions') {
       rows = buildTxRows()
-      filename = `bercut-transactions-${todayISO()}.csv`
+      filename = `${_prefix}_transactions_${_range}.csv`
     } else {
       rows = [['Period','Bookings','Revenue','Tips']]
       revData.forEach(r => rows.push([r.period, r.booking_count, r.revenue, r.tips_total]))
-      filename = `bercut-revenue-${todayISO()}.csv`
+      filename = `${_prefix}_revenue_${_range}.csv`
     }
     const escape = v => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s }
     const csv = rows.map(r => r.map(escape).join(',')).join('\n')
@@ -476,15 +480,18 @@ export default function Reports() {
 
   function exportXLSX() {
     setExportOpen(false)
+    const _bn = branchId ? (branches.find(b => String(b.id) === String(branchId))?.name?.replace(/\s+/g, '') || 'AllBranch') : 'AllBranch'
+    const _prefix = `Bercut${_bn}`
+    const _range = `${dateFrom || todayISO()}_${dateTo || todayISO()}`
     let rows, filename, sheetName
     if (activeTab === 'transactions') {
       rows = buildTxRows()
-      filename  = `bercut-transactions-${todayISO()}.xlsx`
+      filename  = `${_prefix}_transactions_${_range}.xlsx`
       sheetName = 'Transactions'
     } else {
       rows = [['Period','Bookings','Revenue','Tips']]
       revData.forEach(r => rows.push([r.period, r.booking_count, r.revenue, r.tips_total]))
-      filename  = `bercut-revenue-${todayISO()}.xlsx`
+      filename  = `${_prefix}_revenue_${_range}.xlsx`
       sheetName = 'Revenue'
     }
     const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -928,7 +935,8 @@ export default function Reports() {
                           </div>
 
                           {/* Commission */}
-                          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
+                          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {r.is_ot && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, background: '#FEF3C7', color: '#D97706', letterSpacing: '0.06em' }}>OT</span>}
                             {rowComm > 0 ? fmtM(rowComm) : '—'}
                           </div>
 
@@ -944,8 +952,9 @@ export default function Reports() {
                               <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{sv.service_name}</div>
                               <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{fmtM(sv.price)}</div>
                             </div>
-                            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
+                            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {sv.commission_rate != null ? `${Number(sv.commission_rate).toFixed(0)}%` : '—'}
+                              {sv.is_ot_service && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, background: '#FEF3C7', color: '#D97706', letterSpacing: '0.06em' }}>OT</span>}
                             </div>
                             <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
                               {sv.commission != null ? fmtM(sv.commission) : '—'}

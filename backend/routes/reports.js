@@ -38,23 +38,61 @@ router.get('/revenue', checkPermission('reports'), async (req, res) => {
 router.get('/barbers', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to } = req.query
+
+    // Fetch OT settings
+    const ps = await pool.query('SELECT ot_commission_enabled, ot_threshold_time, ot_bonus_pct, ot_excluded_service_ids FROM payroll_settings LIMIT 1')
+    const otEnabled   = ps.rows[0]?.ot_commission_enabled || false
+    const otThreshold = String(ps.rows[0]?.ot_threshold_time || '19:00').slice(0, 5)
+    const otBonusPct  = parseFloat(ps.rows[0]?.ot_bonus_pct || 10)
+    const otExcluded  = Array.isArray(ps.rows[0]?.ot_excluded_service_ids) ? ps.rows[0].ot_excluded_service_ids : []
+
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
     if (branch_id) { conds.push(`bk.branch_id = $${idx++}`); vals.push(branch_id) }
     if (date_from) { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') >= $${idx++}`); vals.push(date_from) }
     if (date_to)   { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') <= $${idx++}`); vals.push(date_to) }
     const where = 'WHERE b.is_active = true AND ' + conds.join(' AND ')
+
+    // OT param indices (appended after the outer query params)
+    const otEnabledIdx   = idx++
+    const otThresholdIdx = idx++
+    const otBonusPctIdx  = idx++
+    const otExcludedIdx  = idx++
+
+    // Build correlated subquery WHERE clause — reuses the same $1..$N as the outer query
+    // since branch_id/date_from/date_to occupy the same positions in vals
+    const subCondsExact = ["bk2.status = 'completed'", "bk2.barber_id = b.id"]
+    let innerIdx = 1
+    if (branch_id) { subCondsExact.push(`bk2.branch_id = $${innerIdx++}`) }
+    if (date_from) { subCondsExact.push(`DATE(bk2.scheduled_at AT TIME ZONE 'Asia/Makassar') >= $${innerIdx++}`) }
+    if (date_to)   { subCondsExact.push(`DATE(bk2.scheduled_at AT TIME ZONE 'Asia/Makassar') <= $${innerIdx++}`) }
+    const subWhere = subCondsExact.join(' AND ')
+
     const { rows } = await pool.query(
       `SELECT b.id, b.name, b.branch_id,
               COUNT(bk.id)               AS booking_count,
               SUM(${totalAmt})           AS total_revenue,
               AVG(${totalAmt})           AS avg_booking_value,
               SUM(COALESCE(t.amount, 0)) AS tips_total,
-              AVG(bk.rating) FILTER (WHERE bk.rating IS NOT NULL) AS avg_rating
+              AVG(bk.rating) FILTER (WHERE bk.rating IS NOT NULL) AS avg_rating,
+              (SELECT COALESCE(SUM(CASE
+                  WHEN $${otEnabledIdx}::boolean
+                    AND TO_CHAR(COALESCE(bk2.started_at, bk2.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                    AND NOT (bsv2.service_id = ANY($${otExcludedIdx}::uuid[]))
+                  THEN ROUND(bsv2.price_charged * (COALESCE(bsv2.commission_rate, bs_b2.commission_rate, bs_br2.commission_rate, b.commission_rate) + $${otBonusPctIdx}) / 100)
+                  ELSE ROUND(bsv2.price_charged * COALESCE(bsv2.commission_rate, bs_b2.commission_rate, bs_br2.commission_rate, b.commission_rate) / 100)
+                END), 0)
+               FROM bookings bk2
+               JOIN booking_services bsv2 ON bsv2.booking_id = bk2.id
+               LEFT JOIN barber_services bs_b2 ON bs_b2.barber_id = bk2.barber_id AND bs_b2.service_id = bsv2.service_id
+               LEFT JOIN branch_services bs_br2 ON bs_br2.service_id = bsv2.service_id AND bs_br2.branch_id = bk2.branch_id
+               WHERE ${subWhere}
+              ) AS total_commission
        FROM barbers b
        LEFT JOIN bookings bk ON bk.barber_id = b.id
        LEFT JOIN tips t ON t.booking_id = bk.id
        ${where}
-       GROUP BY b.id, b.name, b.branch_id ORDER BY total_revenue DESC NULLS LAST`, vals)
+       GROUP BY b.id, b.name, b.branch_id ORDER BY total_revenue DESC NULLS LAST`,
+      [...vals, otEnabled, otThreshold, otBonusPct, otExcluded])
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
@@ -108,10 +146,25 @@ router.get('/barber-transactions', checkPermission('reports'), async (req, res) 
   try {
     const { barber_id, date_from, date_to } = req.query
     if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+
+    // Fetch OT settings
+    const ps = await pool.query('SELECT ot_commission_enabled, ot_threshold_time, ot_bonus_pct, ot_excluded_service_ids FROM payroll_settings LIMIT 1')
+    const otEnabled   = ps.rows[0]?.ot_commission_enabled || false
+    const otThreshold = String(ps.rows[0]?.ot_threshold_time || '19:00').slice(0, 5)
+    const otBonusPct  = parseFloat(ps.rows[0]?.ot_bonus_pct || 10)
+    const otExcluded  = Array.isArray(ps.rows[0]?.ot_excluded_service_ids) ? ps.rows[0].ot_excluded_service_ids : []
+
     const conds = ["bk.barber_id = $1", "bk.status = 'completed'"]; const vals = [barber_id]; let idx = 2
     if (date_from) { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') >= $${idx++}`); vals.push(date_from) }
     if (date_to)   { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') <= $${idx++}`); vals.push(date_to) }
     const where = 'WHERE ' + conds.join(' AND ')
+
+    // OT param indices (appended after the outer query params)
+    const otEnabledIdx   = idx++
+    const otThresholdIdx = idx++
+    const otBonusPctIdx  = idx++
+    const otExcludedIdx  = idx++
+
     const { rows } = await pool.query(
       `SELECT bk.id, bk.booking_number,
               DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') AS date,
@@ -121,14 +174,48 @@ router.get('/barber-transactions', checkPermission('reports'), async (req, res) 
               COALESCE(bk.guest_name, c.name) AS customer_name,
               COALESCE(bk.guest_phone, c.phone) AS customer_phone,
               COALESCE(t.amount, 0) AS tip,
-              (SELECT json_agg(json_build_object('service_name', s.name, 'category', s.category) ORDER BY s.name)
-               FROM booking_services bsv JOIN services s ON s.id = bsv.service_id
+              ($${otEnabledIdx}::boolean AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}) AS is_ot,
+              (SELECT json_agg(
+                json_build_object(
+                  'service_name', s.name,
+                  'category',     s.category,
+                  'price',        bsv.price_charged,
+                  'commission_rate', COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate),
+                  'is_ot_service', (
+                    $${otEnabledIdx}::boolean
+                    AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                    AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
+                  ),
+                  'effective_commission_rate', CASE
+                    WHEN $${otEnabledIdx}::boolean
+                      AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                      AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
+                    THEN COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) + $${otBonusPctIdx}
+                    ELSE COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate)
+                  END,
+                  'commission', CASE
+                    WHEN $${otEnabledIdx}::boolean
+                      AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                      AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
+                    THEN ROUND(bsv.price_charged * (COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) + $${otBonusPctIdx}) / 100)
+                    ELSE ROUND(bsv.price_charged * COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) / 100)
+                  END
+                ) ORDER BY s.name
+              )
+               FROM booking_services bsv
+               JOIN services s ON s.id = bsv.service_id
+               LEFT JOIN barber_services bs_barber
+                 ON bs_barber.barber_id = bk.barber_id AND bs_barber.service_id = bsv.service_id
+               LEFT JOIN branch_services bs_branch
+                 ON bs_branch.service_id = bsv.service_id AND bs_branch.branch_id = bk.branch_id
                WHERE bsv.booking_id = bk.id) AS services
        FROM bookings bk
        LEFT JOIN customers c ON c.id = bk.customer_id
+       LEFT JOIN barbers b ON b.id = bk.barber_id
        LEFT JOIN tips t ON t.booking_id = bk.id
        ${where}
-       ORDER BY bk.scheduled_at DESC`, vals)
+       ORDER BY bk.scheduled_at DESC`,
+      [...vals, otEnabled, otThreshold, otBonusPct, otExcluded])
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

@@ -385,12 +385,17 @@ export default function Reports() {
     else { setPerfSortBy(key); setPerfSortDir('desc') }
   }
   const perfTotal = {
-    services:   barbers.reduce((s, b) => s + Number(b.booking_count || 0), 0),
-    revenue:    barbers.reduce((s, b) => s + Number(b.total_revenue || 0), 0),
-    tips:       barbers.reduce((s, b) => s + Number(b.tips_total    || 0), 0),
+    services:   barbers.reduce((s, b) => s + Number(b.booking_count    || 0), 0),
+    revenue:    barbers.reduce((s, b) => s + Number(b.total_revenue    || 0), 0),
+    tips:       barbers.reduce((s, b) => s + Number(b.tips_total       || 0), 0),
+    commission: barbers.reduce((s, b) => s + Number(b.total_commission || 0), 0),
   }
-  const txRevenue = barberTx.reduce((s, r) => s + Number(r.total_amount || 0), 0)
-  const txTips    = barberTx.reduce((s, r) => s + Number(r.tip          || 0), 0)
+  const txRevenue    = barberTx.reduce((s, r) => s + Number(r.total_amount || 0), 0)
+  const txTips       = barberTx.reduce((s, r) => s + Number(r.tip          || 0), 0)
+  const txCommTotal  = barberTx.reduce((s, r) => {
+    const svcs = Array.isArray(r.services) ? r.services : []
+    return s + svcs.reduce((a, sv) => a + Number(sv.commission || 0), 0)
+  }, 0)
 
   const periodLabel = filterPeriod === 'custom' && filterFrom && filterTo
     ? `${fmtDate(filterFrom)} – ${fmtDate(filterTo)}`
@@ -997,9 +1002,10 @@ export default function Reports() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
           {[
-            { label: 'Total Services',    value: perfTotal.services,       accent: T.text,    sub: 'This period'        },
-            { label: 'Revenue Generated', value: fmtM(perfTotal.revenue),  accent: '#16A34A', sub: 'From all barbers'   },
-            { label: 'Tips Collected',    value: fmtM(perfTotal.tips),     accent: '#2563EB', sub: 'Individual, not pooled' },
+            { label: 'Total Services',    value: perfTotal.services,           accent: T.text,    sub: 'This period'           },
+            { label: 'Revenue Generated', value: fmtM(perfTotal.revenue),      accent: '#16A34A', sub: 'From all barbers'        },
+            { label: 'Tips Collected',    value: fmtM(perfTotal.tips),         accent: '#2563EB', sub: 'Individual, not pooled'  },
+            { label: 'Total Commission',  value: fmtM(perfTotal.commission),   accent: '#D97706', sub: 'OT-adjusted'             },
           ].map((k, i) => (
             <div key={k.label} className="admin-card" style={{ padding: '18px 20px', animation: `fadeUp 0.25s ease ${i * 0.05}s both` }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted, marginBottom: 6 }}>{k.label}</div>
@@ -1014,14 +1020,15 @@ export default function Reports() {
             <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: T.text }}>Barber Rankings</div>
             <div style={{ fontSize: 12, color: T.muted }}>Click a barber to see their transactions</div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '0.3fr 1.6fr 0.7fr 1fr 0.9fr 0.7fr 0.8fr', padding: '10px 18px', borderBottom: '1px solid ' + T.surface }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '0.3fr 1.6fr 0.7fr 1fr 0.9fr 0.7fr 0.7fr 0.8fr', padding: '10px 18px', borderBottom: '1px solid ' + T.surface }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.muted }}>#</div>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.muted }}>Barber</div>
-            <SortHeader label="Services"   sortKey="booking_count"     />
-            <SortHeader label="Revenue"    sortKey="total_revenue"     />
-            <SortHeader label="Avg Ticket" sortKey="avg_booking_value" />
-            <SortHeader label="Rating"     sortKey="avg_rating"        />
-            <SortHeader label="Tips"       sortKey="tips_total"        />
+            <SortHeader label="Services"    sortKey="booking_count"     />
+            <SortHeader label="Revenue"     sortKey="total_revenue"     />
+            <SortHeader label="Avg Ticket"  sortKey="avg_booking_value" />
+            <SortHeader label="Rating"      sortKey="avg_rating"        />
+            <SortHeader label="Commission"  sortKey="total_commission"  />
+            <SortHeader label="Tips"        sortKey="tips_total"        />
           </div>
           {barbersLoad && <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 14 }}>Loading…</div>}
           {!barbersLoad && barbers.length === 0 && (
@@ -1032,7 +1039,7 @@ export default function Reports() {
             return (
               <div key={b.id}
                 onClick={() => setSelectedBarber(isSelected ? null : b)}
-                style={{ display: 'grid', gridTemplateColumns: '0.3fr 1.6fr 0.7fr 1fr 0.9fr 0.7fr 0.8fr', padding: '13px 18px', borderBottom: '1px solid ' + T.surface, alignItems: 'center', cursor: 'pointer', background: isSelected ? T.surface : 'transparent', transition: 'background 0.1s' }}
+                style={{ display: 'grid', gridTemplateColumns: '0.3fr 1.6fr 0.7fr 1fr 0.9fr 0.7fr 0.7fr 0.8fr', padding: '13px 18px', borderBottom: '1px solid ' + T.surface, alignItems: 'center', cursor: 'pointer', background: isSelected ? T.surface : 'transparent', transition: 'background 0.1s' }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = T.bg }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}>
                 <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 13, color: i === 0 ? '#D97706' : T.muted }}>{i + 1}</div>
@@ -1049,6 +1056,7 @@ export default function Reports() {
                 <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: '#16A34A' }}>{fmtM(b.total_revenue)}</div>
                 <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: T.text2 }}>{fmtM(b.avg_booking_value)}</div>
                 <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: '#D97706' }}>{b.avg_rating ? Number(b.avg_rating).toFixed(1) + ' ★' : '—'}</div>
+                <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: '#D97706' }}>{fmtM(b.total_commission)}</div>
                 <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: '#2563EB' }}>{fmtM(b.tips_total)}</div>
               </div>
             )
@@ -1072,9 +1080,10 @@ export default function Reports() {
 
             <div style={{ padding: '12px 18px', borderBottom: '1px solid ' + T.surface, display: 'flex', gap: 28 }}>
               {[
-                { label: 'Transactions', value: barberTx.length,  color: T.text    },
-                { label: 'Revenue',      value: fmtM(txRevenue),  color: '#16A34A' },
-                { label: 'Tips',         value: fmtM(txTips),     color: '#2563EB' },
+                { label: 'Transactions', value: barberTx.length,      color: T.text    },
+                { label: 'Revenue',      value: fmtM(txRevenue),      color: '#16A34A' },
+                { label: 'Tips',         value: fmtM(txTips),         color: '#2563EB' },
+                { label: 'Commission',   value: fmtM(txCommTotal),    color: '#D97706' },
               ].map(k => (
                 <div key={k.label}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted }}>{k.label}</div>
@@ -1087,8 +1096,9 @@ export default function Reports() {
               const breakdown = barberTx.reduce((acc, r) => {
                 const svcs = Array.isArray(r.services) ? r.services : []
                 svcs.forEach(svc => {
-                  if (!acc[svc]) acc[svc] = { count: 0 }
-                  acc[svc].count++
+                  const name = svc.service_name || svc
+                  if (!acc[name]) acc[name] = { count: 0 }
+                  acc[name].count++
                 })
                 return acc
               }, {})
@@ -1107,8 +1117,8 @@ export default function Reports() {
               )
             })()}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.5fr 0.85fr 1.1fr 2fr 0.55fr 0.9fr 0.6fr', padding: '8px 18px', borderBottom: '1px solid ' + T.surface }}>
-              {['Date','Time','Booking','Customer','Service','Method','Amount','Tip'].map((h, i) => (
+            <div style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.5fr 0.85fr 1.1fr 2fr 0.55fr 0.9fr 0.75fr 0.6fr', padding: '8px 18px', borderBottom: '1px solid ' + T.surface }}>
+              {['Date','Time','Booking','Customer','Service','Method','Amount','Commission','Tip'].map((h, i) => (
                 <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>{h}</div>
               ))}
             </div>
@@ -1119,9 +1129,9 @@ export default function Reports() {
                 <div style={{ padding: '40px 0', textAlign: 'center', color: T.muted, fontSize: 13 }}>No transactions found</div>
               )}
               {barberTx.map((r, i) => {
-                const svcs = Array.isArray(r.services) ? r.services.join(', ') : '—'
+                const svcs = Array.isArray(r.services) ? r.services.map(s => s.service_name || String(s)).join(', ') : '—'
                 return (
-                  <div key={r.id || i} style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.5fr 0.85fr 1.1fr 2fr 0.55fr 0.9fr 0.6fr', padding: '11px 18px', borderBottom: i < barberTx.length - 1 ? '1px solid ' + T.surface : 'none', alignItems: 'center' }}
+                  <div key={r.id || i} style={{ display: 'grid', gridTemplateColumns: '0.6fr 0.5fr 0.85fr 1.1fr 2fr 0.55fr 0.9fr 0.75fr 0.6fr', padding: '11px 18px', borderBottom: i < barberTx.length - 1 ? '1px solid ' + T.surface : 'none', alignItems: 'center' }}
                     onMouseEnter={e => e.currentTarget.style.background = T.bg}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <div style={{ fontSize: 11, color: T.muted }}>{r.date}</div>
@@ -1135,6 +1145,12 @@ export default function Reports() {
                       </span>
                     </div>
                     <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: T.text }}>{fmtM(r.total_amount)}</div>
+                    <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
+                      {(() => {
+                        const c = Array.isArray(r.services) ? r.services.reduce((a, sv) => a + Number(sv.commission || 0), 0) : 0
+                        return c > 0 ? fmtM(c) : '—'
+                      })()}
+                    </div>
                     <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: Number(r.tip) > 0 ? '#2563EB' : T.muted }}>{Number(r.tip) > 0 ? fmtM(r.tip) : '—'}</div>
                   </div>
                 )

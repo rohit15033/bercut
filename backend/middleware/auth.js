@@ -75,7 +75,7 @@ function requireOwner(req, res, next) {
 // Check if user can access a section (reads user_permissions)
 // section keys: reports, barbers, services, customers, expenses, inventory,
 //                payroll, online_booking, kiosk_config, branches, settings, live_monitor
-async function checkPermission(section) {
+function checkPermission(section) {
   return async (req, res, next) => {
     if (!req.user) return next()
     const { role, id } = req.user

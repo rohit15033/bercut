@@ -67,7 +67,7 @@ router.post('/periods/generate', requireAdmin, requireOwner, async (req, res) =>
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
     const otEnabled              = cfg.ot_commission_enabled || false
     const otThresholdTime        = cfg.ot_threshold_time || '19:00'
-    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 5)
+    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 10)
     const otExcludedIds          = Array.isArray(cfg.ot_excluded_service_ids) ? cfg.ot_excluded_service_ids : []
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
 
@@ -295,7 +295,7 @@ router.post('/periods/:id/regenerate', requireAdmin, requireOwner, async (req, r
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
     const otEnabled              = cfg.ot_commission_enabled || false
     const otThresholdTime        = cfg.ot_threshold_time || '19:00'
-    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 5)
+    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 10)
     const otExcludedIds          = Array.isArray(cfg.ot_excluded_service_ids) ? cfg.ot_excluded_service_ids : []
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
 

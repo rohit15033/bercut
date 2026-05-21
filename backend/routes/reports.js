@@ -163,7 +163,7 @@ router.get('/transactions', requireAdmin, async (req, res) => {
     const ps = await pool.query('SELECT ot_commission_enabled, ot_threshold_time, ot_bonus_pct, ot_excluded_service_ids FROM payroll_settings LIMIT 1')
     const otEnabled   = ps.rows[0]?.ot_commission_enabled || false
     const otThreshold = String(ps.rows[0]?.ot_threshold_time || '19:00').slice(0, 5)
-    const otBonusPct  = parseFloat(ps.rows[0]?.ot_bonus_pct || 5)
+    const otBonusPct  = parseFloat(ps.rows[0]?.ot_bonus_pct || 10)
     const otExcluded  = Array.isArray(ps.rows[0]?.ot_excluded_service_ids) ? ps.rows[0].ot_excluded_service_ids : []
 
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1

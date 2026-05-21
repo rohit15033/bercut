@@ -204,6 +204,13 @@ router.get('/transactions', requireAdmin, async (req, res) => {
                     AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
                     AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
                   ),
+                  'effective_commission_rate', CASE
+                    WHEN $${otEnabledIdx}::boolean
+                      AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}
+                      AND NOT (bsv.service_id = ANY($${otExcludedIdx}::uuid[]))
+                    THEN COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate) + $${otBonusPctIdx}
+                    ELSE COALESCE(bsv.commission_rate, bs_barber.commission_rate, bs_branch.commission_rate, b.commission_rate)
+                  END,
                   'commission', CASE
                     WHEN $${otEnabledIdx}::boolean
                       AND TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') >= $${otThresholdIdx}

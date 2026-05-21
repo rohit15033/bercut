@@ -439,7 +439,7 @@ export default function Reports() {
             ...base,
             sv.service_name || '',
             sv.category || '',
-            sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : '',
+            sv.effective_commission_rate != null ? Number(sv.effective_commission_rate).toFixed(0) : (sv.commission_rate != null ? Number(sv.commission_rate).toFixed(0) : ''),
             sv.commission != null ? sv.commission : '',
             sv.is_ot_service ? 'OT' : '',
             sv.price || '',
@@ -897,7 +897,8 @@ export default function Reports() {
                       : `${svcs[0].service_name} · ${svcs[1].service_name} +${svcs.length - 2}`
                     const extrasLabel = extras.map(e => e.quantity > 1 ? `${e.name} ×${e.quantity}` : e.name).join(', ')
                     const rowComm    = svcs.reduce((a, sv) => a + Number(sv.commission || 0), 0)
-                    const rowRate    = !multiSvc && sv0 ? sv0.commission_rate : null
+                    const rowRate    = !multiSvc && sv0 ? (sv0.is_ot_service ? sv0.effective_commission_rate : sv0.commission_rate) : null
+                    const rowRateBase = !multiSvc && sv0 && sv0.is_ot_service ? sv0.commission_rate : null
                     const canExpand  = multiSvc || hasExtras
 
                     return (
@@ -931,7 +932,11 @@ export default function Reports() {
                           <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
                             {multiSvc
                               ? <span style={{ fontSize: 9, padding: '2px 5px', borderRadius: 4, background: T.surface, color: T.muted }}>mix</span>
-                              : rowRate != null ? `${Number(rowRate).toFixed(0)}%` : '—'}
+                              : rowRate != null
+                                ? rowRateBase != null
+                                  ? <span>{Number(rowRateBase).toFixed(0)}<span style={{ color: '#D97706' }}>+{Number(rowRate - rowRateBase).toFixed(0)}</span>%</span>
+                                  : `${Number(rowRate).toFixed(0)}%`
+                                : '—'}
                           </div>
 
                           {/* Commission */}
@@ -952,9 +957,10 @@ export default function Reports() {
                               <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{sv.service_name}</div>
                               <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{fmtM(sv.price)}</div>
                             </div>
-                            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {sv.commission_rate != null ? `${Number(sv.commission_rate).toFixed(0)}%` : '—'}
-                              {sv.is_ot_service && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, background: '#FEF3C7', color: '#D97706', letterSpacing: '0.06em' }}>OT</span>}
+                            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11, fontWeight: 600, color: T.text2 }}>
+                              {sv.is_ot_service && sv.commission_rate != null && sv.effective_commission_rate != null
+                                ? <span>{Number(sv.commission_rate).toFixed(0)}<span style={{ color: '#D97706' }}>+{Number(sv.effective_commission_rate - sv.commission_rate).toFixed(0)}</span>%</span>
+                                : sv.commission_rate != null ? `${Number(sv.commission_rate).toFixed(0)}%` : '—'}
                             </div>
                             <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#D97706' }}>
                               {sv.commission != null ? fmtM(sv.commission) : '—'}

@@ -65,10 +65,6 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
 
     const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
-    const otEnabled              = cfg.ot_commission_enabled || false
-    const otThresholdTime        = cfg.ot_threshold_time || '19:00'
-    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 10)
-    const otExcludedIds          = Array.isArray(cfg.ot_excluded_service_ids) ? cfg.ot_excluded_service_ids : []
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
 
     const barberCond = branch_id
@@ -100,63 +96,34 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
       const inexcusedDays = offRows.rows.filter(r => r.type === 'inexcused').length
       const excusedDays   = offRows.rows.filter(r => r.type === 'excused').length
 
-      // Bookings: regular vs OT (by scheduled time)
-      // commission split per-service: excluded services always get standard rate,
-      // OT-eligible services get the OT bonus when booking is after threshold
-      const fallbackRate = parseFloat(barber.commission_rate || 40)
-      const bkRows = await client.query(
+      // Commission from stored values — snapshotted at payment time per booking_service
+      const commResult = await client.query(
         `SELECT
-           (
+           COALESCE(SUM(bsv.commission_amount) FILTER (WHERE bsv.is_ot_service = false), 0) AS commission_regular,
+           COALESCE(SUM(bsv.commission_amount) FILTER (WHERE bsv.is_ot_service = true),  0) AS commission_ot
+         FROM bookings bk
+         JOIN booking_services bsv ON bsv.booking_id = bk.id
+         WHERE bk.barber_id = $1
+           AND bk.status = 'completed'
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
+
+      // Gross revenue — separate query to avoid fan-out from booking_services JOIN
+      const grossResult = await client.query(
+        `SELECT COALESCE(SUM(
              COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id), 0) +
              COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id), 0) -
              bk.points_redeemed * 100
-           ) AS total_amount,
-           COALESCE((
-             SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
-             FROM booking_services bsv
-             WHERE bsv.booking_id = bk.id
-               AND bsv.service_id = ANY($5::uuid[])
-           ), 0) AS commission_excluded,
-           COALESCE((
-             SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
-             FROM booking_services bsv
-             WHERE bsv.booking_id = bk.id
-               AND NOT (bsv.service_id = ANY($5::uuid[]))
-           ), 0) AS commission_ot_eligible,
-           COALESCE((
-             SELECT SUM(bsv.price_charged)
-             FROM booking_services bsv
-             WHERE bsv.booking_id = bk.id
-               AND NOT (bsv.service_id = ANY($5::uuid[]))
-           ), 0) AS ot_eligible_revenue,
-           TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
+           ), 0) AS gross_rev
          FROM bookings bk
          WHERE bk.barber_id = $1
-           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
-           AND bk.status = 'completed'`,
-        [barber.id, period_from, period_to, fallbackRate, otExcludedIds])
+           AND bk.status = 'completed'
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
 
-      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0, otEligRevBase = 0
-      for (const bk of bkRows.rows) {
-        const isOt       = otEnabled && bk.slot_time >= otThresholdTime
-        const amt        = Math.max(0, parseFloat(bk.total_amount || 0))
-        const commExcl   = Math.max(0, parseFloat(bk.commission_excluded   || 0))
-        const commOtElig = Math.max(0, parseFloat(bk.commission_ot_eligible || 0))
-        const otEligRev  = Math.max(0, parseFloat(bk.ot_eligible_revenue    || 0))
-        if (isOt) {
-          grossRevOt    += amt
-          commRegBase   += commExcl     // excluded services → always standard rate
-          commOtBase    += commOtElig   // eligible services base commission
-          otEligRevBase += otEligRev    // eligible service revenue for additive bonus
-        } else {
-          grossRevReg += amt
-          commRegBase += commExcl + commOtElig   // non-OT booking → everything standard
-        }
-      }
-      const grossRevTotal = grossRevReg + grossRevOt
-      const commRegular = Math.round(commRegBase)
-      // Additive: standard commission + bonus% of eligible revenue (e.g. 40%+10% = 50%)
-      const commOt      = Math.round(commOtBase + otEligRevBase * otBonusPct / 100)
+      const grossRevTotal = Math.round(parseFloat(grossResult.rows[0]?.gross_rev || 0))
+      const commRegular   = Math.round(parseFloat(commResult.rows[0]?.commission_regular || 0))
+      const commOt        = Math.round(parseFloat(commResult.rows[0]?.commission_ot || 0))
 
       // Tips
       const tipsResult = await client.query(
@@ -211,7 +178,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
            working_days=$13, late_deduction=$14, inexcused_off_deduction=$15,
            excused_off_deduction=$16, kasbon_total=$17, net_pay=$18`,
         [period.id, barber.id, targetBranchId, barber.pay_type || 'commission',
-         baseSalary, Math.round(grossRevTotal), commRegular, commOt, totalTips,
+         baseSalary, grossRevTotal, commRegular, commOt, totalTips,
          totalLateMinutes, inexcusedDays, excusedDays,
          workingDaysStd, lateDeduction, inexcusedDeduct, excusedDeduct,
          kasbonTotal, netPay])
@@ -293,10 +260,6 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
 
     const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
-    const otEnabled              = cfg.ot_commission_enabled || false
-    const otThresholdTime        = cfg.ot_threshold_time || '19:00'
-    const otBonusPct             = parseFloat(cfg.ot_bonus_pct || 10)
-    const otExcludedIds          = Array.isArray(cfg.ot_excluded_service_ids) ? cfg.ot_excluded_service_ids : []
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
 
     const barberCond = branch_id
@@ -328,63 +291,34 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
       const inexcusedDays = offRows.rows.filter(r => r.type === 'inexcused').length
       const excusedDays   = offRows.rows.filter(r => r.type === 'excused').length
 
-      // Bookings: regular vs OT (by scheduled time)
-      // commission split per-service: excluded services always get standard rate,
-      // OT-eligible services get the OT bonus when booking is after threshold
-      const fallbackRate = parseFloat(barber.commission_rate || 40)
-      const bkRows = await client.query(
+      // Commission from stored values — snapshotted at payment time per booking_service
+      const commResult = await client.query(
         `SELECT
-           (
+           COALESCE(SUM(bsv.commission_amount) FILTER (WHERE bsv.is_ot_service = false), 0) AS commission_regular,
+           COALESCE(SUM(bsv.commission_amount) FILTER (WHERE bsv.is_ot_service = true),  0) AS commission_ot
+         FROM bookings bk
+         JOIN booking_services bsv ON bsv.booking_id = bk.id
+         WHERE bk.barber_id = $1
+           AND bk.status = 'completed'
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
+
+      // Gross revenue — separate query to avoid fan-out from booking_services JOIN
+      const grossResult = await client.query(
+        `SELECT COALESCE(SUM(
              COALESCE((SELECT SUM(price_charged) FROM booking_services WHERE booking_id = bk.id), 0) +
              COALESCE((SELECT SUM(price * quantity) FROM booking_extras WHERE booking_id = bk.id), 0) -
              bk.points_redeemed * 100
-           ) AS total_amount,
-           COALESCE((
-             SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
-             FROM booking_services bsv
-             WHERE bsv.booking_id = bk.id
-               AND bsv.service_id = ANY($5::uuid[])
-           ), 0) AS commission_excluded,
-           COALESCE((
-             SELECT SUM(bsv.price_charged * COALESCE(bsv.commission_rate, $4) / 100)
-             FROM booking_services bsv
-             WHERE bsv.booking_id = bk.id
-               AND NOT (bsv.service_id = ANY($5::uuid[]))
-           ), 0) AS commission_ot_eligible,
-           COALESCE((
-             SELECT SUM(bsv.price_charged)
-             FROM booking_services bsv
-             WHERE bsv.booking_id = bk.id
-               AND NOT (bsv.service_id = ANY($5::uuid[]))
-           ), 0) AS ot_eligible_revenue,
-           TO_CHAR(COALESCE(bk.started_at, bk.scheduled_at) AT TIME ZONE 'Asia/Makassar', 'HH24:MI') AS slot_time
+           ), 0) AS gross_rev
          FROM bookings bk
          WHERE bk.barber_id = $1
-           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
-           AND bk.status = 'completed'`,
-        [barber.id, period_from, period_to, fallbackRate, otExcludedIds])
+           AND bk.status = 'completed'
+           AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
+        [barber.id, period_from, period_to])
 
-      let grossRevReg = 0, grossRevOt = 0, commRegBase = 0, commOtBase = 0, otEligRevBase = 0
-      for (const bk of bkRows.rows) {
-        const isOt       = otEnabled && bk.slot_time >= otThresholdTime
-        const amt        = Math.max(0, parseFloat(bk.total_amount || 0))
-        const commExcl   = Math.max(0, parseFloat(bk.commission_excluded   || 0))
-        const commOtElig = Math.max(0, parseFloat(bk.commission_ot_eligible || 0))
-        const otEligRev  = Math.max(0, parseFloat(bk.ot_eligible_revenue    || 0))
-        if (isOt) {
-          grossRevOt    += amt
-          commRegBase   += commExcl     // excluded services → always standard rate
-          commOtBase    += commOtElig   // eligible services base commission
-          otEligRevBase += otEligRev    // eligible service revenue for additive bonus
-        } else {
-          grossRevReg += amt
-          commRegBase += commExcl + commOtElig   // non-OT booking → everything standard
-        }
-      }
-      const grossRevTotal = grossRevReg + grossRevOt
-      const commRegular = Math.round(commRegBase)
-      // Additive: standard commission + bonus% of eligible revenue (e.g. 40%+10% = 50%)
-      const commOt      = Math.round(commOtBase + otEligRevBase * otBonusPct / 100)
+      const grossRevTotal = Math.round(parseFloat(grossResult.rows[0]?.gross_rev || 0))
+      const commRegular   = Math.round(parseFloat(commResult.rows[0]?.commission_regular || 0))
+      const commOt        = Math.round(parseFloat(commResult.rows[0]?.commission_ot || 0))
 
       // Tips
       const tipsResult = await client.query(

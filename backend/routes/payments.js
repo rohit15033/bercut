@@ -4,6 +4,7 @@ const { checkPermission, requireKiosk, requireKioskOrAdmin } = require('../middl
 const { emitEvent } = require('./events')
 const { notifyPaymentReceipt } = require('../services/notifications')
 const { awardPoints } = require('../services/loyalty')
+const { snapshotCommission } = require('../services/commissionSnapshot')
 
 const XENDIT_SECRET   = process.env.XENDIT_SECRET_KEY || ''
 const XENDIT_TERMINAL_KEY = process.env.XENDIT_TERMINAL_KEY || XENDIT_SECRET  // separate key from Xendit team
@@ -375,6 +376,7 @@ async function markPaidIfNeeded(bookingId, amount, payMethod, xenditRef) {
          payment_method=$1, payment_ref=COALESCE($2, payment_ref),
          completed_at=COALESCE(completed_at, NOW()) WHERE id=$3`,
       [method, xenditRef, bookingId])
+    await snapshotCommission(bookingId, client)
     if (tipAmount > 0) {
       await client.query(
         `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
@@ -411,6 +413,7 @@ async function markGroupPaidIfNeeded(groupId, tipAmounts, payMethod, xenditRef) 
            payment_method=$1, payment_ref=COALESCE($2, payment_ref),
            completed_at=COALESCE(completed_at, NOW()) WHERE id=$3`,
         [payMethod, xenditRef, bk.id])
+      await snapshotCommission(bk.id, client)
       const tip = parseFloat(tipAmounts?.[bk.id] || 0)
       if (tip > 0) {
         await client.query(
@@ -463,7 +466,10 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
       [payment_method, booking_id]
     )
 
-    // 3. Record tip if any
+    // 3. Snapshot commission at payment time
+    await snapshotCommission(booking_id, client)
+
+    // 4. Record tip if any
     if (parseFloat(tip_amount) > 0) {
       await client.query(
         `INSERT INTO tips (booking_id, barber_id, branch_id, amount, payment_method)
@@ -546,6 +552,7 @@ router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
         `UPDATE bookings SET status='completed', payment_status='paid', paid_at=NOW(),
            payment_method=$1, completed_at=COALESCE(completed_at,NOW()) WHERE id=$2`,
         [payment_method, bk.id])
+      await snapshotCommission(bk.id, client)
       const tip = parseFloat(tip_amounts[bk.id] || 0)
       if (tip > 0) {
         await client.query(

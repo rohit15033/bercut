@@ -1,7 +1,7 @@
 const router = require('express').Router()
 const bcrypt = require('bcrypt')
 const pool   = require('../config/db')
-const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
+const { checkPermission, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 
 async function logAudit(pool, { userId, action, entityType, entityId, diff, branchId }) {
   try {
@@ -111,7 +111,7 @@ router.get('/', async (req, res) => {
 
 // GET /api/barbers/:id
 // GET /api/barbers/all — all barbers across branches (admin use)
-router.get('/all', requireAdmin, async (req, res) => {
+router.get('/all', checkPermission('barbers'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT b.id, b.name, b.branch_id, b.specialty, b.phone, b.status, b.is_active, b.sort_order, b.pay_type, b.base_salary, b.daily_rate,
@@ -124,7 +124,7 @@ router.get('/all', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.get('/:id', requireAdmin, async (req, res) => {
+router.get('/:id', checkPermission('barbers'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM barbers WHERE id = $1', [req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
@@ -133,7 +133,7 @@ router.get('/:id', requireAdmin, async (req, res) => {
 })
 
 // POST /api/barbers
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', checkPermission('barbers'), async (req, res) => {
   try {
     const { name, branch_id, specialty, specialty_id, phone, pin, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order } = req.body
     const pin_hash = pin ? await bcrypt.hash(String(pin), 10) : null
@@ -154,7 +154,7 @@ router.post('/', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/barbers/:id
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', checkPermission('barbers'), async (req, res) => {
   try {
     const { name, branch_id, specialty, specialty_id, phone, pin, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order, is_active, off_deduction_type } = req.body
     const updates = { name, branch_id, specialty, specialty_id, phone, commission_rate, base_salary, pay_type, daily_rate, avatar_url, sort_order, is_active, off_deduction_type }
@@ -203,7 +203,7 @@ router.post('/:id/verify-pin', requireKiosk, async (req, res) => {
 })
 
 // GET /api/barbers/:id/services
-router.get('/:id/services', requireAdmin, async (req, res) => {
+router.get('/:id/services', checkPermission('barbers'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT s.id, s.name, s.category, 
@@ -217,7 +217,7 @@ router.get('/:id/services', requireAdmin, async (req, res) => {
 })
 
 // PUT /api/barbers/:id/services/:svc_id
-router.put('/:id/services/:svc_id', requireAdmin, async (req, res) => {
+router.put('/:id/services/:svc_id', checkPermission('barbers'), async (req, res) => {
   try {
     const { is_enabled, commission_rate } = req.body
     await pool.query(

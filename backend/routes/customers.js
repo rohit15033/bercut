@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 
 // GET /api/customers?phone=  — loyalty lookup by phone (kiosk); no phone → all customers
 router.get('/', async (req, res) => {
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 })
 
 // GET /api/customers/list?page=&limit=&search= — admin list
-router.get('/list', requireAdmin, async (req, res) => {
+router.get('/list', checkPermission('customers'), async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page  || '1'))
     const limit = Math.min(100, parseInt(req.query.limit || '50'))
@@ -45,7 +45,7 @@ router.get('/list', requireAdmin, async (req, res) => {
 })
 
 // GET /api/customers/:id/bookings — booking history
-router.get('/:id/bookings', requireAdmin, async (req, res) => {
+router.get('/:id/bookings', checkPermission('customers'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT b.id, b.booking_number, b.scheduled_at, b.status, b.rating,

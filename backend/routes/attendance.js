@@ -1,11 +1,11 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin, requireKioskOrAdmin } = require('../middleware/auth')
+const { checkPermission, requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
 const { tryAssignDeferred } = require('../services/barberAssignment')
 
 // GET /api/attendance?branch_id=&barber_id=&month=&year=
-router.get('/', requireAdmin, async (req, res) => {
+router.get('/', checkPermission('barbers'), async (req, res) => {
   try {
     const { branch_id, barber_id, barber_ids, month, year } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -134,7 +134,7 @@ router.post('/clock-out', requireKioskOrAdmin, async (req, res) => {
 })
 
 // POST /api/attendance/backdate-clock-in — admin logs a missed clock-in on a past date
-router.post('/backdate-clock-in', requireAdmin, async (req, res) => {
+router.post('/backdate-clock-in', checkPermission('barbers'), async (req, res) => {
   try {
     const { barber_id, branch_id, clock_in_at, clock_out_at } = req.body
     if (!barber_id || !branch_id || !clock_in_at) {
@@ -167,7 +167,7 @@ router.post('/backdate-clock-in', requireAdmin, async (req, res) => {
 })
 
 // POST /api/attendance/log-off — admin logs a barber's day off
-router.post('/log-off', requireAdmin, async (req, res) => {
+router.post('/log-off', checkPermission('barbers'), async (req, res) => {
   try {
     const { barber_id, branch_id, date, type = 'excused', note, has_doctor_note = false } = req.body
     if (!barber_id || !branch_id || !date) {
@@ -195,7 +195,7 @@ router.post('/log-off', requireAdmin, async (req, res) => {
 })
 
 // GET /api/attendance/off-records?barber_id=&branch_id=&month=&year=
-router.get('/off-records', requireAdmin, async (req, res) => {
+router.get('/off-records', checkPermission('barbers'), async (req, res) => {
   try {
     const { barber_id, barber_ids, branch_id, month, year } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -217,7 +217,7 @@ router.get('/off-records', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/attendance/off-records/:id — update type, has_doctor_note, note
-router.patch('/off-records/:id', requireAdmin, async (req, res) => {
+router.patch('/off-records/:id', checkPermission('barbers'), async (req, res) => {
   try {
     const { id } = req.params
     let { type, has_doctor_note, note } = req.body
@@ -263,7 +263,7 @@ router.patch('/off-records/:id', requireAdmin, async (req, res) => {
 })
 
 // DELETE /api/attendance/off-records/:id — hard delete
-router.delete('/off-records/:id', requireAdmin, async (req, res) => {
+router.delete('/off-records/:id', checkPermission('barbers'), async (req, res) => {
   try {
     const { id } = req.params
     const existing = await pool.query('SELECT * FROM off_records WHERE id = $1', [id])
@@ -285,7 +285,7 @@ router.delete('/off-records/:id', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/attendance/:id — admin manual correction
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', checkPermission('barbers'), async (req, res) => {
   try {
     const { clock_in_at, clock_out_at, late_minutes } = req.body
     const sets = []; const vals = []; let idx = 1

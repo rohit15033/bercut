@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
+const { checkPermission, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 const { branchScope, requireBranch } = require('../middleware/branchScope')
 const { emitEvent } = require('./events')
 const { notifyBookingConfirmed, notifyBarberNewBooking } = require('../services/notifications')
@@ -760,7 +760,7 @@ router.delete('/:id/extras/:extra_id', requireKiosk, async (req, res) => {
 // ── POST /api/bookings/merge-group ───────────────────────────────────────────
 // Admin: merge a list of booking IDs into one shared group for payment together
 
-router.post('/merge-group', requireAdmin, async (req, res) => {
+router.post('/merge-group', checkPermission('barbers'), async (req, res) => {
   const client = await pool.connect()
   try {
     const { booking_ids } = req.body
@@ -811,7 +811,7 @@ router.post('/merge-group', requireAdmin, async (req, res) => {
 // ── PATCH /api/bookings/:id/reopen ───────────────────────────────────────────
 // Admin: add extra services to a pending_payment booking and restart it
 
-router.patch('/:id/reopen', requireAdmin, async (req, res) => {
+router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
   const client = await pool.connect()
   try {
     const { service_ids } = req.body
@@ -890,7 +890,7 @@ router.patch('/:id/set-group', requireKiosk, async (req, res) => {
 })
 
 // ── PATCH /api/bookings/:id/admin-update ─────────────────────────────────────
-router.patch('/:id/admin-update', requireAdmin, async (req, res) => {
+router.patch('/:id/admin-update', checkPermission('barbers'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -974,7 +974,7 @@ router.delete('/:id/services/:service_id', requireKiosk, async (req, res) => {
 
 // ── POST /api/bookings/admin-force ───────────────────────────────────────────
 // Admin-only force create: bypasses barber availability + service branch checks
-router.post('/admin-force', requireAdmin, async (req, res) => {
+router.post('/admin-force', checkPermission('barbers'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')

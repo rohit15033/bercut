@@ -1,6 +1,6 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 
 // Helper: computed total subquery for a booking
 const svcTotal  = `(SELECT COALESCE(SUM(price_charged),0) FROM booking_services WHERE booking_id = bk.id)`
@@ -8,7 +8,7 @@ const extraTotal = `(SELECT COALESCE(SUM(price * quantity),0) FROM booking_extra
 const totalAmt   = `(${svcTotal} + ${extraTotal} - bk.points_redeemed * 100)`
 
 // GET /api/reports/revenue?branch_id=&date_from=&date_to=&group_by=day|week|month
-router.get('/revenue', requireAdmin, async (req, res) => {
+router.get('/revenue', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to, group_by = 'day' } = req.query
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
@@ -35,7 +35,7 @@ router.get('/revenue', requireAdmin, async (req, res) => {
 })
 
 // GET /api/reports/barbers?branch_id=&date_from=&date_to=
-router.get('/barbers', requireAdmin, async (req, res) => {
+router.get('/barbers', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to } = req.query
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
@@ -60,7 +60,7 @@ router.get('/barbers', requireAdmin, async (req, res) => {
 })
 
 // GET /api/reports/services?branch_id=&date_from=&date_to=
-router.get('/services', requireAdmin, async (req, res) => {
+router.get('/services', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to } = req.query
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
@@ -83,7 +83,7 @@ router.get('/services', requireAdmin, async (req, res) => {
 
 // GET /api/reports/demand?branch_id=&date_from=&date_to=
 // Uses pax_out_events as a proxy for walk-out / drop-off analytics
-router.get('/demand', requireAdmin, async (req, res) => {
+router.get('/demand', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -104,7 +104,7 @@ router.get('/demand', requireAdmin, async (req, res) => {
 })
 
 // GET /api/reports/barber-transactions?barber_id=&date_from=&date_to=
-router.get('/barber-transactions', requireAdmin, async (req, res) => {
+router.get('/barber-transactions', checkPermission('reports'), async (req, res) => {
   try {
     const { barber_id, date_from, date_to } = req.query
     if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
@@ -134,7 +134,7 @@ router.get('/barber-transactions', requireAdmin, async (req, res) => {
 })
 
 // GET /api/reports/delay?branch_id=&date_from=&date_to=
-router.get('/delay', requireAdmin, async (req, res) => {
+router.get('/delay', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to } = req.query
     const conds = ["bk.started_at IS NOT NULL"]; const vals = []; let idx = 1
@@ -155,7 +155,7 @@ router.get('/delay', requireAdmin, async (req, res) => {
 })
 
 // GET /api/reports/transactions?branch_id=&date_from=&date_to=&limit=&offset=
-router.get('/transactions', requireAdmin, async (req, res) => {
+router.get('/transactions', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to, limit = 200, offset = 0 } = req.query
 

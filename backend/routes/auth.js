@@ -26,7 +26,7 @@ router.post('/login', async (req, res) => {
 })
 
 // GET /api/auth/me
-router.get('/me', require('../middleware/auth').requireAdmin, async (req, res) => {
+router.get('/me', require('../middleware/auth').checkPermission(null), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT id, email, name, role FROM users WHERE id = $1', [req.user.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })

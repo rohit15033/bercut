@@ -1,9 +1,9 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 
 // ── GET /api/expenses ──────────────────────────────────────────────────────────
-router.get('/', requireAdmin, async (req, res) => {
+router.get('/', checkPermission('expenses'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to, type } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -24,7 +24,7 @@ router.get('/', requireAdmin, async (req, res) => {
 
 // ── Purchase Orders ────────────────────────────────────────────────────────────
 
-router.get('/purchase-orders', requireAdmin, async (req, res) => {
+router.get('/purchase-orders', checkPermission('expenses'), async (req, res) => {
   try {
     const { branch_id } = req.query
     const conds = branch_id ? ['branch_id = $1'] : []
@@ -36,7 +36,7 @@ router.get('/purchase-orders', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/purchase-orders', requireAdmin, async (req, res) => {
+router.post('/purchase-orders', checkPermission('expenses'), async (req, res) => {
   try {
     const { branch_id, supplier, notes, order_date } = req.body
     const { rows } = await pool.query(
@@ -49,14 +49,14 @@ router.post('/purchase-orders', requireAdmin, async (req, res) => {
 
 // ── Expense Categories ─────────────────────────────────────────────────────────
 
-router.get('/categories', requireAdmin, async (req, res) => {
+router.get('/categories', checkPermission('expenses'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY label')
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/categories', requireAdmin, async (req, res) => {
+router.post('/categories', checkPermission('expenses'), async (req, res) => {
   try {
     const { label, color, bg } = req.body
     if (!label?.trim()) return res.status(400).json({ message: 'label required' })
@@ -70,7 +70,7 @@ router.post('/categories', requireAdmin, async (req, res) => {
 })
 
 // ── GET /api/expenses/:id ──────────────────────────────────────────────────────
-router.get('/:id', requireAdmin, async (req, res) => {
+router.get('/:id', checkPermission('expenses'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT e.*, ec.label AS category_name,
@@ -91,7 +91,7 @@ router.get('/:id', requireAdmin, async (req, res) => {
 })
 
 // ── POST /api/expenses ─────────────────────────────────────────────────────────
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', checkPermission('expenses'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -153,7 +153,7 @@ router.post('/', requireAdmin, async (req, res) => {
 })
 
 // ── PATCH /api/expenses/:id ────────────────────────────────────────────────────
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', checkPermission('expenses'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -221,7 +221,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 })
 
 // ── DELETE /api/expenses/:id ───────────────────────────────────────────────────
-router.delete('/:id', requireAdmin, async (req, res) => {
+router.delete('/:id', checkPermission('expenses'), async (req, res) => {
   try {
     await pool.query('DELETE FROM expenses WHERE id = $1', [req.params.id])
     res.json({ ok: true })

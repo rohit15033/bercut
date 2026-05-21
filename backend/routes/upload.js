@@ -3,7 +3,7 @@ const multer = require('multer')
 const sharp = require('sharp')
 const path = require('path')
 const fs = require('fs')
-const { requireAdmin } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 
 const storage = multer.memoryStorage()
 const upload = multer({
@@ -11,7 +11,7 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 })
 
-router.post('/image', requireAdmin, upload.single('image'), async (req, res) => {
+router.post('/image', checkPermission('settings'), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' })
@@ -59,7 +59,7 @@ router.post('/image', requireAdmin, upload.single('image'), async (req, res) => 
   }
 })
 
-router.delete('/image', requireAdmin, async (req, res) => {
+router.delete('/image', checkPermission('settings'), async (req, res) => {
   try {
     const { url } = req.body
     if (!url || !url.startsWith('/uploads/')) {

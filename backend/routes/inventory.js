@@ -1,9 +1,9 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin, requireKioskOrAdmin } = require('../middleware/auth')
+const { checkPermission, requireKioskOrAdmin } = require('../middleware/auth')
 
 // GET /api/inventory?branch_id=
-router.get('/', requireAdmin, async (req, res) => {
+router.get('/', checkPermission('inventory'), async (req, res) => {
   try {
     const { branch_id } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -23,7 +23,7 @@ router.get('/', requireAdmin, async (req, res) => {
 })
 
 // GET /api/inventory/items
-router.get('/items', requireAdmin, async (req, res) => {
+router.get('/items', checkPermission('inventory'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM inventory_items ORDER BY category, name')
     res.json(rows)
@@ -31,7 +31,7 @@ router.get('/items', requireAdmin, async (req, res) => {
 })
 
 // POST /api/inventory/items
-router.post('/items', requireAdmin, async (req, res) => {
+router.post('/items', checkPermission('inventory'), async (req, res) => {
   const client = await pool.connect()
   try {
     const { name, unit, category, initial_stock = 0 } = req.body
@@ -85,7 +85,7 @@ router.post('/items', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/inventory/items/:id
-router.patch('/items/:id', requireAdmin, async (req, res) => {
+router.patch('/items/:id', checkPermission('inventory'), async (req, res) => {
   try {
     const { name, unit, category } = req.body
     const { rows } = await pool.query(
@@ -101,7 +101,7 @@ router.patch('/items/:id', requireAdmin, async (req, res) => {
 })
 
 // GET /api/inventory/stock?item_id=&branch_id=
-router.get('/stock', requireAdmin, async (req, res) => {
+router.get('/stock', checkPermission('inventory'), async (req, res) => {
   try {
     const { item_id, branch_id } = req.query
     if (!item_id || !branch_id) return res.status(400).json({ message: 'item_id and branch_id required' })
@@ -115,7 +115,7 @@ router.get('/stock', requireAdmin, async (req, res) => {
 })
 
 // POST /api/inventory/stock — upsert stock entry for a branch
-router.post('/stock', requireAdmin, async (req, res) => {
+router.post('/stock', checkPermission('inventory'), async (req, res) => {
   try {
     const {
       item_id, branch_id,
@@ -135,7 +135,7 @@ router.post('/stock', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/inventory/stock — update stock fields (item_id + branch_id in body)
-router.patch('/stock', requireAdmin, async (req, res) => {
+router.patch('/stock', checkPermission('inventory'), async (req, res) => {
   try {
     const { item_id, branch_id, ...updates } = req.body
     if (!item_id || !branch_id) return res.status(400).json({ message: 'item_id and branch_id required' })
@@ -173,7 +173,7 @@ router.patch('/stock', requireAdmin, async (req, res) => {
 })
 
 // POST /api/inventory/distribute — transfer stock from one branch to another
-router.post('/distribute', requireAdmin, async (req, res) => {
+router.post('/distribute', checkPermission('inventory'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -217,7 +217,7 @@ router.post('/distribute', requireAdmin, async (req, res) => {
 })
 
 // GET /api/inventory/movements?item_id=&branch_id=&limit=
-router.get('/movements', requireAdmin, async (req, res) => {
+router.get('/movements', checkPermission('inventory'), async (req, res) => {
   try {
     const { item_id, branch_id, limit = 50 } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -248,7 +248,7 @@ router.get('/kiosk-menu', requireKioskOrAdmin, async (req, res) => {
 })
 
 // DELETE /api/inventory/items/:id
-router.delete('/items/:id', requireAdmin, async (req, res) => {
+router.delete('/items/:id', checkPermission('inventory'), async (req, res) => {
   try {
     // 1. Check if there is any stock anywhere
     const stockCheck = await pool.query(

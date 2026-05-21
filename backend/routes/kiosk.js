@@ -1,7 +1,7 @@
 const router = require('express').Router()
 const crypto = require('crypto')
 const pool   = require('../config/db')
-const { requireAdmin } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 
 // POST /api/kiosk/register — validate token, return branch config
 router.post('/register', async (req, res) => {
@@ -139,7 +139,7 @@ router.post('/pax-out', async (req, res) => {
 
 // ── Admin: manage kiosk tokens ────────────────────────────────────────────
 // GET  /api/kiosk/tokens?branch_id=
-router.get('/tokens', requireAdmin, async (req, res) => {
+router.get('/tokens', checkPermission('kiosk_config'), async (req, res) => {
   try {
     const { branch_id } = req.query
     if (!branch_id) return res.status(400).json({ message: 'branch_id required' })
@@ -152,7 +152,7 @@ router.get('/tokens', requireAdmin, async (req, res) => {
 })
 
 // POST /api/kiosk/tokens — generate new token
-router.post('/tokens', requireAdmin, async (req, res) => {
+router.post('/tokens', checkPermission('kiosk_config'), async (req, res) => {
   try {
     const { branch_id, device_name } = req.body
     if (!branch_id) return res.status(400).json({ message: 'branch_id required' })
@@ -169,7 +169,7 @@ router.post('/tokens', requireAdmin, async (req, res) => {
 })
 
 // DELETE /api/kiosk/tokens/:id — revoke
-router.delete('/tokens/:id', requireAdmin, async (req, res) => {
+router.delete('/tokens/:id', checkPermission('kiosk_config'), async (req, res) => {
   try {
     await pool.query('UPDATE kiosk_tokens SET is_active = false WHERE id = $1', [req.params.id])
     res.status(204).end()

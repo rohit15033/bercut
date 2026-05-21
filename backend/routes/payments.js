@@ -1,6 +1,6 @@
 const router  = require('express').Router()
 const pool    = require('../config/db')
-const { requireAdmin, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
+const { checkPermission, requireKiosk, requireKioskOrAdmin } = require('../middleware/auth')
 const { emitEvent } = require('./events')
 const { notifyPaymentReceipt } = require('../services/notifications')
 const { awardPoints } = require('../services/loyalty')
@@ -572,7 +572,7 @@ router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
 })
 
 // GET /api/payments — admin list
-router.get('/', requireAdmin, async (req, res) => {
+router.get('/', checkPermission('reports'), async (req, res) => {
   try {
     const { branch_id, date_from, date_to } = req.query
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1

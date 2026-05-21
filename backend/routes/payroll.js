@@ -1,10 +1,10 @@
 const router   = require('express').Router()
 const pool     = require('../config/db')
 const ExcelJS  = require('exceljs')
-const { requireAdmin, checkPermission } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 
 // GET /api/payroll/periods?branch_id=
-router.get('/periods', requireAdmin, async (req, res) => {
+router.get('/periods', checkPermission('payroll'), async (req, res) => {
   try {
     const { branch_id } = req.query
     const conds = branch_id ? ['branch_id = $1 OR branch_id IS NULL'] : []
@@ -17,7 +17,7 @@ router.get('/periods', requireAdmin, async (req, res) => {
 })
 
 // POST /api/payroll/periods/generate
-router.post('/periods/generate', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.post('/periods/generate', checkPermission('payroll'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -263,7 +263,7 @@ router.post('/periods/generate', requireAdmin, checkPermission('payroll'), async
 })
 
 // POST /api/payroll/periods/:id/regenerate
-router.post('/periods/:id/regenerate', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, res) => {
   const precheck = await pool.query('SELECT * FROM payroll_periods WHERE id = $1', [req.params.id])
   if (!precheck.rows.length) return res.status(404).json({ message: 'Period not found' })
   const period = precheck.rows[0]
@@ -486,7 +486,7 @@ router.post('/periods/:id/regenerate', requireAdmin, checkPermission('payroll'),
 })
 
 // GET /api/payroll/periods/:id/entries
-router.get('/periods/:id/entries', requireAdmin, async (req, res) => {
+router.get('/periods/:id/entries', checkPermission('payroll'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT pe.*, b.name AS barber_name, b.pay_type,
@@ -503,7 +503,7 @@ router.get('/periods/:id/entries', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/payroll/entries/:id — admin manual override
-router.patch('/entries/:id', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.patch('/entries/:id', checkPermission('payroll'), async (req, res) => {
   try {
     const entryCheck = await pool.query(
       `SELECT pe.id, pp.status FROM payroll_entries pe
@@ -530,7 +530,7 @@ router.patch('/entries/:id', requireAdmin, checkPermission('payroll'), async (re
 })
 
 // GET /api/payroll/periods/:id/export?format=xlsx|csv — Excel or CSV
-router.get('/periods/:id/export', requireAdmin, async (req, res) => {
+router.get('/periods/:id/export', checkPermission('payroll'), async (req, res) => {
   try {
     const period = await pool.query('SELECT * FROM payroll_periods WHERE id = $1', [req.params.id])
     if (!period.rows.length) return res.status(404).json({ message: 'Not found' })
@@ -595,7 +595,7 @@ router.get('/periods/:id/export', requireAdmin, async (req, res) => {
 })
 
 // GET /api/payroll/adjustments?payroll_entry_id=
-router.get('/adjustments', requireAdmin, async (req, res) => {
+router.get('/adjustments', checkPermission('payroll'), async (req, res) => {
   try {
     const { payroll_entry_id } = req.query
     const conds = payroll_entry_id ? ['pa.payroll_entry_id = $1'] : []
@@ -611,7 +611,7 @@ router.get('/adjustments', requireAdmin, async (req, res) => {
 })
 
 // POST /api/payroll/adjustments
-router.post('/adjustments', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.post('/adjustments', checkPermission('payroll'), async (req, res) => {
   try {
     const { payroll_entry_id, type, category, remarks, amount, date, is_kasbon, expense_id, deduct_period } = req.body
     if (!payroll_entry_id || !type || !amount) {
@@ -634,7 +634,7 @@ router.post('/adjustments', requireAdmin, checkPermission('payroll'), async (req
 })
 
 // DELETE /api/payroll/adjustments/:id
-router.delete('/adjustments/:id', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.delete('/adjustments/:id', checkPermission('payroll'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT pa.id, pa.is_kasbon, pp.status
@@ -651,7 +651,7 @@ router.delete('/adjustments/:id', requireAdmin, checkPermission('payroll'), asyn
 })
 
 // PATCH /api/payroll/adjustments/:id
-router.patch('/adjustments/:id', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.patch('/adjustments/:id', checkPermission('payroll'), async (req, res) => {
   try {
     const { deduct_period } = req.body
     if (!['current','next'].includes(deduct_period)) {
@@ -673,7 +673,7 @@ router.patch('/adjustments/:id', requireAdmin, checkPermission('payroll'), async
 })
 
 // DELETE /api/payroll/periods/:id  (draft only)
-router.delete('/periods/:id', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.delete('/periods/:id', checkPermission('payroll'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, status FROM payroll_periods WHERE id = $1', [req.params.id])
@@ -685,7 +685,7 @@ router.delete('/periods/:id', requireAdmin, checkPermission('payroll'), async (r
 })
 
 // PATCH /api/payroll/periods/:id/status
-router.patch('/periods/:id/status', requireAdmin, checkPermission('payroll'), async (req, res) => {
+router.patch('/periods/:id/status', checkPermission('payroll'), async (req, res) => {
   try {
     const { status } = req.body
     const { rows: cur } = await pool.query('SELECT status FROM payroll_periods WHERE id = $1', [req.params.id])

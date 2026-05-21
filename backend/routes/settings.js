@@ -1,7 +1,7 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
 const bcrypt = require('bcrypt')
-const { requireAdmin, checkPermission } = require('../middleware/auth')
+const { checkPermission } = require('../middleware/auth')
 const { sendWhatsApp } = require('../services/notifications')
 
 // ── Audit log helper ───────────────────────────────────────────────────────────
@@ -17,14 +17,14 @@ async function logAudit(pool, { userId, action, entityType, entityId, diff, bran
 }
 
 // ── Global Settings ────────────────────────────────────────────────────────────
-router.get('/global', requireAdmin, async (req, res) => {
+router.get('/global', checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM global_settings LIMIT 1')
     res.json(rows[0] || {})
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/global', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.patch('/global', checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['points_earn_rate','points_redemption_rate',
       'points_expiry_months','points_expiry_warning_days','shift_start_time']
@@ -40,7 +40,7 @@ router.patch('/global', requireAdmin, checkPermission('settings'), async (req, r
 })
 
 // ── Payroll Settings ───────────────────────────────────────────────────────────
-router.get('/payroll', requireAdmin, async (req, res) => {
+router.get('/payroll', checkPermission('settings'), async (req, res) => {
   try {
     await pool.query(`
       DO $$ BEGIN
@@ -53,7 +53,7 @@ router.get('/payroll', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/payroll', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.patch('/payroll', checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['late_deduction_per_minute','late_grace_period_minutes',
       'inexcused_off_flat_deduction','excused_off_flat_deduction',
@@ -85,14 +85,14 @@ router.patch('/payroll', requireAdmin, checkPermission('settings'), async (req, 
 })
 
 // ── WhatsApp Settings ──────────────────────────────────────────────────────────
-router.get('/whatsapp', requireAdmin, async (req, res) => {
+router.get('/whatsapp', checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM whatsapp_settings LIMIT 1')
     res.json(rows[0] || {})
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/whatsapp/test', requireAdmin, async (req, res) => {
+router.post('/whatsapp/test', checkPermission('settings'), async (req, res) => {
   try {
     const { phone, message, token } = req.body
     const msg = message || "Halo! Ini adalah pesan uji coba dari sistem Bercut Barbershop. WhatsApp Anda sudah terhubung dengan Fonnte."
@@ -101,7 +101,7 @@ router.post('/whatsapp/test', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Failed to send test message' }) }
 })
 
-router.patch('/whatsapp', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.patch('/whatsapp', checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['enabled','fonnte_token',
       'tpl_booking_confirmed','tpl_booking_reminder','tpl_payment_receipt',
@@ -121,7 +121,7 @@ router.patch('/whatsapp', requireAdmin, checkPermission('settings'), async (req,
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/whatsapp/send-report/:branch_id', requireAdmin, async (req, res) => {
+router.post('/whatsapp/send-report/:branch_id', checkPermission('settings'), async (req, res) => {
   try {
     const { type = 'both' } = req.body
     const { rows: wRows } = await pool.query('SELECT * FROM whatsapp_settings LIMIT 1')
@@ -153,7 +153,7 @@ router.post('/whatsapp/send-report/:branch_id', requireAdmin, async (req, res) =
 })
 
 // ── Users (admin accounts) ─────────────────────────────────────────────────────
-router.get('/users', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.get('/users', checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, email, name, role, is_active, last_login_at, created_at FROM users ORDER BY name')
@@ -161,7 +161,7 @@ router.get('/users', requireAdmin, checkPermission('settings'), async (req, res)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/users', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.post('/users', checkPermission('settings'), async (req, res) => {
   try {
     const { email, name, password, role = 'manager' } = req.body
     if (!email || !password || !name) {
@@ -177,7 +177,7 @@ router.post('/users', requireAdmin, checkPermission('settings'), async (req, res
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/users/:id', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.patch('/users/:id', checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['name','role','is_active']
     const sets = []; const vals = []; let idx = 1
@@ -207,7 +207,7 @@ router.patch('/users/:id', requireAdmin, checkPermission('settings'), async (req
 })
 
 // ── User Permissions ───────────────────────────────────────────────────────────
-router.get('/users/:id/permissions', requireAdmin, async (req, res) => {
+router.get('/users/:id/permissions', checkPermission('settings'), async (req, res) => {
   if (req.user.role !== 'owner' && String(req.user.id) !== String(req.params.id)) {
     return res.status(403).json({ message: 'Owner access required' })
   }
@@ -218,7 +218,7 @@ router.get('/users/:id/permissions', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.put('/users/:id/permissions', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.put('/users/:id/permissions', checkPermission('settings'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -252,14 +252,14 @@ router.put('/users/:id/permissions', requireAdmin, checkPermission('settings'), 
 })
 
 // ── Feedback Tags ──────────────────────────────────────────────────────────────
-router.get('/feedback-tags', requireAdmin, async (req, res) => {
+router.get('/feedback-tags', checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM feedback_tags ORDER BY label')
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/feedback-tags', requireAdmin, async (req, res) => {
+router.post('/feedback-tags', checkPermission('settings'), async (req, res) => {
   try {
     const { label, sentiment = 'positive' } = req.body
     const { rows } = await pool.query(
@@ -269,7 +269,7 @@ router.post('/feedback-tags', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.delete('/feedback-tags/:id', requireAdmin, async (req, res) => {
+router.delete('/feedback-tags/:id', checkPermission('settings'), async (req, res) => {
   try {
     await pool.query('DELETE FROM feedback_tags WHERE id = $1', [req.params.id])
     res.json({ ok: true })
@@ -277,14 +277,14 @@ router.delete('/feedback-tags/:id', requireAdmin, async (req, res) => {
 })
 
 // ── Expense Categories ─────────────────────────────────────────────────────────
-router.get('/expense-categories', requireAdmin, async (req, res) => {
+router.get('/expense-categories', checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY label')
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.post('/expense-categories', requireAdmin, async (req, res) => {
+router.post('/expense-categories', checkPermission('settings'), async (req, res) => {
   try {
     const { label, key } = req.body
     const { rows } = await pool.query(
@@ -295,7 +295,7 @@ router.post('/expense-categories', requireAdmin, async (req, res) => {
 })
 
 // ── Audit Log ──────────────────────────────────────────────────────────────────
-router.get('/audit-log', requireAdmin, checkPermission('settings'), async (req, res) => {
+router.get('/audit-log', checkPermission('settings'), async (req, res) => {
   try {
     const { user_id, table_name, limit = 100 } = req.query
     const conds = []; const vals = []; let idx = 1
@@ -312,7 +312,7 @@ router.get('/audit-log', requireAdmin, checkPermission('settings'), async (req, 
 })
 
 // ── Kiosk Settings ─────────────────────────────────────────────────────────────
-router.get('/kiosk/:branch_id', requireAdmin, async (req, res) => {
+router.get('/kiosk/:branch_id', checkPermission('settings'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT * FROM kiosk_settings WHERE branch_id = $1', [req.params.branch_id])
@@ -320,7 +320,7 @@ router.get('/kiosk/:branch_id', requireAdmin, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-router.patch('/kiosk/:branch_id', requireAdmin, async (req, res) => {
+router.patch('/kiosk/:branch_id', checkPermission('settings'), async (req, res) => {
   try {
     const allowed = ['session_timeout_secs','show_queue_number',
       'payment_methods_enabled','receipt_footer','theme_accent_color',

@@ -8,7 +8,7 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET
 
-// Verify JWT for admin routes
+// Verify JWT — kept for requireKioskOrAdmin internal use
 function requireAdmin(req, res, next) {
   const authHeader = req.headers['authorization']
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -16,8 +16,7 @@ function requireAdmin(req, res, next) {
   }
   const token = authHeader.slice(7)
   try {
-    const payload = jwt.verify(token, JWT_SECRET)
-    req.user = payload   // { id, email, role, name }
+    req.user = jwt.verify(token, JWT_SECRET)
     next()
   } catch {
     res.status(401).json({ message: 'Invalid or expired token' })
@@ -28,7 +27,6 @@ function requireAdmin(req, res, next) {
 async function requireKiosk(req, res, next) {
   const token = req.headers['x-kiosk-token']
   if (!token) return res.status(401).json({ message: 'Kiosk token required' })
-
   try {
     const hash = crypto.createHash('sha256').update(token).digest('hex')
     const { rows } = await pool.query(
@@ -39,12 +37,9 @@ async function requireKiosk(req, res, next) {
       [hash]
     )
     if (!rows.length) return res.status(401).json({ message: 'Invalid or revoked kiosk token' })
-
     const row = rows[0]
     req.kiosk = { tokenId: row.id, branchId: row.branch_id, branchName: row.b_name }
     req.branchId = row.branch_id
-
-    // Update last_seen_at without blocking
     pool.query('UPDATE kiosk_tokens SET last_seen_at = NOW() WHERE id = $1', [row.id]).catch(() => {})
     next()
   } catch (err) {
@@ -54,7 +49,6 @@ async function requireKiosk(req, res, next) {
 }
 
 // Accept either kiosk token OR admin JWT
-// Also checks req.query.kiosk_token for EventSource connections (can't send headers)
 async function requireKioskOrAdmin(req, res, next) {
   const kioskToken = req.headers['x-kiosk-token'] || req.query.kiosk_token
   if (kioskToken) {
@@ -64,20 +58,26 @@ async function requireKioskOrAdmin(req, res, next) {
   return requireAdmin(req, res, next)
 }
 
-// Owner-only middleware (must run after requireAdmin)
-function requireOwner(req, res, next) {
-  if (req.user?.role !== 'owner') {
-    return res.status(403).json({ message: 'Owner access required' })
-  }
-  next()
-}
-
-// Check if user can access a section (reads user_permissions)
+// Single middleware: verifies JWT then checks section permission.
 // section keys: reports, barbers, services, customers, expenses, inventory,
-//                payroll, online_booking, kiosk_config, branches, settings, live_monitor
+//               payroll, online_booking, kiosk_config, branches, settings, live_monitor
+// Pass null to skip section check (auth-only).
 function checkPermission(section) {
   return async (req, res, next) => {
-    if (!req.user) return next()
+    // 1. Verify JWT
+    const authHeader = req.headers['authorization']
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required' })
+    }
+    try {
+      req.user = jwt.verify(authHeader.slice(7), JWT_SECRET)
+    } catch {
+      return res.status(401).json({ message: 'Invalid or expired token' })
+    }
+
+    // 2. Check section permission (skip if section is null — auth-only routes)
+    if (!section) return next()
+
     const { role, id } = req.user
     if (role === 'owner') return next()
     if (role === 'monitoring' && !['overview', 'live_monitor'].includes(section)) {
@@ -98,4 +98,4 @@ function checkPermission(section) {
   }
 }
 
-module.exports = { requireAdmin, requireKiosk, requireKioskOrAdmin, requireOwner, checkPermission, JWT_SECRET }
+module.exports = { requireAdmin, requireKiosk, requireKioskOrAdmin, checkPermission, JWT_SECRET }

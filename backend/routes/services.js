@@ -1,7 +1,6 @@
 const router = require('express').Router()
 const pool   = require('../config/db')
-const { requireAdmin } = require('../middleware/auth')
-const { requireKioskOrAdmin } = require('../middleware/auth')
+const { checkPermission, requireKioskOrAdmin } = require('../middleware/auth')
 
 // GET /api/services?branch_id= — kiosk + admin
 router.get('/', async (req, res) => {
@@ -49,7 +48,7 @@ router.get('/', async (req, res) => {
 })
 
 // GET /api/services/:id/branch-config
-router.get('/:id/branch-config', requireAdmin, async (req, res) => {
+router.get('/:id/branch-config', checkPermission('services'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM branch_services WHERE service_id = $1', [req.params.id])
     res.json(rows)
@@ -57,7 +56,7 @@ router.get('/:id/branch-config', requireAdmin, async (req, res) => {
 })
 
 // GET /api/services/:id
-router.get('/:id', requireAdmin, async (req, res) => {
+router.get('/:id', checkPermission('services'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM services WHERE id = $1', [req.params.id])
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
@@ -66,7 +65,7 @@ router.get('/:id', requireAdmin, async (req, res) => {
 })
 
 // POST /api/services
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', checkPermission('services'), async (req, res) => {
   try {
     const { name, name_id, category, base_price, duration_minutes, badge, description, sort_order, image_url, mutex_group } = req.body
     const { rows } = await pool.query(
@@ -91,7 +90,7 @@ router.post('/', requireAdmin, async (req, res) => {
 })
 
 // PATCH /api/services/:id
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', checkPermission('services'), async (req, res) => {
   try {
     const { name, name_id, category, base_price, duration_minutes, badge, description, sort_order, image_url, mutex_group, is_active } = req.body
     const { rows } = await pool.query(
@@ -120,7 +119,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 })
 
 // PUT /api/services/:id/branch-config — per-branch availability + price + commission
-router.put('/:id/branch-config', requireAdmin, async (req, res) => {
+router.put('/:id/branch-config', checkPermission('services'), async (req, res) => {
   try {
     const { branch_id, is_available, price, commission_rate } = req.body
     await pool.query(
@@ -133,7 +132,7 @@ router.put('/:id/branch-config', requireAdmin, async (req, res) => {
 })
 
 // GET /api/services/:id/consumables
-router.get('/:id/consumables', requireAdmin, async (req, res) => {
+router.get('/:id/consumables', checkPermission('services'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT sc.*, ii.name AS item_name, ii.unit FROM service_consumables sc
@@ -143,7 +142,7 @@ router.get('/:id/consumables', requireAdmin, async (req, res) => {
 })
 
 // PUT /api/services/:id/consumables
-router.put('/:id/consumables', requireAdmin, async (req, res) => {
+router.put('/:id/consumables', checkPermission('services'), async (req, res) => {
   try {
     const { consumables } = req.body  // [{item_id, qty_per_use}]
     await pool.query('DELETE FROM service_consumables WHERE service_id = $1', [req.params.id])
@@ -170,7 +169,7 @@ router.get('/:id/package-services', async (req, res) => {
 })
 
 // PUT /api/services/:id/package-services
-router.put('/:id/package-services', requireAdmin, async (req, res) => {
+router.put('/:id/package-services', checkPermission('services'), async (req, res) => {
   try {
     const { services } = req.body  // [{ service_id, or_group }]
     await pool.query('DELETE FROM package_services WHERE package_id = $1', [req.params.id])

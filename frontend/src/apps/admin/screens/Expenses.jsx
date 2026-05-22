@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { tokens as T } from '../../../shared/tokens.js'
+import { tokens as T, getToken } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
 import * as XLSX from 'xlsx'
 
@@ -42,6 +42,124 @@ function computeSmartDist(totalAmount, lines) {
   return lines.map(l => (l.branch_id && (Number(l.qty) || 0) > 0) ? costs[vIdx++] : null)
 }
 
+function safeParseReceipt(url) {
+  if (!url) return []
+  try { const p = JSON.parse(url); return Array.isArray(p) ? p : [url] }
+  catch { return [url] }
+}
+
+function ReceiptUpload({ value, onChange, error }) {
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const inputRef = useRef(null)
+
+  async function handleFile(file) {
+    if (!file) return
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/upload/receipt', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + getToken() },
+        body: formData,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setUploadError(data.message || 'Upload failed')
+      } else {
+        const data = await res.json()
+        onChange(data.url)
+      }
+    } catch {
+      setUploadError('Upload failed — check your connection')
+    }
+    setUploading(false)
+  }
+
+  async function handleRemove() {
+    try {
+      await fetch('/api/upload/receipt', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() },
+        body: JSON.stringify({ url: value }),
+      })
+    } catch { }
+    onChange(null)
+  }
+
+  function onDrop(ev) {
+    ev.preventDefault()
+    const file = ev.dataTransfer.files?.[0]
+    if (file) handleFile(file)
+  }
+
+  const pages = safeParseReceipt(value)
+
+  if (uploading) {
+    return (
+      <div style={{ border: '1.5px dashed ' + T.border, borderRadius: 8, padding: '10px 14px', textAlign: 'center', fontSize: 12, color: T.muted, marginBottom: 14 }}>
+        Uploading…
+      </div>
+    )
+  }
+
+  if (value && pages.length > 0) {
+    return (
+      <div style={{ border: '1.5px solid ' + T.border, borderRadius: 8, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+          {pages.map((u, i) => (
+            <img key={i} src={u} alt={'receipt page ' + (i + 1)} style={{ height: 80, borderRadius: 5, border: '1px solid ' + T.border, objectFit: 'cover' }} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <button onClick={() => inputRef.current?.click()} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid ' + T.border, background: T.surface, color: T.text2, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Replace</button>
+          <button onClick={handleRemove} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#FEE2E2', color: T.danger, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✕ Remove</button>
+        </div>
+        <input ref={inputRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={ev => handleFile(ev.target.files?.[0])} />
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDrop={onDrop}
+        onDragOver={ev => ev.preventDefault()}
+        style={{ border: '1.5px dashed ' + (error || uploadError ? T.danger : T.border), borderRadius: 8, padding: '10px 14px', textAlign: 'center', fontSize: 12, color: T.muted, cursor: 'pointer', userSelect: 'none' }}>
+        📎 Attach Receipt (PDF or Image)
+        <input ref={inputRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={ev => handleFile(ev.target.files?.[0])} />
+      </div>
+      {uploadError && <div style={{ fontSize: 11, color: T.danger, marginTop: 4 }}>{uploadError}</div>}
+    </div>
+  )
+}
+
+function ReceiptLightbox({ url, onClose }) {
+  const pages = safeParseReceipt(url)
+
+  useEffect(() => {
+    function onKey(ev) { if (ev.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '32px 16px' }}>
+      <div onClick={ev => ev.stopPropagation()} style={{ position: 'relative', width: 'min(700px, 90vw)' }}>
+        <button onClick={onClose} style={{ position: 'fixed', top: 16, right: 20, width: 36, height: 36, borderRadius: 8, border: 'none', background: T.white, color: T.text, cursor: 'pointer', fontSize: 18, fontWeight: 700, zIndex: 301 }}>✕</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {pages.map((u, i) => (
+            <img key={i} src={u} alt={'receipt page ' + (i + 1)} style={{ maxWidth: '100%', width: 'min(700px, 90vw)', borderRadius: 8 }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── EditExpenseModal ──────────────────────────────────────────────────────────
 
 function EditExpenseModal({ expense, categories, branches, barbers, items, onSaved, onClose }) {
@@ -63,6 +181,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
   const [eDeductPeriod, setEDeductPeriod] = useState(expense.deduct_period || 'current')
   const [stockItemId,   setStockItemId]   = useState(isInventory ? String(expense._stockItems?.[0]?.item_id || '') : '')
   const [distLines,     setDistLines]     = useState(initLines)
+  const [eReceiptUrl,   setEReceiptUrl]   = useState(expense.receipt_url || null)
   const [saving,        setSaving]        = useState(false)
   const [errors,        setErrors]        = useState({})
 
@@ -86,11 +205,12 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
     if (isKasbon && !eBarberId) e.barber = true
     if (isInventory && !stockItemId) e.stockItem = true
     if (isInventory && !distLines.some(l => l.branch_id && Number(l.qty) > 0)) e.dist = true
+    if (!eReceiptUrl) e.receipt = true
     setErrors(e)
     if (Object.keys(e).length) return
     setSaving(true)
     try {
-      const body = { expense_date: eDate, amount: parseInt(eAmount), description: eDesc.trim() || null }
+      const body = { expense_date: eDate, amount: parseInt(eAmount), description: eDesc.trim() || null, receipt_url: eReceiptUrl }
       if (isRegular)   { body.branch_id = eBranchId; body.category_id = eCatId || null; body.source = eSource }
       if (isInventory) {
         body.source = eSource
@@ -163,6 +283,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
               <label style={{ ...LS, color: errors.desc ? T.danger : T.muted }}>Description *</label>
               <input value={eDesc} onChange={e => { setEDesc(e.target.value); setErrors(v => ({ ...v, desc: false })) }} style={inp(errors.desc)} />
             </div>
+            <ReceiptUpload value={eReceiptUrl} onChange={url => { setEReceiptUrl(url); setErrors(v => ({ ...v, receipt: false })) }} error={errors.receipt} />
           </>
         )}
 
@@ -227,6 +348,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
                 + Add Branch
               </button>
             </div>
+            <ReceiptUpload value={eReceiptUrl} onChange={url => { setEReceiptUrl(url); setErrors(v => ({ ...v, receipt: false })) }} error={errors.receipt} />
           </>
         )}
 
@@ -265,6 +387,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
               <label style={{ ...LS, color: T.muted }}>Note (optional)</label>
               <input value={eDesc} onChange={e => setEDesc(e.target.value)} placeholder="e.g. Medical emergency advance" style={inp(false)} />
             </div>
+            <ReceiptUpload value={eReceiptUrl} onChange={url => { setEReceiptUrl(url); setErrors(v => ({ ...v, receipt: false })) }} error={errors.receipt} />
           </>
         )}
 
@@ -477,12 +600,14 @@ export default function Expenses() {
   const [fDeductPeriod, setFDeductPeriod] = useState('current')
   const [stockItemId,   setStockItemId]   = useState('')
   const [distLines,     setDistLines]     = useState([{ branch_id: '', qty: '' }])
+  const [fReceiptUrl,   setFReceiptUrl]   = useState(null)
   const [errors,        setErrors]        = useState({})
   const [saving,        setSaving]        = useState(false)
   const [saved,         setSaved]         = useState(false)
   const [exportOpen,    setExportOpen]    = useState(false)
   const [editingExp,    setEditingExp]    = useState(null)
   const [deletingExp,   setDeletingExp]   = useState(null)
+  const [lightboxUrl,   setLightboxUrl]   = useState(null)
   const formRef   = useRef(null)
   const exportRef = useRef(null)
 
@@ -528,6 +653,7 @@ export default function Expenses() {
     setFAmount(''); setFDesc(''); setErrors({})
     setFBarberId(''); setFDeductPeriod('current')
     setStockItemId(''); setDistLines([{ branch_id: branches.length === 1 ? String(branches[0].id) : '', qty: '' }])
+    setFReceiptUrl(null)
   }
 
   function updateDistLine(idx, field, val) {
@@ -557,6 +683,7 @@ export default function Expenses() {
         if (!fBranchId) e.branch = true
       }
     }
+    if (!fReceiptUrl) e.receipt = true
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -570,6 +697,7 @@ export default function Expenses() {
         amount:       parseInt(fAmount),
         expense_date: fDate,
         description:  fDesc.trim() || null,
+        receipt_url:  fReceiptUrl,
       }
       if (expType === 'regular') {
         payload.branch_id   = fBranchId
@@ -638,12 +766,14 @@ export default function Expenses() {
 
   function exportCSV() {
     setExportOpen(false)
+    const _bn = filterBranch ? (branches.find(b => String(b.id) === String(filterBranch))?.name?.replace(/\s+/g, '') || 'AllBranch') : 'AllBranch'
+    const _range = `${filterFrom}_${filterTo}`
     const rows = buildExportRows()
     const escape = v => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s }
     const csv = rows.map(r => r.map(escape).join(',')).join('\n')
     const a = document.createElement('a')
     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
-    a.download = `bercut-expenses-${todayISO()}.csv`
+    a.download = `Bercut${_bn}_expenses_${_range}.csv`
     a.click()
   }
 
@@ -658,7 +788,8 @@ export default function Expenses() {
     }
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Expenses')
-    XLSX.writeFile(wb, `bercut-expenses-${todayISO()}.xlsx`)
+    const _bn = filterBranch ? (branches.find(b => String(b.id) === String(filterBranch))?.name?.replace(/\s+/g, '') || 'AllBranch') : 'AllBranch'
+    XLSX.writeFile(wb, `Bercut${_bn}_expenses_${filterFrom}_${filterTo}.xlsx`)
   }
 
   async function openEdit(exp) {
@@ -723,6 +854,7 @@ export default function Expenses() {
           onClose={() => setDeletingExp(null)}
         />
       )}
+      {lightboxUrl && <ReceiptLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -821,6 +953,7 @@ export default function Expenses() {
                 <input value={fDesc} onChange={e => { setFDesc(e.target.value); setErrors(v => ({ ...v, desc: false })) }} placeholder="e.g. Office supplies"
                   style={{ ...inputStyle, border: '1.5px solid ' + (errors.desc ? T.danger : T.border) }} />
               </div>
+              <ReceiptUpload value={fReceiptUrl} onChange={url => { setFReceiptUrl(url); setErrors(v => ({ ...v, receipt: false })) }} error={errors.receipt} />
             </>
           )}
 
@@ -889,6 +1022,7 @@ export default function Expenses() {
                   + Add Branch
                 </button>
               </div>
+              <ReceiptUpload value={fReceiptUrl} onChange={url => { setFReceiptUrl(url); setErrors(v => ({ ...v, receipt: false })) }} error={errors.receipt} />
             </>
           )}
 
@@ -928,6 +1062,7 @@ export default function Expenses() {
                 <input value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="e.g. Medical emergency advance"
                   style={inputStyle} />
               </div>
+              <ReceiptUpload value={fReceiptUrl} onChange={url => { setFReceiptUrl(url); setErrors(v => ({ ...v, receipt: false })) }} error={errors.receipt} />
             </>
           )}
 
@@ -968,8 +1103,8 @@ export default function Expenses() {
 
       {/* Table */}
       <div className="admin-card" style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr 56px', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
-          {['','Date','Type','Branch','Description','Source','Amount','By',''].map((h, i) => (
+        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 44px 56px', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
+          {['','Date','Type','Branch','Description','Source','Amount','By','Receipt',''].map((h, i) => (
             <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>{h}</div>
           ))}
         </div>
@@ -1026,7 +1161,7 @@ export default function Expenses() {
 
             return (
               <div key={e.id} style={{ borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr 56px', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 44px 56px', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
                   onClick={toggleExpand}
                   onMouseEnter={ev => { if (!isExpanded) ev.currentTarget.style.background = T.bg }}
                   onMouseLeave={ev => { if (!isExpanded) ev.currentTarget.style.background = 'transparent' }}>
@@ -1042,6 +1177,12 @@ export default function Expenses() {
                   <div style={{ fontSize: 11, color: T.muted }}>{sourceLabel}</div>
                   <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>{isExpanded ? '' : fmt(e.amount)}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{e.created_by_name || 'Admin'}</div>
+                  <div onClick={ev => ev.stopPropagation()}>
+                    {e.receipt_url
+                      ? <button onClick={() => setLightboxUrl(e.receipt_url)} style={{ padding: '3px 7px', borderRadius: 5, border: 'none', background: '#DCFCE7', color: '#16A34A', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>📎 View</button>
+                      : <button onClick={() => openEdit(e)} style={{ padding: '2px 6px', borderRadius: 4, border: 'none', background: '#FFF7ED', color: '#D97706', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>! No Receipt</button>
+                    }
+                  </div>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }} onClick={ev => ev.stopPropagation()}>
                     <button onClick={() => openEdit(e)} title="Edit"
                       style={{ width: 24, height: 24, borderRadius: 5, border: 'none', background: T.surface, color: T.text2, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✎</button>
@@ -1053,7 +1194,7 @@ export default function Expenses() {
                   const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? '—'
                   const dDesc = `${d.quantity_received} ${d.unit}${d.item_name ? ' · ' + d.item_name : ''}`
                   return (
-                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.8fr 56px', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
+                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 44px 56px', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
                       <div />
                       <div />
                       <div />
@@ -1061,6 +1202,7 @@ export default function Expenses() {
                       <div style={{ fontSize: 11, color: T.muted }}>{dDesc}</div>
                       <div />
                       <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 12, color: T.text }}>{subCosts[di] != null ? fmt(subCosts[di]) : '—'}</div>
+                      <div />
                       <div />
                       <div />
                     </div>

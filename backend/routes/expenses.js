@@ -120,7 +120,7 @@ router.post('/', checkPermission('expenses'), async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [resolvedBranchId||null, type, category_id||null, description||null, amount, expense_date,
        source||'petty_cash', po_id||null, po_attribution||null,
-       barber_id||null, deduct_period||null, req.user.id, ''])
+       barber_id||null, deduct_period||null, req.user.id, req.body.receipt_url || null])
     const expense = rows[0]
 
     for (const item of stock_items) {
@@ -157,7 +157,7 @@ router.patch('/:id', checkPermission('expenses'), async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const allowed = ['branch_id','category_id','description','amount','expense_date','source','barber_id','deduct_period','po_id','po_attribution']
+    const allowed = ['branch_id','category_id','description','amount','expense_date','source','barber_id','deduct_period','po_id','po_attribution','receipt_url']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }

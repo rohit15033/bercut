@@ -46,6 +46,9 @@ app.get('*', (req, res) => {
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {
   console.error(err)
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ message: 'File too large' })
+  }
   res.status(err.status || 500).json({ message: err.message || 'Internal server error' })
 })
 

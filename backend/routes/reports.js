@@ -186,13 +186,15 @@ router.get('/delay', checkPermission('reports'), async (req, res) => {
 // GET /api/reports/transactions?branch_id=&date_from=&date_to=&limit=&offset=
 router.get('/transactions', checkPermission('reports'), async (req, res) => {
   try {
-    const { branch_id, date_from, date_to, limit = 200, offset = 0 } = req.query
+    const { branch_id, date_from, date_to, limit, offset = 0 } = req.query
     const conds = ["bk.status = 'completed'"]; const vals = []; let idx = 1
     if (branch_id) { conds.push(`bk.branch_id = $${idx++}`); vals.push(branch_id) }
     if (date_from) { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') >= $${idx++}`); vals.push(date_from) }
     if (date_to)   { conds.push(`DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') <= $${idx++}`); vals.push(date_to) }
     const where = 'WHERE ' + conds.join(' AND ')
-    const limitIdx = idx++; const offsetIdx = idx++
+    const parsedLimit = limit ? parseInt(limit, 10) : null
+    let pagination = ''
+    if (parsedLimit) { pagination = `LIMIT $${idx++} OFFSET $${idx++}`; vals.push(parsedLimit, parseInt(offset, 10)) }
     const { rows } = await pool.query(
       `SELECT bk.id, bk.booking_number,
               DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar')               AS date,
@@ -229,8 +231,8 @@ router.get('/transactions', checkPermission('reports'), async (req, res) => {
        LEFT JOIN tips t ON t.booking_id = bk.id
        ${where}
        ORDER BY bk.scheduled_at DESC
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      [...vals, limit, offset])
+       ${pagination}`,
+      vals)
     res.json(rows)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

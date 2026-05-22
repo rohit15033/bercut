@@ -57,15 +57,15 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
 
     const ps = await client.query('SELECT * FROM payroll_settings LIMIT 1')
     const cfg = ps.rows[0] || {}
-    const lateDeductPerMin       = parseInt(cfg.late_deduction_per_minute || 2000)
-    const lateGrace              = parseInt(cfg.late_grace_period_minutes  || 5)
-    const inexcusedFlatDeduct    = parseInt(cfg.inexcused_off_flat_deduction || 150000)
-    const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction   || 150000)
-    const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week || 1)
+    const lateDeductPerMin       = parseInt(cfg.late_deduction_per_minute    ?? 2000)
+    const lateGrace              = parseInt(cfg.late_grace_period_minutes     ?? 5)
+    const inexcusedFlatDeduct    = parseInt(cfg.inexcused_off_flat_deduction  ?? 150000)
+    const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction    ?? 150000)
+    const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week            ?? 1)
 
     const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
-    const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
+    const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week ?? 6) * 52 / 12)
 
     const barberCond = branch_id
       ? 'WHERE branch_id = $1 AND is_active = true'
@@ -252,15 +252,15 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
 
     const ps = await client.query('SELECT * FROM payroll_settings LIMIT 1')
     const cfg = ps.rows[0] || {}
-    const lateDeductPerMin       = parseInt(cfg.late_deduction_per_minute || 2000)
-    const lateGrace              = parseInt(cfg.late_grace_period_minutes  || 5)
-    const inexcusedFlatDeduct    = parseInt(cfg.inexcused_off_flat_deduction || 150000)
-    const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction   || 150000)
-    const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week || 1)
+    const lateDeductPerMin       = parseInt(cfg.late_deduction_per_minute    ?? 2000)
+    const lateGrace              = parseInt(cfg.late_grace_period_minutes     ?? 5)
+    const inexcusedFlatDeduct    = parseInt(cfg.inexcused_off_flat_deduction  ?? 150000)
+    const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction    ?? 150000)
+    const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week            ?? 1)
 
     const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
-    const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week || 6) * 52 / 12)
+    const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week ?? 6) * 52 / 12)
 
     const barberCond = branch_id
       ? 'WHERE branch_id = $1 AND is_active = true'

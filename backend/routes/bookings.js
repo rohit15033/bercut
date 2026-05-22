@@ -387,7 +387,7 @@ router.get('/:id', requireKioskOrAdmin, async (req, res) => {
                 'added_mid_cut', bs.added_mid_cut,
                 'commission_rate', COALESCE(bar_svc.commission_rate, brs.commission_rate, b.commission_rate, 35)
               )) FILTER (WHERE bs.id IS NOT NULL) AS services,
-              json_agg(DISTINCT jsonb_build_object('item_id', be.item_id, 'name', ii.name, 'price', be.price, 'qty', be.quantity)) FILTER (WHERE be.id IS NOT NULL) AS extras
+              json_agg(DISTINCT jsonb_build_object('id', be.id, 'item_id', be.item_id, 'name', ii.name, 'price', be.price, 'qty', be.quantity)) FILTER (WHERE be.id IS NOT NULL) AS extras
        FROM bookings bk
        LEFT JOIN barbers b ON b.id = bk.barber_id
        LEFT JOIN customers c ON c.id = bk.customer_id
@@ -589,10 +589,17 @@ router.patch('/:id/cancel', requireKioskOrAdmin, async (req, res) => {
        WHERE id = $1 AND status IN ('confirmed','in_progress','pending_payment') RETURNING *`,
       [req.params.id, reason || null])
     if (!rows.length) return res.status(409).json({ message: 'Cannot cancel' })
-    
-    // Auto-set barber back to available if it was in progress
-    await pool.query("UPDATE barbers SET status = 'available' WHERE id = $1", [rows[0].barber_id])
-    emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'available' })
+
+    // Reset barber only if no other in_progress booking remains (avoids premature reset)
+    if (rows[0].barber_id) {
+      const { rows: stillActive } = await pool.query(
+        `SELECT 1 FROM bookings WHERE barber_id = $1 AND status = 'in_progress' LIMIT 1`,
+        [rows[0].barber_id])
+      if (!stillActive.length) {
+        await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1 AND status = 'in_service'`, [rows[0].barber_id])
+        emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'available' })
+      }
+    }
     
     emitEvent(rows[0].branch_id, 'booking_cancelled', rows[0])
     res.json(rows[0])
@@ -714,7 +721,7 @@ router.patch('/:id/add-services', requireKiosk, async (req, res) => {
 })
 
 // ── PATCH /api/bookings/:id/add-extras ───────────────────────────────────────
-router.patch('/:id/add-extras', requireKiosk, async (req, res) => {
+router.patch('/:id/add-extras', requireKioskOrAdmin, async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -745,7 +752,7 @@ router.patch('/:id/add-extras', requireKiosk, async (req, res) => {
 })
 
 // ── DELETE /api/bookings/:id/extras/:extra_id ────────────────────────────────
-router.delete('/:id/extras/:extra_id', requireKiosk, async (req, res) => {
+router.delete('/:id/extras/:extra_id', requireKioskOrAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `DELETE FROM booking_extras WHERE id = $1 AND booking_id = $2 RETURNING *`,
@@ -814,9 +821,11 @@ router.post('/merge-group', checkPermission('barbers'), async (req, res) => {
 router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
   const client = await pool.connect()
   try {
-    const { service_ids } = req.body
-    if (!Array.isArray(service_ids) || !service_ids.length)
-      return res.status(400).json({ message: 'service_ids required' })
+    const { service_ids, product_ids = [] } = req.body
+    const hasServices = Array.isArray(service_ids) && service_ids.length > 0
+    const hasProducts = Array.isArray(product_ids) && product_ids.length > 0
+    if (!hasServices && !hasProducts)
+      return res.status(400).json({ message: 'service_ids or product_ids required' })
 
     await client.query('BEGIN')
 
@@ -830,28 +839,44 @@ router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
     const booking = rows[0]
 
     // Fetch new services with branch-level price and commission rate
-    const svcRes = await client.query(
-      `SELECT s.id, s.duration_minutes,
-              COALESCE(bs.price, s.base_price) AS price,
-              COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
-       FROM services s
-       LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
-       LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $2
-       LEFT JOIN barbers b ON b.id = $2
-       WHERE s.id = ANY($3::uuid[]) AND s.is_active = true`,
-      [booking.branch_id, booking.barber_id, service_ids]
-    )
-    if (!svcRes.rows.length) {
-      await client.query('ROLLBACK')
-      return res.status(404).json({ message: 'Services not found' })
+    let svcRes = { rows: [] }
+    if (hasServices) {
+      svcRes = await client.query(
+        `SELECT s.id, s.duration_minutes,
+                COALESCE(bs.price, s.base_price) AS price,
+                COALESCE(bs_barber.commission_rate, bs.commission_rate, b.commission_rate) AS commission_rate
+         FROM services s
+         LEFT JOIN branch_services bs ON bs.service_id = s.id AND bs.branch_id = $1
+         LEFT JOIN barber_services bs_barber ON bs_barber.service_id = s.id AND bs_barber.barber_id = $2
+         LEFT JOIN barbers b ON b.id = $2
+         WHERE s.id = ANY($3::uuid[]) AND s.is_active = true`,
+        [booking.branch_id, booking.barber_id, service_ids]
+      )
+      if (!svcRes.rows.length) {
+        await client.query('ROLLBACK')
+        return res.status(404).json({ message: 'Services not found' })
+      }
+
+      // Insert new booking_services (marked added_mid_cut; existing services are untouched)
+      for (const svc of svcRes.rows) {
+        await client.query(
+          `INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate, added_mid_cut) VALUES ($1, $2, $3, $4, true)`,
+          [booking.id, svc.id, svc.price, svc.commission_rate ?? null]
+        )
+      }
     }
 
-    // Insert new booking_services (marked added_mid_cut; existing services are untouched)
-    for (const svc of svcRes.rows) {
-      await client.query(
-        `INSERT INTO booking_services (booking_id, service_id, price_charged, commission_rate, added_mid_cut) VALUES ($1, $2, $3, $4, true)`,
-        [booking.id, svc.id, svc.price, svc.commission_rate ?? null]
-      )
+    if (hasProducts) {
+      const itemRows = await client.query(
+        `SELECT ii.id, ist.price FROM inventory_items ii
+         JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
+         WHERE ii.id = ANY($2::uuid[]) AND ist.price IS NOT NULL`,
+        [booking.branch_id, product_ids])
+      for (const item of itemRows.rows) {
+        await client.query(
+          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
+          [booking.id, item.id, item.price])
+      }
     }
 
     // Reopen: status back to in_progress, started_at = now, completed_at cleared
@@ -869,7 +894,7 @@ router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
     emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'in_service' })
     emitEvent(booking.branch_id, 'booking_started', { id: booking.id })
 
-    res.json({ ok: true, added: svcRes.rows.length, added_duration_min: newDuration })
+    res.json({ ok: true, added: svcRes.rows.length, added_products: hasProducts ? product_ids.length : 0, added_duration_min: newDuration })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error(err); res.status(500).json({ message: 'Internal server error' })
@@ -902,7 +927,7 @@ router.patch('/:id/admin-update', checkPermission('barbers'), async (req, res) =
       return res.status(404).json({ message: 'Booking not found or not editable' })
     }
     const booking = bkRes.rows[0]
-    const { barber_id, add_service_ids = [], remove_service_ids = [], scheduled_at } = req.body
+    const { barber_id, add_service_ids = [], remove_service_ids = [], scheduled_at, add_product_ids = [], remove_product_ids = [] } = req.body
 
     const updates = []
     const uVals   = []
@@ -943,6 +968,25 @@ router.patch('/:id/admin-update', checkPermission('barbers'), async (req, res) =
         }
       }
     }
+    // remove extras by booking_extras.id
+    if (remove_product_ids.length) {
+      await client.query(
+        'DELETE FROM booking_extras WHERE id = ANY($1::uuid[]) AND booking_id = $2',
+        [remove_product_ids, booking.id])
+    }
+    // add new extras
+    if (add_product_ids.length) {
+      const itemRows = await client.query(
+        `SELECT ii.id, ist.price FROM inventory_items ii
+         JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
+         WHERE ii.id = ANY($2::uuid[]) AND ist.price IS NOT NULL`,
+        [booking.branch_id, add_product_ids])
+      for (const item of itemRows.rows) {
+        await client.query(
+          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
+          [booking.id, item.id, item.price])
+      }
+    }
     await client.query('COMMIT')
     emitEvent(booking.branch_id, 'booking_updated', { id: booking.id })
     const updated = await pool.query('SELECT * FROM bookings WHERE id = $1', [booking.id])
@@ -980,7 +1024,7 @@ router.post('/admin-force', checkPermission('barbers'), async (req, res) => {
     await client.query('BEGIN')
     const {
       branch_id, customer_name, customer_phone,
-      barber_id, service_ids = [],
+      barber_id, service_ids = [], product_ids = [],
       date, time, notes,
     } = req.body
 
@@ -1037,12 +1081,27 @@ router.post('/admin-force', checkPermission('barbers'), async (req, res) => {
         [booking.id, svc.id, svc.price, svc.commission_rate ?? null])
     }
 
+    let extrasTotal = 0
+    if (product_ids.length) {
+      const itemRows = await client.query(
+        `SELECT ii.id, ist.price FROM inventory_items ii
+         JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
+         WHERE ii.id = ANY($2::uuid[]) AND ist.price IS NOT NULL`,
+        [branch_id, product_ids])
+      extrasTotal = itemRows.rows.reduce((a, e) => a + parseInt(e.price || 0), 0)
+      for (const item of itemRows.rows) {
+        await client.query(
+          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
+          [booking.id, item.id, item.price])
+      }
+    }
+
     await client.query('COMMIT')
 
     const barberRow  = await pool.query('SELECT name FROM barbers WHERE id = $1', [barber_id])
     const resp = {
       ...booking,
-      total_amount:  subtotal,
+      total_amount:  subtotal + extrasTotal,
       barber_name:   barberRow.rows[0]?.name || '',
       service_names: svcRows.rows.map(r => r.name).join(', '),
     }

@@ -481,6 +481,17 @@ router.post('/manual-confirm', requireKioskOrAdmin, async (req, res) => {
 
     await client.query('COMMIT')
 
+    // Reset barber to available if no more in_progress bookings remain
+    if (booking.barber_id) {
+      const { rows: stillActive } = await pool.query(
+        `SELECT 1 FROM bookings WHERE barber_id = $1 AND status = 'in_progress' LIMIT 1`,
+        [booking.barber_id])
+      if (!stillActive.length) {
+        await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1 AND status = 'in_service'`, [booking.barber_id])
+        emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'available' })
+      }
+    }
+
     // 4. Notify kiosk
     emitEvent(booking.branch_id, 'payment_complete', { booking_id, status: 'completed' })
     
@@ -563,6 +574,19 @@ router.post('/group-confirm', requireKioskOrAdmin, async (req, res) => {
     }
 
     await client.query('COMMIT')
+
+    // Reset barbers to available if they have no more in_progress bookings
+    const uniqueBarberIds = [...new Set(bookings.map(bk => bk.barber_id).filter(Boolean))]
+    for (const barberId of uniqueBarberIds) {
+      const { rows: stillActive } = await pool.query(
+        `SELECT 1 FROM bookings WHERE barber_id = $1 AND status = 'in_progress' LIMIT 1`,
+        [barberId])
+      if (!stillActive.length) {
+        await pool.query(`UPDATE barbers SET status = 'available' WHERE id = $1 AND status = 'in_service'`, [barberId])
+        emitEvent(branchId, 'barber_update', { barber_id: barberId, status: 'available' })
+      }
+    }
+
     emitEvent(branchId, 'payment_complete', { group_id, status: 'completed' })
     for (const bk of bookings) {
       awardPoints(bk.id).catch(e => console.error('[Loyalty] Award failed:', e))

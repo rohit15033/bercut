@@ -492,6 +492,13 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
                   })
                 )}
 
+              </>
+            )}
+
+            {/* Persistent selected products summary — visible regardless of active tab */}
+            {selectedProducts.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Products &amp; Drinks</div>
                 {selectedProducts.map(sp => (
                   <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
                     <div>
@@ -503,7 +510,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
                       style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                   </div>
                 ))}
-              </>
+              </div>
             )}
 
             {/* Combined total */}
@@ -810,34 +817,35 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                       })
                     )}
 
-                    {/* Currently booked extras + newly selected (removable) */}
-                    {(currentExtras.length > 0 || selectedProducts.length > 0) && (
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Selected products</div>
-                        {currentExtras.map(ex => (
-                          <div key={ex.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
-                            <div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{ex.name}</div>
-                              <div style={{ fontSize: 11, color: T.muted }}>{fmt(ex.price)}</div>
-                            </div>
-                            <button onClick={() => removeExtra(ex.id)}
-                              style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-                          </div>
-                        ))}
-                        {selectedProducts.map(sp => (
-                          <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
-                            <div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sp.name}</div>
-                              <div style={{ fontSize: 11, color: T.muted }}>{fmt(sp.price)}</div>
-                            </div>
-                            <button onClick={() => toggleNewProduct(sp)}
-                              data-testid={`remove-product-${sp.id}`}
-                              style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </>
+                )}
+
+                {/* Persistent selected products summary — visible regardless of active tab */}
+                {(currentExtras.length > 0 || selectedProducts.length > 0) && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Products &amp; Drinks</div>
+                    {currentExtras.map(ex => (
+                      <div key={ex.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{ex.name}</div>
+                          <div style={{ fontSize: 11, color: T.muted }}>{fmt(ex.price)}</div>
+                        </div>
+                        <button onClick={() => removeExtra(ex.id)}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                      </div>
+                    ))}
+                    {selectedProducts.map(sp => (
+                      <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sp.name}</div>
+                          <div style={{ fontSize: 11, color: T.muted }}>{fmt(sp.price)}</div>
+                        </div>
+                        <button onClick={() => toggleNewProduct(sp)}
+                          data-testid={`remove-product-${sp.id}`}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {/* Combined total */}
@@ -1042,6 +1050,28 @@ function ReopenModal({ booking, onConfirm, onClose }) {
                 )
               })
             )}
+          </div>
+        )}
+
+        {/* Persistent selected products summary — visible regardless of active tab */}
+        {selectedProducts.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Products &amp; Drinks</div>
+            {selectedProducts.map(pid => {
+              const p = allProducts.find(x => x.id === pid)
+              if (!p) return null
+              return (
+                <div key={pid} data-testid={`selected-product-${pid}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: T.muted }}>Rp {Number(p.price || 0).toLocaleString('id-ID')}</div>
+                  </div>
+                  <button onClick={() => toggleProduct(p)}
+                    data-testid={`remove-product-${pid}`}
+                    style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                </div>
+              )
+            })}
           </div>
         )}
 

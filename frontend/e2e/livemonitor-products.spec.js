@@ -183,6 +183,18 @@ test.describe('NewBookingModal — Products & Drinks tab', () => {
     await expect(page.getByTestId(`selected-product-${PROD_OUT_STOCK_ID}`)).toBeVisible()
   })
 
+  test('selected product chip is visible on Services tab (persistent section)', async ({ page }) => {
+    // Select a product while on Products tab
+    await page.getByTestId('new-booking-tab-products').click()
+    await page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`).click()
+    // Confirm chip is visible while still on Products tab
+    await expect(page.getByTestId(`selected-product-${PROD_IN_STOCK_ID}`)).toBeVisible()
+    // Switch to Services tab
+    await page.getByTestId('new-booking-tab-services').click()
+    // Chip must still be visible — it lives in the persistent section outside the tab content
+    await expect(page.getByTestId(`selected-product-${PROD_IN_STOCK_ID}`)).toBeVisible()
+  })
+
   test('combined total includes product prices', async ({ page }) => {
     // First add a service via the + Add dropdown
     const addBtn = page.locator('button').filter({ hasText: /^\+\s*Add$|^\+Add$/ }).first()

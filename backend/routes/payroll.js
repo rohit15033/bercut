@@ -105,7 +105,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
         [barber.id, eff_att_from, eff_att_to])
 
       const workedDays = attRows.rows.length
-      const totalLateMinutes = attRows.rows.reduce((sum, r) => sum + (parseInt(r.late_minutes) || 0), 0)
+      const totalLateMinutes = attRows.rows.reduce((sum, r) => { const m = parseInt(r.late_minutes) || 0; return sum + (m <= lateGrace ? 0 : m) }, 0)
 
       // Off records in period
       const offRows = await client.query(
@@ -306,7 +306,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
         [barber.id, eff_att_from, eff_att_to])
 
       const workedDays = attRows.rows.length
-      const totalLateMinutes = attRows.rows.reduce((sum, r) => sum + (parseInt(r.late_minutes) || 0), 0)
+      const totalLateMinutes = attRows.rows.reduce((sum, r) => { const m = parseInt(r.late_minutes) || 0; return sum + (m <= lateGrace ? 0 : m) }, 0)
 
       // Off records in period
       const offRows = await client.query(

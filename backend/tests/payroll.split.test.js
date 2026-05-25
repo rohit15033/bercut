@@ -707,3 +707,52 @@ describe('PayrollList — duplicate-check logic (split vs single)', () => {
     expect(dup).toBeUndefined()
   })
 })
+
+// ── Late grace-period suppression ────────────────────────────────────────────
+//
+// Mirrors the fixed totalLateMinutes reduce in payroll.js (generate + regenerate).
+// Grace = 5 min (from SETTINGS_ROW). Attendance rows within grace window must
+// contribute 0 to totalLateMinutes; rows above grace must contribute their full value.
+
+const LATE_GRACE = 5  // mirrors SETTINGS_ROW.late_grace_period_minutes
+
+function calcTotalLateMinutes(attRows, grace = LATE_GRACE) {
+  return attRows.reduce((sum, r) => {
+    const m = parseInt(r.late_minutes) || 0
+    return sum + (m <= grace ? 0 : m)
+  }, 0)
+}
+
+describe('Late grace-period suppression', () => {
+  test('0 late minutes → 0 (never charged)', () => {
+    expect(calcTotalLateMinutes([{ late_minutes: 0 }])).toBe(0)
+  })
+
+  test('exactly at grace (5 min) → 0 (suppressed)', () => {
+    expect(calcTotalLateMinutes([{ late_minutes: 5 }])).toBe(0)
+  })
+
+  test('one minute over grace (6 min) → 6 (full amount charged)', () => {
+    expect(calcTotalLateMinutes([{ late_minutes: 6 }])).toBe(6)
+  })
+
+  test('below grace across multiple days → all suppressed', () => {
+    const rows = [{ late_minutes: 2 }, { late_minutes: 4 }, { late_minutes: 5 }]
+    expect(calcTotalLateMinutes(rows)).toBe(0)
+  })
+
+  test('mixed: some within grace, some over → only over-grace rows counted', () => {
+    // 3 min (suppressed) + 10 min (counted) + 5 min (suppressed) + 20 min (counted) = 30
+    const rows = [{ late_minutes: 3 }, { late_minutes: 10 }, { late_minutes: 5 }, { late_minutes: 20 }]
+    expect(calcTotalLateMinutes(rows)).toBe(30)
+  })
+
+  test('null/undefined late_minutes treated as 0 → suppressed', () => {
+    expect(calcTotalLateMinutes([{ late_minutes: null }, { late_minutes: undefined }])).toBe(0)
+  })
+
+  test('late_minutes as string (DB may return strings) → parsed correctly', () => {
+    expect(calcTotalLateMinutes([{ late_minutes: '8' }])).toBe(8)
+    expect(calcTotalLateMinutes([{ late_minutes: '3' }])).toBe(0)
+  })
+})

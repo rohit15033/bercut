@@ -244,7 +244,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
         {/* Regular */}
         {isRegular && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 0.8fr', gap: 12, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={{ ...LS, color: errors.branch ? T.danger : T.muted }}>Branch *</label>
                 <select value={eBranchId} onChange={e => setEBranchId(e.target.value)} style={sel(errors.branch)}>
@@ -266,6 +266,8 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
                   <option value='owner'>Owner</option>
                 </select>
               </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Amount (IDR) *</label>
                 <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
@@ -355,7 +357,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
         {/* Kasbon */}
         {isKasbon && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 0.8fr', gap: 12, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={{ ...LS, color: errors.barber ? T.danger : T.muted }}>Barber *</label>
                 <select value={eBarberId} onChange={e => setEBarberId(e.target.value)} style={sel(errors.barber)}>
@@ -370,6 +372,8 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
                   <option value='next'>Next Payroll Period</option>
                 </select>
               </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={{ ...LS, color: errors.amount ? T.danger : T.muted }}>Amount (IDR) *</label>
                 <div style={{ display: 'flex', alignItems: 'center', borderRadius: 8, border: '1.5px solid ' + (errors.amount ? T.danger : T.border), background: T.white, overflow: 'hidden' }}>
@@ -393,7 +397,7 @@ function EditExpenseModal({ expense, categories, branches, barbers, items, onSav
 
         {errors.save && <div style={{ fontSize: 12, color: T.danger, marginBottom: 10 }}>Save failed — please try again</div>}
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 8, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>Cancel</button>
           <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 8, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
             {saving ? 'Saving…' : 'Save Changes'}

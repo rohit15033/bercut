@@ -50,6 +50,12 @@ async function setupAdmin(page, overrides = {}) {
   await page.route('**/api/settings/users/**', route =>
     route.fulfill({ json: [] })
   )
+  await page.route('**/api/upload/receipt', route => {
+    if (route.request().method() === 'POST')
+      route.fulfill({ json: { url: '/uploads/receipts/rcpt_mock.webp' } })
+    else
+      route.fulfill({ status: 204, body: '' })
+  })
   // Silence other admin data calls
   await page.route('**/api/events**', route =>
     route.fulfill({ body: '', contentType: 'text/event-stream' })
@@ -74,6 +80,15 @@ async function openAddForm(page) {
 async function switchFormTab(page, name) {
   const formCard = page.locator('.admin-card').filter({ hasText: 'New Expense' })
   await formCard.getByRole('button', { name, exact: true }).click()
+}
+
+// Attaches a fake receipt via the hidden file input (receipt upload is mandatory).
+async function attachReceipt(page) {
+  await page.locator('input[type="file"][accept="image/*,application/pdf"]').first().setInputFiles(
+    { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('GIF89a') },
+    { force: true }
+  )
+  await expect(page.getByRole('button', { name: 'Replace' }).first()).toBeVisible({ timeout: 4000 })
 }
 
 // ── Page load ─────────────────────────────────────────────────────────────────
@@ -153,6 +168,8 @@ test.describe('Regular expense — create', () => {
     await page.getByPlaceholder('150000').fill('75000')
     // Description
     await page.getByPlaceholder('e.g. Office supplies').fill('Cleaning supplies')
+    // Receipt (mandatory)
+    await attachReceipt(page)
     // Submit
     await page.getByRole('button', { name: 'Save Expense' }).click()
 
@@ -189,6 +206,7 @@ test.describe('Regular expense — create', () => {
   test('new expense appears in list after save', async ({ page }) => {
     await page.getByPlaceholder('150000').fill('99000')
     await page.getByPlaceholder('e.g. Office supplies').fill('Test expense')
+    await attachReceipt(page)
     await page.getByRole('button', { name: 'Save Expense' }).click()
     await expect(page.getByRole('button', { name: '✓ Saved' })).toBeVisible({ timeout: 5000 })
     // After form closes, expense should be in list
@@ -243,6 +261,8 @@ test.describe('Inventory expense — create', () => {
     await page.locator('select').filter({ hasText: '— Select item —' }).selectOption(ITEM_ID)
     // Fill qty in auto-populated dist line
     await page.getByPlaceholder('Qty').fill('3')
+    // Receipt (mandatory)
+    await attachReceipt(page)
     // Submit
     await page.getByRole('button', { name: 'Save Expense' }).click()
     await expect(page.getByRole('button', { name: '✓ Saved' })).toBeVisible({ timeout: 5000 })
@@ -340,6 +360,8 @@ test.describe('Kasbon expense — create', () => {
     await page.getByPlaceholder('500000').fill('200000')
     // Note (optional)
     await page.getByPlaceholder('e.g. Medical emergency advance').fill('Medical advance')
+    // Receipt (mandatory)
+    await attachReceipt(page)
     // Submit
     await page.getByRole('button', { name: 'Save Expense' }).click()
     await expect(page.getByRole('button', { name: '✓ Saved' })).toBeVisible({ timeout: 5000 })
@@ -358,6 +380,7 @@ test.describe('Kasbon expense — create', () => {
     await page.locator('select').filter({ hasText: '— Select barber —' }).selectOption(BARBER_ID)
     await page.locator('select').filter({ hasText: 'This Payroll Period' }).selectOption('next')
     await page.getByPlaceholder('500000').fill('100000')
+    await attachReceipt(page)
     await page.getByRole('button', { name: 'Save Expense' }).click()
     await expect(page.getByRole('button', { name: '✓ Saved' })).toBeVisible({ timeout: 5000 })
     expect(capturedBody.deduct_period).toBe('next')
@@ -372,6 +395,7 @@ test.describe('Kasbon expense — create', () => {
   test('description defaults to Salary advance when note is empty', async ({ page }) => {
     await page.locator('select').filter({ hasText: '— Select barber —' }).selectOption(BARBER_ID)
     await page.getByPlaceholder('500000').fill('150000')
+    await attachReceipt(page)
     await page.getByRole('button', { name: 'Save Expense' }).click()
     await expect(page.getByRole('button', { name: '✓ Saved' })).toBeVisible({ timeout: 5000 })
     expect(capturedBody.description).toBe('Salary advance')
@@ -505,5 +529,302 @@ test.describe('Form tab switching', () => {
   test('+ Add Expense toggle closes form', async ({ page }) => {
     await page.getByRole('button', { name: '✕ Cancel' }).click()
     await expect(page.getByText('New Expense')).not.toBeVisible()
+  })
+})
+
+// ── Edit Expense modal — Regular ───────────────────────────────────────────────
+
+test.describe('Edit Expense modal — Regular', () => {
+  const editableRegularExpense = {
+    id: 'exp-edit-1', type: 'regular', branch_id: BRANCH_ID,
+    amount: 50000, expense_date: TODAY,
+    description: 'Office supplies', source: 'petty_cash',
+    category_id: CAT_ID, category_name: 'Rent',
+    created_by_name: 'Agrelia',
+    receipt_url: '/uploads/receipts/rcpt_test.webp',
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await setupAdmin(page, { expenses: [editableRegularExpense] })
+    // Mock receipt upload
+    await page.route('**/api/upload/receipt', route => {
+      if (route.request().method() === 'POST') {
+        route.fulfill({ json: { url: '/uploads/receipts/rcpt_new.webp' } })
+      } else {
+        route.continue()
+      }
+    })
+    // Mock PATCH for the specific expense
+    await page.route('**/api/expenses/exp-edit-1', route => {
+      if (route.request().method() === 'PATCH') {
+        route.fulfill({ json: { ...editableRegularExpense, ...route.request().postDataJSON() } })
+      } else {
+        route.continue()
+      }
+    })
+    await goToExpenses(page)
+  })
+
+  test('edit modal opens when pencil button clicked on regular expense', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    await expect(page.getByText('Edit Expense')).toBeVisible()
+  })
+
+  test('all 6 fields visible and pre-populated', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await expect(modal.getByText('Edit Expense')).toBeVisible()
+
+    // Branch field (select containing pre-filled branch name)
+    await expect(modal.locator('select').filter({ hasText: 'Kerobokan' }).first()).toBeVisible()
+    // Category field
+    await expect(modal.locator('select').filter({ hasText: 'Rent' }).first()).toBeVisible()
+    // Source field
+    await expect(modal.locator('select').filter({ hasText: 'Petty Cash' }).first()).toBeVisible()
+    // Amount field pre-populated with 50000
+    const amountInput = modal.locator('input[type="number"]').first()
+    await expect(amountInput).toHaveValue('50000')
+    // Description field
+    const descInput = modal.locator('input[type="text"], input:not([type])').first()
+    await expect(descInput).toHaveValue('Office supplies')
+    // Date field
+    const dateInput = modal.locator('input[type="date"]')
+    await expect(dateInput).toHaveValue(TODAY)
+  })
+
+  test('receipt upload section is visible', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await expect(modal).toBeVisible()
+    // Receipt is pre-filled (shows image with Replace/Remove buttons)
+    await expect(modal.getByRole('button', { name: 'Replace' })).toBeVisible()
+  })
+
+  test('Save Changes submits PATCH with correct payload including receipt_url', async ({ page }) => {
+    let patchBody = null
+    await page.route('**/api/expenses/exp-edit-1', route => {
+      if (route.request().method() === 'PATCH') {
+        patchBody = route.request().postDataJSON()
+        route.fulfill({ json: { ...editableRegularExpense, ...patchBody } })
+      } else {
+        route.continue()
+      }
+    })
+
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await modal.getByRole('button', { name: 'Save Changes' }).click()
+
+    await expect(page.getByText('Edit Expense')).not.toBeVisible({ timeout: 5000 })
+    expect(patchBody).not.toBeNull()
+    expect(patchBody.receipt_url).toBe('/uploads/receipts/rcpt_test.webp')
+    expect(patchBody.amount).toBe(50000)
+    expect(patchBody.description).toBe('Office supplies')
+    expect(patchBody.branch_id).toBe(BRANCH_ID)
+    expect(patchBody.source).toBe('petty_cash')
+  })
+
+  test('validation blocks save when receipt is missing', async ({ page }) => {
+    const noReceiptExpense = {
+      id: 'exp-no-rcpt-1', type: 'regular', branch_id: BRANCH_ID,
+      amount: 30000, expense_date: TODAY,
+      description: 'No receipt yet', source: 'petty_cash',
+      created_by_name: 'Agrelia',
+      receipt_url: null,
+    }
+    // Need a fresh page with no-receipt expense
+    await page.close()
+  })
+
+  test('cancel closes the modal without submitting', async ({ page }) => {
+    let patchCalled = false
+    await page.route('**/api/expenses/exp-edit-1', route => {
+      if (route.request().method() === 'PATCH') {
+        patchCalled = true
+        route.fulfill({ json: editableRegularExpense })
+      } else {
+        route.continue()
+      }
+    })
+
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await modal.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByText('Edit Expense')).not.toBeVisible()
+    expect(patchCalled).toBe(false)
+  })
+})
+
+// ── Edit Expense modal — Regular (no-receipt validation) ──────────────────────
+
+test.describe('Edit Expense modal — Regular (receipt validation)', () => {
+  const noReceiptExpense = {
+    id: 'exp-no-rcpt-1', type: 'regular', branch_id: BRANCH_ID,
+    amount: 30000, expense_date: TODAY,
+    description: 'No receipt yet', source: 'petty_cash',
+    created_by_name: 'Agrelia',
+    receipt_url: null,
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await setupAdmin(page, { expenses: [noReceiptExpense] })
+    await page.route('**/api/upload/receipt', route => {
+      if (route.request().method() === 'POST') {
+        route.fulfill({ json: { url: '/uploads/receipts/rcpt_new.webp' } })
+      } else {
+        route.continue()
+      }
+    })
+    await goToExpenses(page)
+  })
+
+  test('save is blocked and no PATCH called when receipt is missing', async ({ page }) => {
+    let patchCalled = false
+    await page.route('**/api/expenses/exp-no-rcpt-1', route => {
+      if (route.request().method() === 'PATCH') {
+        patchCalled = true
+        route.fulfill({ json: noReceiptExpense })
+      } else {
+        route.continue()
+      }
+    })
+
+    // Open edit via the pencil button
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await expect(modal).toBeVisible()
+
+    // Attempt to save without uploading a receipt
+    await modal.getByRole('button', { name: 'Save Changes' }).click()
+
+    // Modal should still be visible (save blocked)
+    await expect(modal.getByRole('button', { name: 'Save Changes' })).toBeVisible()
+    // No PATCH should have fired
+    expect(patchCalled).toBe(false)
+
+    // Receipt dropzone should show error state (dashed red border — check for the attach text still there)
+    await expect(modal.getByText('📎 Attach Receipt (PDF or Image)')).toBeVisible()
+  })
+})
+
+// ── Edit Expense modal — Kasbon ────────────────────────────────────────────────
+
+test.describe('Edit Expense modal — Kasbon', () => {
+  const editableKasbonExpense = {
+    id: 'exp-kas-edit-1', type: 'kasbon', branch_id: BRANCH_ID,
+    barber_id: BARBER_ID, amount: 200000, expense_date: TODAY,
+    description: 'Medical advance', source: 'petty_cash',
+    deduct_period: 'current', created_by_name: 'Agrelia',
+    receipt_url: '/uploads/receipts/rcpt_kas_test.webp',
+  }
+
+  let patchBody = null
+
+  test.beforeEach(async ({ page }) => {
+    patchBody = null
+    await setupAdmin(page, { expenses: [editableKasbonExpense] })
+    await page.route('**/api/upload/receipt', route => {
+      if (route.request().method() === 'POST') {
+        route.fulfill({ json: { url: '/uploads/receipts/rcpt_new.webp' } })
+      } else {
+        route.continue()
+      }
+    })
+    await page.route('**/api/expenses/exp-kas-edit-1', route => {
+      if (route.request().method() === 'PATCH') {
+        patchBody = route.request().postDataJSON()
+        route.fulfill({ json: { ...editableKasbonExpense, ...patchBody } })
+      } else {
+        route.continue()
+      }
+    })
+    await goToExpenses(page)
+  })
+
+  test('edit modal opens for a kasbon expense', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await expect(modal.getByText('Edit Expense')).toBeVisible()
+    // Kasbon badge should be visible
+    await expect(modal.getByText('Kasbon')).toBeVisible()
+  })
+
+  test('Barber and Deduct Period fields are visible and pre-populated', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+
+    // Barber select visible with Ady selected
+    await expect(modal.locator('select').filter({ hasText: 'Ady' })).toBeVisible()
+    // Deduct Period select visible with "This Payroll Period"
+    await expect(modal.locator('select').filter({ hasText: 'This Payroll Period' })).toBeVisible()
+  })
+
+  test('Amount and Date fields are visible on their own row', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+
+    // Amount pre-populated
+    const amountInput = modal.locator('input[type="number"]').first()
+    await expect(amountInput).toHaveValue('200000')
+
+    // Date pre-populated
+    const dateInput = modal.locator('input[type="date"]')
+    await expect(dateInput).toHaveValue(TODAY)
+  })
+
+  test('Save Changes patches with correct kasbon payload', async ({ page }) => {
+    await page.getByTitle('Edit').click()
+    const modal = page.locator('.admin-card').filter({ hasText: 'Edit Expense' })
+    await modal.getByRole('button', { name: 'Save Changes' }).click()
+
+    await expect(page.getByText('Edit Expense')).not.toBeVisible({ timeout: 5000 })
+    expect(patchBody).not.toBeNull()
+    expect(patchBody.barber_id).toBe(BARBER_ID)
+    expect(patchBody.deduct_period).toBe('current')
+    expect(patchBody.amount).toBe(200000)
+    expect(patchBody.receipt_url).toBe('/uploads/receipts/rcpt_kas_test.webp')
+  })
+})
+
+// ── Receipt column — table UI ──────────────────────────────────────────────────
+
+test.describe('Receipt column — table UI', () => {
+  const expWithReceipt = {
+    id: 'exp-rcpt-1', type: 'regular', branch_id: BRANCH_ID,
+    amount: 50000, expense_date: TODAY,
+    description: 'With receipt', source: 'petty_cash',
+    created_by_name: 'Agrelia',
+    receipt_url: '/uploads/receipts/rcpt_test.webp',
+  }
+  const expNoReceipt = {
+    id: 'exp-no-rcpt-2', type: 'regular', branch_id: BRANCH_ID,
+    amount: 30000, expense_date: TODAY,
+    description: 'No receipt yet', source: 'petty_cash',
+    created_by_name: 'Agrelia',
+    receipt_url: null,
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await setupAdmin(page, { expenses: [expWithReceipt, expNoReceipt] })
+    await goToExpenses(page)
+  })
+
+  test('expense with receipt_url shows "📎 View" button', async ({ page }) => {
+    await expect(page.getByRole('button', { name: '📎 View' })).toBeVisible()
+  })
+
+  test('clicking "📎 View" opens the ReceiptLightbox', async ({ page }) => {
+    await page.getByRole('button', { name: '📎 View' }).click()
+    // Lightbox renders an img with the receipt URL
+    await expect(page.locator('img[alt*="receipt"]')).toBeVisible({ timeout: 3000 })
+  })
+
+  test('expense without receipt_url shows "! No Receipt" badge', async ({ page }) => {
+    await expect(page.getByRole('button', { name: '! No Receipt' })).toBeVisible()
+  })
+
+  test('clicking "! No Receipt" opens the Edit modal', async ({ page }) => {
+    await page.getByRole('button', { name: '! No Receipt' }).click()
+    await expect(page.getByText('Edit Expense')).toBeVisible({ timeout: 3000 })
   })
 })

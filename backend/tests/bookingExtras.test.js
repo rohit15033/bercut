@@ -35,9 +35,10 @@ jest.mock('../services/barberAssignment', () => ({
   tryAssignDeferred: jest.fn().mockResolvedValue(null),
 }))
 
-const request = require('supertest')
-const express = require('express')
-const pool    = require('../config/db')
+const request       = require('supertest')
+const express       = require('express')
+const pool          = require('../config/db')
+const notifications = require('../services/notifications')
 
 const bookingsRouter = require('../routes/bookings')
 const app = express()
@@ -323,6 +324,170 @@ describe('PATCH /api/bookings/:id/reopen — product_ids', () => {
     expect(res.body.added).toBe(1)
     expect(res.body.added_products).toBe(0)
     expect(res.body.added_duration_min).toBe(45)
+  })
+})
+
+// ── POST /api/bookings — extras shape from customer kiosk ────────────────────
+
+describe('POST /api/bookings — extras: [{item_id, quantity}] shape', () => {
+  const BASE_BODY = {
+    branch_id:     BRANCH_ID,
+    customer_name: 'Test Customer',
+    barber_id:     BARBER_ID,
+    service_ids:   [SVC_ID_1],
+    date:          '2026-05-25',
+    slot_time:     '10:00',
+    source:        'kiosk',
+  }
+
+  // Mock sequence for POST /api/bookings (no phone, specific barber, with extras):
+  // 1. BEGIN
+  // 2. dupCheck (SELECT bookings for dedup guard)
+  // 3. SELECT status FROM barbers (barber availability check)
+  // 4. SELECT services (price + commission_rate)
+  // 5. SELECT inventory_items (extras lookup)
+  // 6. SELECT global_settings (points — always queried)
+  // 7. SELECT auto_cancel_minutes FROM branches
+  // 8. SELECT COUNT+1 (booking number)
+  // 9. INSERT bookings
+  // 10. INSERT booking_services
+  // 11. INSERT booking_extras
+  // 12. COMMIT
+  // Then pool.query: SELECT barbers, SELECT services
+
+  function buildMocks({ extrasRows = [], extraInserts = 0 } = {}) {
+    // jest.resetAllMocks() in beforeEach clears mockResolvedValue on notifications,
+    // causing .catch() to throw on undefined. Re-mock them here.
+    notifications.notifyBookingConfirmed.mockResolvedValue(undefined)
+    notifications.notifyBarberNewBooking.mockResolvedValue(undefined)
+
+    const mocks = client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [] })  // dupCheck
+      .mockResolvedValueOnce({ rows: [{ status: 'available' }] })  // barber check
+      .mockResolvedValueOnce({ rows: [{ id: SVC_ID_1, price: 50000, duration_minutes: 30, commission_rate: 35 }] })
+    // Inventory SELECT only called when there are extras to look up
+    if (extrasRows.length > 0) {
+      mocks.mockResolvedValueOnce({ rows: extrasRows })
+    }
+    mocks
+      .mockResolvedValueOnce({ rows: [] })  // global_settings
+      .mockResolvedValueOnce({ rows: [{ auto_cancel_minutes: null }] })  // branches
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })  // booking number
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'confirmed' }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_services
+    for (let i = 0; i < extraInserts; i++) {
+      mocks.mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras (×N)
+    }
+    client.query.mockResolvedValueOnce({ rows: [] })  // COMMIT
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ name: 'Test Barber' }] })
+      .mockResolvedValueOnce({ rows: [{ name: 'Haircut' }] })
+  }
+
+  it('stores qty=2 when extras: [{item_id, quantity: 2}] sent', async () => {
+    buildMocks({
+      extrasRows:   [{ id: ITEM_ID_1, name: 'Pomade', price: 15000, current_stock: 10 }],
+      extraInserts: 1,
+    })
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .send({ ...BASE_BODY, extras: [{ item_id: ITEM_ID_1, quantity: 2 }] })
+
+    expect(res.status).toBe(201)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 2, 15000])
+  })
+
+  it('total_amount includes qty×price: service(50000) + 2×Pomade(15000) = 80000', async () => {
+    buildMocks({
+      extrasRows:   [{ id: ITEM_ID_1, name: 'Pomade', price: 15000, current_stock: 10 }],
+      extraInserts: 1,
+    })
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .send({ ...BASE_BODY, extras: [{ item_id: ITEM_ID_1, quantity: 2 }] })
+
+    expect(res.status).toBe(201)
+    expect(res.body.total_amount).toBe(80000)
+    expect(res.body.extras_total).toBe(30000)
+  })
+
+  it('legacy extra_ids flat array defaults to qty=1', async () => {
+    buildMocks({
+      extrasRows:   [{ id: ITEM_ID_1, name: 'Pomade', price: 15000, current_stock: 10 }],
+      extraInserts: 1,
+    })
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .send({ ...BASE_BODY, extra_ids: [ITEM_ID_1] })
+
+    expect(res.status).toBe(201)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 1, 15000])
+  })
+
+  it('qty clamped to current_stock: qty=99 stored as 5 when stock=5', async () => {
+    buildMocks({
+      extrasRows:   [{ id: ITEM_ID_1, name: 'Pomade', price: 15000, current_stock: 5 }],
+      extraInserts: 1,
+    })
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .send({ ...BASE_BODY, extras: [{ item_id: ITEM_ID_1, quantity: 99 }] })
+
+    expect(res.status).toBe(201)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 5, 15000])
+  })
+
+  it('multiple extras each with their own qty', async () => {
+    buildMocks({
+      extrasRows: [
+        { id: ITEM_ID_1, name: 'Pomade',     price: 15000, current_stock: 10 },
+        { id: ITEM_ID_2, name: 'Hair Spray', price: 10000, current_stock: 10 },
+      ],
+      extraInserts: 2,
+    })
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .send({ ...BASE_BODY, extras: [
+        { item_id: ITEM_ID_1, quantity: 2 },
+        { item_id: ITEM_ID_2, quantity: 3 },
+      ]})
+
+    expect(res.status).toBe(201)
+    // 50000 + 2×15000 + 3×10000 = 110000
+    expect(res.body.total_amount).toBe(110000)
+
+    const insertCalls = client.query.mock.calls.filter(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCalls).toHaveLength(2)
+  })
+
+  it('no extras omitted entirely — total_amount equals subtotal', async () => {
+    buildMocks({ extrasRows: [], extraInserts: 0 })
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .send(BASE_BODY)
+
+    expect(res.status).toBe(201)
+    expect(res.body.total_amount).toBe(50000)
+    expect(res.body.extras_total).toBe(0)
   })
 })
 

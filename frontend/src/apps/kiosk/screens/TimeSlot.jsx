@@ -120,7 +120,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
     const oos = item.qty <= 0
 
     if (compact) return (
-      <div onClick={() => !oos && !sel && toggleExtra(item)}
+      <div data-testid={`extra-card-${itemId}`} onClick={() => !oos && !sel && toggleExtra(item)}
         style={{ position:'relative', flex:'1 1 0', minWidth:0, background: sel ? C.topBg : C.white, border:`2px solid ${sel ? C.topBg : C.border}`, borderRadius:10, padding:'clamp(7px,1vw,10px) clamp(6px,0.8vw,10px)', cursor:oos ? 'not-allowed' : sel ? 'default' : 'pointer', textAlign:'center', transition:'all 0.15s', opacity:oos ? 0.5 : 1 }}>
         {sel ? (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
@@ -144,7 +144,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
     )
 
     return (
-      <div onClick={() => !oos && !sel && toggleExtra(item)}
+      <div data-testid={`extra-card-${itemId}`} onClick={() => !oos && !sel && toggleExtra(item)}
         style={{ position:'relative', background:oos ? C.surface2 : sel ? C.topBg : C.white, border:`2px solid ${oos ? C.border : sel ? C.topBg : C.border}`, borderRadius:12, padding:'clamp(12px,1.6vw,16px)', cursor:oos ? 'not-allowed' : sel ? 'default' : 'pointer', textAlign:'center', transition:'all 0.15s', minHeight:80, opacity:oos ? 0.65 : 1 }}>
         {oos && (
           <div style={{ position:'absolute', top:6, right:6, background:C.danger, color:C.white, fontSize:'clamp(8px,1vw,10px)', fontWeight:700, padding:'1px 7px', borderRadius:4 }}>HABIS</div>

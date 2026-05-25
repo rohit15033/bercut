@@ -392,10 +392,10 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
   const valid = name.trim().length >= 2
 
   const selectedServices    = cart.map(id => services.find(s => s.id === id)).filter(Boolean)
-  const selectedExtrasItems = selectedExtras.map(id => menuItems.find(m => (m.stock_id || m.id) === id)).filter(Boolean)
+  const selectedExtrasItems = [...selectedExtras.values()]
 
   const svcTotal    = selectedServices.reduce((s, svc) => s + parseFloat(svc?.price ?? svc?.base_price ?? 0), 0)
-  const extrasTotal = selectedExtrasItems.reduce((s, item) => s + parseFloat(item?.price || 0), 0)
+  const extrasTotal = selectedExtrasItems.reduce((s, { item, qty }) => s + parseFloat(item?.price || 0) * qty, 0)
   const totalDur    = selectedServices.reduce((s, svc) => s + (svc.duration_min || svc.duration_minutes || 30), 0)
 
   // Loyalty settings
@@ -454,7 +454,7 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
         customer_name:  name,
         barber_id:      barber.source === 'any_available' ? null : barber.id,
         service_ids:    cart,
-        extra_ids:      selectedExtras,
+        extras:         [...selectedExtras.values()].map(({ item, qty }) => ({ item_id: item.stock_id || item.id, quantity: qty })),
         slot_time:      slot,
         date:           new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' }),
         source:         barber.source === 'any_available' ? 'any_available' : 'kiosk',
@@ -617,10 +617,10 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
             })}
 
             {/* Extras */}
-            {selectedExtrasItems.map(item => (
+            {selectedExtrasItems.map(({ item, qty }) => (
               <div key={item.stock_id || item.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'clamp(4px,0.7vh,7px) 0', borderBottom:`1px solid ${C.border}` }}>
-                <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.text2 }}>{item.name}</div>
-                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{fmt(item.price)}</div>
+                <div style={{ fontSize:'clamp(12px,1.4vw,14px)', color:C.text2 }}>{item.name}{qty > 1 ? ` ×${qty}` : ''}</div>
+                <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:600 }}>{fmt(parseFloat(item.price) * qty)}</div>
               </div>
             ))}
 

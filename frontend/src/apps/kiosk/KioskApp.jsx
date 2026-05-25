@@ -170,7 +170,7 @@ function KioskContent({ config }) {
   const [slot,             setSlot]             = useState(null)
   const [name,             setName]             = useState('')
   const [phone,            setPhone]            = useState('')
-  const [selectedExtras,   setSelectedExtras]   = useState([])
+  const [selectedExtras,   setSelectedExtras]   = useState(new Map())
   const [booking,      setBooking]      = useState(null)
   const [pointsUsed,   setPointsUsed]   = useState(0)
   const [paymentPending,   setPaymentPending]   = useState(false)
@@ -302,16 +302,13 @@ function KioskContent({ config }) {
     const svc = services.find(x => x.id === id)
     return s + parseFloat(svc?.price || svc?.base_price || 0)
   }, 0)
-  const extrasTotal = selectedExtras.reduce((s, id) => {
-    const item = menuItems.find(x => x.stock_id === id || x.id === id)
-    return s + parseFloat(item?.price || 0)
-  }, 0)
+  const extrasTotal = [...selectedExtras.values()].reduce((s, { item, qty }) => s + parseFloat(item?.price || 0) * qty, 0)
   const cartTotal = svcTotal + extrasTotal
 
   const reset = () => {
     dirRef.current = -1
     setStep(0); setCart([]); setBarber(null); setSlot(null)
-    setName(''); setPhone(''); setGroup([]); setGroupId(null); setSelectedExtras([])
+    setName(''); setPhone(''); setGroup([]); setGroupId(null); setSelectedExtras(new Map())
     setOwnColorToggles({}); setBooking(null); setPointsUsed(0); setIdleCountdown(null)
     setBarberPanelOpen(false); setStaffPanelOpen(false); setQuickPanelOpen(false)
     clearTimeout(idleTimer.current); clearTimeout(countTimer.current)
@@ -334,7 +331,7 @@ function KioskContent({ config }) {
     }
     dirRef.current = -1
     setStep(1); setCart([]); setBarber(null); setSlot(null)
-    setName(''); setPhone(''); setSelectedExtras([]); setOwnColorToggles({}); setBooking(null); setPointsUsed(0)
+    setName(''); setPhone(''); setSelectedExtras(new Map()); setOwnColorToggles({}); setBooking(null); setPointsUsed(0)
   }
 
   return (

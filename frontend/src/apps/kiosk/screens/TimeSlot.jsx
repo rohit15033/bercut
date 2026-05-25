@@ -89,37 +89,78 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
   const beverages = menuItems.filter(m => m.category === 'beverage' || m.category === 'Beverage')
   const products  = menuItems.filter(m => m.category === 'product'  || m.category === 'Product')
 
-  const toggleExtra = id => {
-    setSelectedExtras(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const toggleExtra = (item) => {
+    const itemId = item.stock_id || item.id
+    setSelectedExtras(prev => {
+      const next = new Map(prev)
+      if (next.has(itemId)) { next.delete(itemId) } else { next.set(itemId, { item, qty: 1 }) }
+      return next
+    })
   }
 
-  const extrasTotal = selectedExtras.reduce((s, id) => {
-    const item = menuItems.find(x => (x.stock_id || x.id) === id)
-    return s + parseFloat(item?.price || 0)
-  }, 0)
+  const adjustExtraQty = (item, delta) => {
+    const itemId = item.stock_id || item.id
+    setSelectedExtras(prev => {
+      const next = new Map(prev)
+      const entry = next.get(itemId)
+      if (!entry) return prev
+      const newQty = entry.qty + delta
+      if (newQty < 1) { next.delete(itemId) } else { next.set(itemId, { ...entry, qty: Math.min(newQty, item.qty || 99) }) }
+      return next
+    })
+  }
+
+  const extrasTotal = [...selectedExtras.values()].reduce((s, { item, qty }) => s + parseFloat(item?.price || 0) * qty, 0)
 
   const ItemCard = ({ item, compact = false }) => {
     const itemId = item.stock_id || item.id
-    const sel = selectedExtras.includes(itemId)
+    const entry = selectedExtras.get(itemId)
+    const sel = !!entry
+    const qty = entry?.qty || 1
     const oos = item.qty <= 0
 
     if (compact) return (
-      <div onClick={() => !oos && toggleExtra(itemId)}
-        style={{ position:'relative', flex:'1 1 0', minWidth:0, background: sel ? C.topBg : C.white, border:`2px solid ${sel ? C.topBg : C.border}`, borderRadius:10, padding:'clamp(7px,1vw,10px) clamp(6px,0.8vw,10px)', cursor:oos ? 'not-allowed' : 'pointer', textAlign:'center', transition:'all 0.15s', opacity:oos ? 0.5 : 1 }}>
-        {sel && <div style={{ position:'absolute', top:4, right:4, width:14, height:14, borderRadius:'50%', background:C.accent, display:'flex', alignItems:'center', justifyContent:'center', fontSize:8, fontWeight:800, color:C.accentText }}>✓</div>}
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, color: sel ? C.white : C.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, color: sel ? 'rgba(255,255,255,0.75)' : C.muted, marginTop:2 }}>{fmt(item.price)}</div>
+      <div onClick={() => !oos && !sel && toggleExtra(item)}
+        style={{ position:'relative', flex:'1 1 0', minWidth:0, background: sel ? C.topBg : C.white, border:`2px solid ${sel ? C.topBg : C.border}`, borderRadius:10, padding:'clamp(7px,1vw,10px) clamp(6px,0.8vw,10px)', cursor:oos ? 'not-allowed' : sel ? 'default' : 'pointer', textAlign:'center', transition:'all 0.15s', opacity:oos ? 0.5 : 1 }}>
+        {sel ? (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, color:C.white, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', width:'100%' }}>{item.name}</div>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <button onClick={e => { e.stopPropagation(); adjustExtraQty(item, -1) }}
+                style={{ width:28, height:28, borderRadius:7, background:C.accent, color:C.accentText, border:'none', fontSize:16, fontWeight:700, lineHeight:1, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>−</button>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(11px,1.3vw,13px)', fontWeight:800, color:C.white, minWidth:16, textAlign:'center' }}>{qty}</span>
+              <button onClick={e => { e.stopPropagation(); adjustExtraQty(item, 1) }}
+                style={{ width:28, height:28, borderRadius:7, background:C.accent, color:C.accentText, border:'none', fontSize:16, fontWeight:700, lineHeight:1, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, opacity: qty >= (item.qty || 99) ? 0.35 : 1, pointerEvents: qty >= (item.qty || 99) ? 'none' : 'auto' }}>+</button>
+            </div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, color:'rgba(255,255,255,0.75)' }}>{fmt(parseFloat(item.price) * qty)}</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(10px,1.2vw,12px)', fontWeight:700, color:C.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</div>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(10px,1.1vw,11px)', fontWeight:700, color:C.muted, marginTop:2 }}>{fmt(item.price)}</div>
+          </>
+        )}
       </div>
     )
 
     return (
-      <div onClick={() => !oos && toggleExtra(itemId)}
-        style={{ position:'relative', background:oos ? C.surface2 : sel ? C.topBg : C.white, border:`2px solid ${oos ? C.border : sel ? C.topBg : C.border}`, borderRadius:12, padding:'clamp(12px,1.6vw,16px)', cursor:oos ? 'not-allowed' : 'pointer', textAlign:'center', transition:'all 0.15s', minHeight:80, opacity:oos ? 0.65 : 1 }}>
+      <div onClick={() => !oos && !sel && toggleExtra(item)}
+        style={{ position:'relative', background:oos ? C.surface2 : sel ? C.topBg : C.white, border:`2px solid ${oos ? C.border : sel ? C.topBg : C.border}`, borderRadius:12, padding:'clamp(12px,1.6vw,16px)', cursor:oos ? 'not-allowed' : sel ? 'default' : 'pointer', textAlign:'center', transition:'all 0.15s', minHeight:80, opacity:oos ? 0.65 : 1 }}>
         {oos && (
           <div style={{ position:'absolute', top:6, right:6, background:C.danger, color:C.white, fontSize:'clamp(8px,1vw,10px)', fontWeight:700, padding:'1px 7px', borderRadius:4 }}>HABIS</div>
         )}
         <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:oos ? C.muted : sel ? C.white : C.text, marginBottom:4 }}>{item.name}</div>
-        <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:oos ? C.muted : sel ? C.topText : C.text }}>{fmt(item.price)}</div>
+        {sel ? (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginTop:6 }}>
+            <button onClick={e => { e.stopPropagation(); adjustExtraQty(item, -1) }}
+              style={{ width:44, height:44, borderRadius:10, background:C.accent, color:C.accentText, border:'none', fontSize:22, fontWeight:700, lineHeight:1, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(14px,1.7vw,16px)', fontWeight:800, color:C.white, minWidth:28, textAlign:'center' }}>{qty}</span>
+            <button onClick={e => { e.stopPropagation(); adjustExtraQty(item, 1) }}
+              style={{ width:44, height:44, borderRadius:10, background:C.accent, color:C.accentText, border:'none', fontSize:22, fontWeight:700, lineHeight:1, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity: qty >= (item.qty || 99) ? 0.35 : 1, pointerEvents: qty >= (item.qty || 99) ? 'none' : 'auto' }}>+</button>
+          </div>
+        ) : (
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:'clamp(12px,1.4vw,14px)', fontWeight:700, color:oos ? C.muted : C.text }}>{fmt(item.price)}</div>
+        )}
       </div>
     )
   }

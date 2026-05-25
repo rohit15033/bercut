@@ -136,8 +136,8 @@ test.describe('NewBookingModal — Products & Drinks tab', () => {
     const productsTab = page.getByTestId('new-booking-tab-products')
     await expect(servicesTab).toBeVisible()
     await expect(productsTab).toBeVisible()
-    // Services tab is active by default — the + Add toggle button is visible
-    await expect(page.getByRole('button', { name: /^\+\s*Add$|^▲\s*Close$/ })).toBeVisible()
+    // Services tab is active by default — catalog rows are directly visible (no toggle needed)
+    await expect(page.getByTestId(`service-row-${SVC_ID_1}`)).toBeVisible()
   })
 
   test('switching to Products tab shows product list', async ({ page }) => {
@@ -196,11 +196,8 @@ test.describe('NewBookingModal — Products & Drinks tab', () => {
   })
 
   test('combined total includes product prices', async ({ page }) => {
-    // First add a service via the + Add dropdown
-    const addBtn = page.locator('button').filter({ hasText: /^\+\s*Add$|^\+Add$/ }).first()
-    await addBtn.click()
-    // Click on Haircut in the dropdown
-    await page.getByText('Haircut').first().click()
+    // Services tab is active by default — click Haircut service row directly
+    await page.getByTestId(`service-row-${SVC_ID_1}`).click()
     // Switch to products and add one
     await page.getByTestId('new-booking-tab-products').click()
     await page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`).click()
@@ -324,5 +321,42 @@ test.describe('ReopenModal — Products & Drinks tab', () => {
     const ctaBtn = page.getByTestId('reopen-cta-btn')
     await expect(ctaBtn).toContainText('service')
     await expect(ctaBtn).toContainText('item')
+  })
+})
+
+// ── NewBookingModal — Services tab (direct catalog) ───────────────────────────
+
+test.describe('NewBookingModal — Services tab (direct catalog)', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupAdmin(page)
+    await goToLiveMonitor(page)
+    await openNewBookingModal(page)
+  })
+
+  test('service catalog rows render directly on Services tab (no toggle needed)', async ({ page }) => {
+    // Services tab is active by default — rows must be immediately visible without clicking any button
+    await expect(page.locator('[data-testid^="service-row-"]').first()).toBeVisible()
+    // Confirm both mock service rows are present
+    await expect(page.getByTestId(`service-row-${SVC_ID_1}`)).toBeVisible()
+    await expect(page.getByTestId(`service-row-${SVC_ID_2}`)).toBeVisible()
+  })
+
+  test('selecting a service row shows it in the persistent selected section', async ({ page }) => {
+    // Click the first service row (Haircut)
+    const serviceRow = page.getByTestId(`service-row-${SVC_ID_1}`)
+    await serviceRow.click()
+
+    // The row should still be visible (selected state)
+    await expect(serviceRow).toBeVisible()
+
+    // Switch to Products tab — the selected service section is outside tab content, so it persists
+    await page.getByTestId('new-booking-tab-products').click()
+
+    // The persistent SERVICES section should show the selected service name
+    await expect(page.getByText('Haircut').first()).toBeVisible()
+
+    // The items-total should now be visible reflecting the service price
+    await expect(page.getByTestId('items-total')).toBeVisible()
+    await expect(page.getByTestId('items-total')).toContainText('60.000')
   })
 })

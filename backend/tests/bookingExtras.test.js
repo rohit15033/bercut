@@ -105,7 +105,7 @@ describe('PATCH /api/bookings/:id/admin-update — add_product_ids', () => {
     const insertCall = client.query.mock.calls.find(
       c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
     expect(insertCall).toBeDefined()
-    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 15000])
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 1, 15000])
   })
 
   it('deletes extras by booking_extras.id when remove_product_ids provided', async () => {

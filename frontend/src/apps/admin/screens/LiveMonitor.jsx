@@ -238,7 +238,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
   const [selectedSvcs,    setSelectedSvcs]    = useState([])
   const [saving,          setSaving]          = useState(false)
   const [allProducts,     setAllProducts]     = useState([])
-  const [selectedProducts,setSelectedProducts]= useState([])
+  const [selectedProducts,setSelectedProducts]= useState(new Map())
   const [activeTab,       setActiveTab]       = useState('services')
   const [loadingProducts, setLoadingProducts] = useState(false)
 
@@ -248,7 +248,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
   useEffect(() => {
     setBarberId(branchBarbers[0]?.id || '')
     setSelectedSvcs([])
-    setSelectedProducts([])
+    setSelectedProducts(new Map())
     if (!branchId) return
     api.get(`/services?branch_id=${branchId}`)
       .then(d => setAllServices(Array.isArray(d) ? d.filter(s => s.is_active !== false) : []))
@@ -268,15 +268,29 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
   }
 
   function toggleProduct(p) {
-    setSelectedProducts(prev =>
-      prev.some(sp => sp.id === p.id)
-        ? prev.filter(sp => sp.id !== p.id)
-        : [...prev, p])
+    setSelectedProducts(prev => {
+      const next = new Map(prev)
+      if (next.has(p.id)) next.delete(p.id)
+      else next.set(p.id, { item: p, qty: 1 })
+      return next
+    })
+  }
+
+  function adjustProductQty(item, delta) {
+    setSelectedProducts(prev => {
+      const next = new Map(prev)
+      const entry = next.get(item.id)
+      if (!entry) return prev
+      const newQty = entry.qty + delta
+      if (newQty < 1) next.delete(item.id)
+      else next.set(item.id, { ...entry, qty: Math.min(newQty, item.current_stock) })
+      return next
+    })
   }
 
   const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
   const svcTotal  = selectedSvcs.reduce((a, s) => a + Number(s.price ?? 0), 0)
-  const prodTotal = selectedProducts.reduce((a, p) => a + Number(p.price ?? 0), 0)
+  const prodTotal = [...selectedProducts.values()].reduce((a, {item, qty}) => a + Number(item.price ?? 0) * qty, 0)
   const total     = svcTotal + prodTotal
 
   async function handleSave() {
@@ -291,7 +305,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
         customer_phone:  customerPhone.trim() || undefined,
         barber_id:       barberId,
         service_ids:     selectedSvcs.map(s => s.id),
-        product_ids:     selectedProducts.map(p => p.id),
+        add_products:    [...selectedProducts.values()].map(({item, qty}) => ({ item_id: item.id, quantity: qty })),
         date,
         time,
         notes: notes.trim() || undefined,
@@ -377,7 +391,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
               {['services', 'products'].map(tab => {
                 const isActive = activeTab === tab
                 const label = tab === 'services' ? 'Services' : 'Products & Drinks'
-                const count = tab === 'services' ? selectedSvcs.length : selectedProducts.length
+                const count = tab === 'services' ? selectedSvcs.length : selectedProducts.size
                 return (
                   <button key={tab} onClick={() => setActiveTab(tab)}
                     data-testid={tab === 'services' ? 'new-booking-tab-services' : 'new-booking-tab-products'}
@@ -443,20 +457,17 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
                   <div style={{ padding: '24px 0', fontSize: 12, color: T.muted, textAlign: 'center' }}>No products available for this branch</div>
                 ) : (
                   allProducts.map(p => {
-                    const sel = selectedProducts.some(sp => sp.id === p.id)
+                    const sel = selectedProducts.has(p.id)
                     const outOfStock = p.current_stock === 0
                     return (
-                      <div key={p.id} onClick={() => toggleProduct(p)}
+                      <div key={p.id} onClick={() => !sel && !outOfStock && toggleProduct(p)}
                         data-testid={`product-card-${p.id}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8,
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8,
                           border: `1.5px solid ${sel ? T.topBg : T.border}`, background: sel ? T.surface : T.white,
-                          cursor: 'pointer', marginBottom: 6, transition: 'background 0.12s ease' }}
-                        onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.surface }}
-                        onMouseLeave={e => { if (!sel) e.currentTarget.style.background = T.white }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? T.topBg : T.border}`,
-                          background: sel ? T.topBg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
-                        </div>
+                          cursor: outOfStock ? 'not-allowed' : sel ? 'default' : 'pointer', marginBottom: 6, transition: 'background 0.12s ease',
+                          opacity: outOfStock ? 0.55 : 1, pointerEvents: outOfStock ? 'none' : 'auto' }}
+                        onMouseEnter={e => { if (!sel && !outOfStock) e.currentTarget.style.background = T.surface }}
+                        onMouseLeave={e => { if (!sel && !outOfStock) e.currentTarget.style.background = T.white }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>
                             {p.name}
@@ -471,9 +482,30 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
                             {p.current_stock} in stock
                           </div>
                         </div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>
-                          Rp {Number(p.price || 0).toLocaleString('id-ID')}
-                        </div>
+                        {selectedProducts.has(p.id) ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <button onClick={e => { e.stopPropagation(); adjustProductQty(p, -1) }}
+                                style={{ width: 32, height: 32, borderRadius: 7, background: T.surface, color: T.text, border: `1.5px solid ${T.border}`, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                −
+                              </button>
+                              <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 14, color: T.text, minWidth: 24, textAlign: 'center' }}>
+                                {selectedProducts.get(p.id).qty}
+                              </span>
+                              <button onClick={e => { e.stopPropagation(); adjustProductQty(p, 1) }}
+                                style={{ width: 32, height: 32, borderRadius: 7, background: T.surface, color: T.text, border: `1.5px solid ${T.border}`, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedProducts.get(p.id).qty >= p.current_stock ? 0.4 : 1, pointerEvents: selectedProducts.get(p.id).qty >= p.current_stock ? 'none' : 'auto' }}>
+                                +
+                              </button>
+                            </div>
+                            {selectedProducts.get(p.id).qty > 1 && (
+                              <div style={{ fontSize: 11, color: T.muted }}>
+                                {selectedProducts.get(p.id).qty} × {fmt(Number(p.price ?? 0))} = {fmt(Number(p.price ?? 0) * selectedProducts.get(p.id).qty)}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>{fmt(Number(p.price ?? 0))}</span>
+                        )}
                       </div>
                     )
                   })
@@ -500,17 +532,17 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
             )}
 
             {/* Persistent selected products summary — visible regardless of active tab */}
-            {selectedProducts.length > 0 && (
+            {selectedProducts.size > 0 && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Products &amp; Drinks</div>
-                {selectedProducts.map(sp => (
-                  <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                {[...selectedProducts.values()].map(({item, qty}) => (
+                  <div key={item.id} data-testid={`selected-product-${item.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sp.name}</div>
-                      <div style={{ fontSize: 11, color: T.muted }}>{fmt(sp.price)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{item.name}</div>
+                      <div style={{ fontSize: 11, color: T.muted }}>{qty > 1 ? `${qty} × ${fmt(Number(item.price??0))} = ${fmt(Number(item.price??0)*qty)}` : fmt(Number(item.price??0))}</div>
                     </div>
-                    <button onClick={() => toggleProduct(sp)}
-                      data-testid={`remove-product-${sp.id}`}
+                    <button onClick={() => setSelectedProducts(prev => { const n = new Map(prev); n.delete(item.id); return n })}
+                      data-testid={`remove-product-${item.id}`}
                       style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                   </div>
                 ))}
@@ -518,7 +550,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
             )}
 
             {/* Combined total */}
-            {(selectedSvcs.length > 0 || selectedProducts.length > 0) && (
+            {(selectedSvcs.length > 0 || selectedProducts.size > 0) && (
               <div data-testid="items-total" style={{ fontSize: 12, fontWeight: 700, color: T.text2, textAlign: 'right', paddingTop: 8 }}>
                 Total: {fmt(total)}
               </div>
@@ -559,7 +591,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
   const [allProducts,     setAllProducts]     = useState([])
   const [currentExtras,   setCurrentExtras]   = useState([])   // { id (booking_extras.id), item_id, name, price }
   const [originalExtraIds,setOriginalExtraIds]= useState([])   // booking_extras.id values from load
-  const [selectedProducts,setSelectedProducts]= useState([])   // new additions: { id (item_id), name, price }
+  const [selectedProducts,setSelectedProducts]= useState(new Map())   // new additions: Map<item_id, {item, qty}>
   const [activeTab,       setActiveTab]       = useState('services')
   const [loadingProducts, setLoadingProducts] = useState(false)
 
@@ -605,10 +637,24 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
   }
 
   function toggleNewProduct(p) {
-    setSelectedProducts(prev =>
-      prev.some(sp => sp.id === p.id)
-        ? prev.filter(sp => sp.id !== p.id)
-        : [...prev, { id: p.id, name: p.name, price: p.price }])
+    setSelectedProducts(prev => {
+      const next = new Map(prev)
+      if (next.has(p.id)) next.delete(p.id)
+      else next.set(p.id, { item: p, qty: 1 })
+      return next
+    })
+  }
+
+  function adjustNewProductQty(item, delta) {
+    setSelectedProducts(prev => {
+      const next = new Map(prev)
+      const entry = next.get(item.id)
+      if (!entry) return prev
+      const newQty = entry.qty + delta
+      if (newQty < 1) next.delete(item.id)
+      else next.set(item.id, { ...entry, qty: Math.min(newQty, item.current_stock) })
+      return next
+    })
   }
 
   function removeExtra(extraId) {
@@ -622,10 +668,10 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
       const toRemove = originalSvcIds.filter(id => !nowIds.includes(id))
       const toAdd    = nowIds.filter(id => !originalSvcIds.includes(id))
 
-      // Products: new additions are in selectedProducts (item_ids to add)
+      // Products: new additions are in selectedProducts (Map<item_id, {item, qty}>)
       // Removals: extras from original load that are no longer in currentExtras
       const currentExtraIds = currentExtras.map(e => e.id)
-      const toAddProducts    = selectedProducts.map(p => p.id)   // item_ids
+      const toAddProducts    = [...selectedProducts.values()].map(({item, qty}) => ({ item_id: item.id, quantity: qty }))
       const toRemoveProducts = originalExtraIds.filter(id => !currentExtraIds.includes(id)) // booking_extras.ids
 
       // Build scheduled_at ISO string from local date+time inputs
@@ -638,7 +684,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
         add_service_ids:     toAdd,
         remove_service_ids:  toRemove,
         scheduled_at:        timeChanged ? newISO : undefined,
-        add_product_ids:     toAddProducts.length    ? toAddProducts    : undefined,
+        add_products:        toAddProducts.length    ? toAddProducts    : undefined,
         remove_product_ids:  toRemoveProducts.length ? toRemoveProducts : undefined,
       })
       onSave()
@@ -702,7 +748,7 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                   {['services', 'products'].map(tab => {
                     const isActive = activeTab === tab
                     const label = tab === 'services' ? 'Services' : 'Products & Drinks'
-                    const count = tab === 'services' ? currentSvcs.length : (currentExtras.length + selectedProducts.length)
+                    const count = tab === 'services' ? currentSvcs.length : (currentExtras.length + selectedProducts.size)
                     return (
                       <button key={tab} onClick={() => setActiveTab(tab)}
                         data-testid={tab === 'services' ? 'edit-booking-tab-services' : 'edit-booking-tab-products'}
@@ -770,20 +816,18 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                     ) : (
                       allProducts.map(p => {
                         const alreadyInExtras = currentExtras.some(e => e.item_id === p.id)
-                        const sel = alreadyInExtras || selectedProducts.some(sp => sp.id === p.id)
+                        const selNew = selectedProducts.has(p.id)
+                        const sel = alreadyInExtras || selNew
                         const outOfStock = p.current_stock === 0
                         return (
-                          <div key={p.id} onClick={() => !alreadyInExtras && toggleNewProduct(p)}
+                          <div key={p.id} onClick={() => !alreadyInExtras && !selNew && !outOfStock && toggleNewProduct(p)}
                             data-testid={`product-card-${p.id}`}
-                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8,
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8,
                               border: `1.5px solid ${sel ? T.topBg : T.border}`, background: sel ? T.surface : T.white,
-                              cursor: alreadyInExtras ? 'default' : 'pointer', marginBottom: 6, transition: 'background 0.12s ease' }}
-                            onMouseEnter={e => { if (!sel && !alreadyInExtras) e.currentTarget.style.background = T.surface }}
-                            onMouseLeave={e => { if (!sel && !alreadyInExtras) e.currentTarget.style.background = T.white }}>
-                            <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? T.topBg : T.border}`,
-                              background: sel ? T.topBg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
-                            </div>
+                              cursor: alreadyInExtras || outOfStock ? 'not-allowed' : selNew ? 'default' : 'pointer', marginBottom: 6, transition: 'background 0.12s ease',
+                              opacity: outOfStock ? 0.55 : 1, pointerEvents: outOfStock ? 'none' : 'auto' }}
+                            onMouseEnter={e => { if (!sel && !alreadyInExtras && !outOfStock) e.currentTarget.style.background = T.surface }}
+                            onMouseLeave={e => { if (!sel && !alreadyInExtras && !outOfStock) e.currentTarget.style.background = T.white }}>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>
                                 {p.name}
@@ -798,9 +842,30 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                                 {p.current_stock} in stock
                               </div>
                             </div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>
-                              Rp {Number(p.price || 0).toLocaleString('id-ID')}
-                            </div>
+                            {selectedProducts.has(p.id) ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <button onClick={e => { e.stopPropagation(); adjustNewProductQty(p, -1) }}
+                                    style={{ width: 32, height: 32, borderRadius: 7, background: T.surface, color: T.text, border: `1.5px solid ${T.border}`, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    −
+                                  </button>
+                                  <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 14, color: T.text, minWidth: 24, textAlign: 'center' }}>
+                                    {selectedProducts.get(p.id).qty}
+                                  </span>
+                                  <button onClick={e => { e.stopPropagation(); adjustNewProductQty(p, 1) }}
+                                    style={{ width: 32, height: 32, borderRadius: 7, background: T.surface, color: T.text, border: `1.5px solid ${T.border}`, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedProducts.get(p.id).qty >= p.current_stock ? 0.4 : 1, pointerEvents: selectedProducts.get(p.id).qty >= p.current_stock ? 'none' : 'auto' }}>
+                                    +
+                                  </button>
+                                </div>
+                                {selectedProducts.get(p.id).qty > 1 && (
+                                  <div style={{ fontSize: 11, color: T.muted }}>
+                                    {selectedProducts.get(p.id).qty} × {fmt(Number(p.price ?? 0))} = {fmt(Number(p.price ?? 0) * selectedProducts.get(p.id).qty)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>{fmt(Number(p.price ?? 0))}</span>
+                            )}
                           </div>
                         )
                       })
@@ -827,7 +892,9 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                 )}
 
                 {/* Persistent selected products summary — visible regardless of active tab */}
-                {(currentExtras.length > 0 || selectedProducts.length > 0) && (
+                {/* currentExtras: already-saved extras (read-only, no stepper) */}
+                {/* TODO: qty edit for currentExtras requires backend delete+readd */}
+                {(currentExtras.length > 0 || selectedProducts.size > 0) && (
                   <div style={{ marginTop: 8 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Products &amp; Drinks</div>
                     {currentExtras.map(ex => (
@@ -840,14 +907,14 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                           style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                       </div>
                     ))}
-                    {selectedProducts.map(sp => (
-                      <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                    {[...selectedProducts.values()].map(({item, qty}) => (
+                      <div key={item.id} data-testid={`selected-product-${item.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
                         <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sp.name}</div>
-                          <div style={{ fontSize: 11, color: T.muted }}>{fmt(sp.price)}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{item.name}</div>
+                          <div style={{ fontSize: 11, color: T.muted }}>{qty > 1 ? `${qty} × ${fmt(Number(item.price??0))} = ${fmt(Number(item.price??0)*qty)}` : fmt(Number(item.price??0))}</div>
                         </div>
-                        <button onClick={() => toggleNewProduct(sp)}
-                          data-testid={`remove-product-${sp.id}`}
+                        <button onClick={() => setSelectedProducts(prev => { const n = new Map(prev); n.delete(item.id); return n })}
+                          data-testid={`remove-product-${item.id}`}
                           style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                       </div>
                     ))}
@@ -855,12 +922,12 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                 )}
 
                 {/* Combined total */}
-                {(currentSvcs.length > 0 || currentExtras.length > 0 || selectedProducts.length > 0) && (
+                {(currentSvcs.length > 0 || currentExtras.length > 0 || selectedProducts.size > 0) && (
                   <div data-testid="items-total" style={{ fontSize: 12, fontWeight: 700, color: T.text2, textAlign: 'right', paddingTop: 8 }}>
                     Total: {fmt(
                       currentSvcs.reduce((a, s) => a + Number(s.price_charged ?? s.price ?? 0), 0) +
                       currentExtras.reduce((a, e) => a + Number(e.price ?? 0), 0) +
-                      selectedProducts.reduce((a, p) => a + Number(p.price ?? 0), 0)
+                      [...selectedProducts.values()].reduce((a, {item, qty}) => a + Number(item.price ?? 0) * qty, 0)
                     )}
                   </div>
                 )}
@@ -890,9 +957,11 @@ function ReopenModal({ booking, onConfirm, onClose }) {
   const [loading,          setLoading]          = useState(true)
   const [saving,           setSaving]           = useState(false)
   const [allProducts,      setAllProducts]      = useState([])
-  const [selectedProducts, setSelectedProducts] = useState([])
+  const [selectedProducts, setSelectedProducts] = useState(new Map())
   const [loadingProducts,  setLoadingProducts]  = useState(false)
   const [activeTab,        setActiveTab]        = useState('services')
+
+  const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 
   useEffect(() => {
     setLoadingProducts(true)
@@ -909,15 +978,34 @@ function ReopenModal({ booking, onConfirm, onClose }) {
   const toggle = id => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
 
   function toggleProduct(p) {
-    setSelectedProducts(prev =>
-      prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])
+    setSelectedProducts(prev => {
+      const next = new Map(prev)
+      if (next.has(p.id)) next.delete(p.id)
+      else next.set(p.id, { item: p, qty: 1 })
+      return next
+    })
+  }
+
+  function adjustReopenProductQty(item, delta) {
+    setSelectedProducts(prev => {
+      const next = new Map(prev)
+      const entry = next.get(item.id)
+      if (!entry) return prev
+      const newQty = entry.qty + delta
+      if (newQty < 1) next.delete(item.id)
+      else next.set(item.id, { ...entry, qty: Math.min(newQty, item.current_stock) })
+      return next
+    })
   }
 
   async function handleConfirm() {
-    if (!selected.length && !selectedProducts.length) return
+    if (!selected.length && !selectedProducts.size) return
     setSaving(true)
     try {
-      await api.patch(`/bookings/${booking.id}/reopen`, { service_ids: selected, product_ids: selectedProducts })
+      await api.patch(`/bookings/${booking.id}/reopen`, {
+        service_ids: selected,
+        product_ids: [...selectedProducts.values()].map(({item, qty}) => ({ id: item.id, quantity: qty })),
+      })
       onConfirm()
       onClose()
     } catch (err) { alert(err.message || 'Failed to reopen booking') }
@@ -931,12 +1019,12 @@ function ReopenModal({ booking, onConfirm, onClose }) {
 
   const existingServiceIds = new Set((booking.services || []).map(s => s.service_id))
 
-  const hasAny = selected.length > 0 || selectedProducts.length > 0
+  const hasAny = selected.length > 0 || selectedProducts.size > 0
 
   function ctaLabel() {
     if (saving) return 'Saving…'
     const n = selected.length
-    const p = selectedProducts.length
+    const p = selectedProducts.size
     if (n === 0 && p === 0) return 'Resume'
     if (n > 0 && p === 0)  return `Resume with ${n} service${n > 1 ? 's' : ''}`
     if (n === 0 && p > 0)  return `Resume with ${p} item${p > 1 ? 's' : ''}`
@@ -945,7 +1033,7 @@ function ReopenModal({ booking, onConfirm, onClose }) {
 
   function summaryLine() {
     const n = selected.length
-    const p = selectedProducts.length
+    const p = selectedProducts.size
     if (n === 0 && p === 0) return null
     if (n > 0 && p === 0)   return `Est. additional time: ${newDuration} min`
     if (n === 0 && p > 0)   return `${p} product${p > 1 ? 's' : ''} added`
@@ -966,7 +1054,7 @@ function ReopenModal({ booking, onConfirm, onClose }) {
           {['services', 'products'].map(tab => {
             const isActive = activeTab === tab
             const label = tab === 'services' ? 'Services' : 'Products & Drinks'
-            const count = tab === 'services' ? selected.length : selectedProducts.length
+            const count = tab === 'services' ? selected.length : selectedProducts.size
             return (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 data-testid={tab === 'services' ? 'reopen-tab-services' : 'reopen-tab-products'}
@@ -1022,20 +1110,17 @@ function ReopenModal({ booking, onConfirm, onClose }) {
               ) : allProducts.length === 0 ? (
                 <div style={{ padding: '24px 0', fontSize: 12, color: T.muted, textAlign: 'center' }}>No products available for this branch</div>
               ) : allProducts.map(p => {
-                const sel = selectedProducts.includes(p.id)
+                const sel = selectedProducts.has(p.id)
                 const outOfStock = p.current_stock === 0
                 return (
-                  <div key={p.id} onClick={() => toggleProduct(p)}
+                  <div key={p.id} onClick={() => !sel && !outOfStock && toggleProduct(p)}
                     data-testid={`product-card-${p.id}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8,
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8,
                       border: `1.5px solid ${sel ? T.topBg : T.border}`, background: sel ? T.surface : T.white,
-                      cursor: 'pointer', marginBottom: 0, transition: 'background 0.12s ease' }}
-                    onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.surface }}
-                    onMouseLeave={e => { if (!sel) e.currentTarget.style.background = T.white }}>
-                    <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? T.topBg : T.border}`,
-                      background: sel ? T.topBg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
-                    </div>
+                      cursor: outOfStock ? 'not-allowed' : sel ? 'default' : 'pointer', marginBottom: 0, transition: 'background 0.12s ease',
+                      opacity: outOfStock ? 0.55 : 1, pointerEvents: outOfStock ? 'none' : 'auto' }}
+                    onMouseEnter={e => { if (!sel && !outOfStock) e.currentTarget.style.background = T.surface }}
+                    onMouseLeave={e => { if (!sel && !outOfStock) e.currentTarget.style.background = T.white }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>
                         {p.name}
@@ -1050,9 +1135,30 @@ function ReopenModal({ booking, onConfirm, onClose }) {
                         {p.current_stock} in stock
                       </div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>
-                      Rp {Number(p.price || 0).toLocaleString('id-ID')}
-                    </div>
+                    {selectedProducts.has(p.id) ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button onClick={e => { e.stopPropagation(); adjustReopenProductQty(p, -1) }}
+                            style={{ width: 32, height: 32, borderRadius: 7, background: T.surface, color: T.text, border: `1.5px solid ${T.border}`, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            −
+                          </button>
+                          <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 14, color: T.text, minWidth: 24, textAlign: 'center' }}>
+                            {selectedProducts.get(p.id).qty}
+                          </span>
+                          <button onClick={e => { e.stopPropagation(); adjustReopenProductQty(p, 1) }}
+                            style={{ width: 32, height: 32, borderRadius: 7, background: T.surface, color: T.text, border: `1.5px solid ${T.border}`, fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedProducts.get(p.id).qty >= p.current_stock ? 0.4 : 1, pointerEvents: selectedProducts.get(p.id).qty >= p.current_stock ? 'none' : 'auto' }}>
+                            +
+                          </button>
+                        </div>
+                        {selectedProducts.get(p.id).qty > 1 && (
+                          <div style={{ fontSize: 11, color: T.muted }}>
+                            {selectedProducts.get(p.id).qty} × {fmt(Number(p.price ?? 0))} = {fmt(Number(p.price ?? 0) * selectedProducts.get(p.id).qty)}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>{fmt(Number(p.price ?? 0))}</span>
+                    )}
                   </div>
                 )
               })
@@ -1061,24 +1167,20 @@ function ReopenModal({ booking, onConfirm, onClose }) {
         )}
 
         {/* Persistent selected products summary — visible regardless of active tab */}
-        {selectedProducts.length > 0 && (
+        {selectedProducts.size > 0 && (
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Products &amp; Drinks</div>
-            {selectedProducts.map(pid => {
-              const p = allProducts.find(x => x.id === pid)
-              if (!p) return null
-              return (
-                <div key={pid} data-testid={`selected-product-${pid}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: T.muted }}>Rp {Number(p.price || 0).toLocaleString('id-ID')}</div>
-                  </div>
-                  <button onClick={() => toggleProduct(p)}
-                    data-testid={`remove-product-${pid}`}
-                    style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            {[...selectedProducts.values()].map(({item, qty}) => (
+              <div key={item.id} data-testid={`selected-product-${item.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{item.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{qty > 1 ? `${qty} × ${fmt(Number(item.price??0))} = ${fmt(Number(item.price??0)*qty)}` : fmt(Number(item.price??0))}</div>
                 </div>
-              )
-            })}
+                <button onClick={() => setSelectedProducts(prev => { const n = new Map(prev); n.delete(item.id); return n })}
+                  data-testid={`remove-product-${item.id}`}
+                  style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              </div>
+            ))}
           </div>
         )}
 

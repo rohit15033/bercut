@@ -173,14 +173,14 @@ test.describe('NewBookingModal — Products & Drinks tab', () => {
     await expect(productsTab.locator('span').filter({ hasText: '1' })).toBeVisible()
   })
 
-  test('out-of-stock product shows warning badge and is still selectable', async ({ page }) => {
+  test('out-of-stock product shows warning badge and is non-selectable', async ({ page }) => {
     await page.getByTestId('new-booking-tab-products').click()
     const outOfStockCard = page.getByTestId(`product-card-${PROD_OUT_STOCK_ID}`)
     await expect(outOfStockCard).toBeVisible()
     await expect(outOfStockCard.getByText('Out of stock')).toBeVisible()
-    // Admin can still select it
-    await outOfStockCard.click()
-    await expect(page.getByTestId(`selected-product-${PROD_OUT_STOCK_ID}`)).toBeVisible()
+    // Out-of-stock cards are non-selectable — clicking must not add to selected list
+    await outOfStockCard.click({ force: true })
+    await expect(page.getByTestId(`selected-product-${PROD_OUT_STOCK_ID}`)).not.toBeVisible()
   })
 
   test('selected product chip is visible on Services tab (persistent section)', async ({ page }) => {
@@ -247,7 +247,8 @@ test.describe('EditBookingModal — Products & Drinks tab', () => {
     await expect(async () => {
       expect(capturedPatch).not.toBeNull()
     }).toPass({ timeout: 5000 })
-    expect(capturedPatch.add_product_ids).toContain(PROD_IN_STOCK_ID)
+    expect(Array.isArray(capturedPatch.add_products)).toBe(true)
+    expect(capturedPatch.add_products.some(p => p.item_id === PROD_IN_STOCK_ID && p.quantity === 1)).toBe(true)
   })
 })
 

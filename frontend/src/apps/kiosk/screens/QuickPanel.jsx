@@ -29,13 +29,33 @@ function AddServiceModal({ booking, services, items, onConfirm, onClose }) {
   // Items state
   const itemCats = [...new Set(items.map(i => i.category || 'Produk'))]
   const [itemCat, setItemCat] = useState(itemCats[0] || '')
-  const [addedItems, setAddedItems] = useState([])
+  const [addedItems, setAddedItems] = useState(new Map())
   const filteredItems = items.filter(i => (i.category || 'Produk') === itemCat && i.kiosk_visible !== false && i.current_stock > 0)
-  const toggleItem = id => setAddedItems(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+
+  function toggleItem(item) {
+    setAddedItems(prev => {
+      const next = new Map(prev)
+      if (next.has(item.id)) next.delete(item.id)
+      else next.set(item.id, { item, qty: 1 })
+      return next
+    })
+  }
+
+  function adjustQty(item, delta) {
+    setAddedItems(prev => {
+      const next = new Map(prev)
+      const entry = next.get(item.id)
+      if (!entry) return prev
+      const newQty = entry.qty + delta
+      if (newQty < 1) next.delete(item.id)
+      else next.set(item.id, { ...entry, qty: Math.min(newQty, item.current_stock) })
+      return next
+    })
+  }
 
   const svcTotal  = services.filter(s => addedSvc.includes(s.id)).reduce((a, s) => a + parseFloat(s.price || s.base_price || 0), 0)
-  const itemTotal = items.filter(i => addedItems.includes(i.id)).reduce((a, i) => a + parseFloat(i.price || 0), 0)
-  const totalAdded = addedSvc.length + addedItems.length
+  const itemTotal = [...addedItems.values()].reduce((a, {item, qty}) => a + parseFloat(item.price||0) * qty, 0)
+  const totalAdded = addedSvc.length + addedItems.size
 
   const rowStyle = (sel) => ({
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -113,14 +133,50 @@ function AddServiceModal({ booking, services, items, onConfirm, onClose }) {
           {tab === 'items' && (
             <>
               {filteredItems.map(i => {
-                const sel = addedItems.includes(i.id)
+                const entry = addedItems.get(i.id)
+                const sel = !!entry
+                const qty = entry?.qty || 0
                 return (
-                  <div key={i.id} onClick={() => toggleItem(i.id)} style={rowStyle(sel)}>
-                    <div>
+                  <div key={i.id}
+                    data-testid={`item-card-${i.id}`}
+                    onClick={() => !sel && toggleItem(i)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: sel ? 'clamp(10px,1.4vw,12px) clamp(12px,1.6vw,14px)' : 'clamp(12px,1.6vw,14px)',
+                      marginBottom: 8, borderRadius: 12,
+                      border: `1.5px solid ${sel ? C.accent : C.border}`,
+                      background: sel ? C.accent : C.white,
+                      cursor: sel ? 'default' : 'pointer',
+                      transition: 'background 0.15s ease',
+                    }}>
+                    {/* Left: name + stock */}
+                    <div style={{ flexShrink: 0 }}>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', color: sel ? C.accentText : C.text }}>{i.name}</div>
                       <div style={{ fontSize: 'clamp(11px,1.3vw,12px)', color: sel ? C.accentText : C.muted, marginTop: 2 }}>Stok: {i.current_stock}</div>
                     </div>
-                    <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.7vw,16px)', color: sel ? C.accentText : C.text }}>{fmt(parseFloat(i.price || 0))}</div>
+                    {/* Right: price (unselected) or price line + stepper (selected) */}
+                    {!sel ? (
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.7vw,16px)', color: C.text }}>{fmt(parseFloat(i.price||0))}</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.4vw,14px)', color: C.accentText }}>
+                          {qty} × {fmt(parseFloat(i.price||0))} = {fmt(parseFloat(i.price||0) * qty)}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); adjustQty(i, -1) }}
+                            style={{ width: 44, height: 44, borderRadius: 10, background: C.topBg, color: C.white, border: 'none', fontSize: 22, fontWeight: 700, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            −
+                          </button>
+                          <span style={{ minWidth: 28, textAlign: 'center', fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.7vw,16px)', color: C.accentText }}>{qty}</span>
+                          <button
+                            onClick={e => { e.stopPropagation(); adjustQty(i, 1) }}
+                            style={{ width: 44, height: 44, borderRadius: 10, background: C.topBg, color: C.white, border: 'none', fontSize: 22, fontWeight: 700, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: qty >= i.current_stock ? 0.35 : 1, pointerEvents: qty >= i.current_stock ? 'none' : 'auto' }}>
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -136,7 +192,7 @@ function AddServiceModal({ booking, services, items, onConfirm, onClose }) {
               <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: C.muted }}>Tambahan total</div>
               <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(16px,2vw,20px)', color: C.text }}>+{fmt(svcTotal + itemTotal)}</div>
             </div>
-            <button onClick={() => onConfirm({ serviceIds: addedSvc, itemIds: addedItems })}
+            <button onClick={() => onConfirm({ serviceIds: addedSvc, items: [...addedItems.values()].map(({item, qty}) => ({ item_id: item.id, quantity: qty })) })}
               style={{ padding: 'clamp(13px,1.7vw,15px) clamp(20px,2.6vw,26px)', borderRadius: 12, background: C.topBg, color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', border: 'none', cursor: 'pointer', minHeight: 52 }}>
               Konfirmasi ({totalAdded}) →
             </button>
@@ -201,12 +257,12 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
     finally { setBusyId(null) }
   }
 
-  const handleAddItems = async (bookingId, { serviceIds = [], itemIds = [] }) => {
+  const handleAddItems = async (bookingId, { serviceIds = [], items = [] }) => {
     setBusyId(bookingId)
     try {
       await Promise.all([
         serviceIds.length ? kioskApi.patch(`/bookings/${bookingId}/add-services`, { service_ids: serviceIds }) : Promise.resolve(),
-        itemIds.length    ? kioskApi.patch(`/bookings/${bookingId}/add-extras`,   { item_ids: itemIds })       : Promise.resolve(),
+        items.length      ? kioskApi.patch(`/bookings/${bookingId}/add-extras`,   { items })                  : Promise.resolve(),
       ])
       setShowAddSvc(null)
       load()

@@ -35,6 +35,7 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       customer_phone, customer_name,
       barber_id,
       service_ids = [],
+      extras = [],
       extra_ids = [],
       slot_time,
       date,
@@ -133,17 +134,27 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
     const subtotal = svcRows.rows.reduce((a, s) => a + parseInt(s.price), 0)
 
     // extras (inventory items sold at kiosk)
+    // Normalize: accept new {item_id, quantity} shape or legacy flat array of UUIDs
+    const extrasInput = extras.length
+      ? extras
+      : (extra_ids.length ? extra_ids.map(id => ({ item_id: id, quantity: 1 })) : [])
+
     let extrasRows = []
-    if (extra_ids.length) {
+    if (extrasInput.length) {
+      const inputIds = extrasInput.map(e => e.item_id)
       const ex = await client.query(
-        `SELECT ii.id, ii.name, ist.price
+        `SELECT ii.id, ii.name, ist.price, ist.current_stock
          FROM inventory_items ii
          JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $2
          WHERE ii.id = ANY($1::uuid[]) AND ist.kiosk_visible = true AND ist.price IS NOT NULL`,
-        [extra_ids, branchId])
+        [inputIds, branchId])
       extrasRows = ex.rows
     }
-    const extrasTotal = extrasRows.reduce((a, e) => a + parseInt(e.price || 0), 0)
+    const extrasTotal = extrasRows.reduce((a, e) => {
+      const reqEntry = extrasInput.find(x => x.item_id === e.id)
+      const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(e.current_stock) || 1)
+      return a + parseInt(e.price || 0) * qty
+    }, 0)
 
     // points redemption
     let pointsRedeemed = 0
@@ -205,9 +216,11 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
 
     // insert booking_extras
     for (const ex of extrasRows) {
+      const reqEntry = extrasInput.find(x => x.item_id === ex.id)
+      const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(ex.current_stock) || 1)
       await client.query(
-        'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
-        [booking.id, ex.id, ex.price])
+        'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,$3,$4)',
+        [booking.id, ex.id, qty, ex.price])
     }
 
     await client.query('COMMIT')
@@ -725,21 +738,26 @@ router.patch('/:id/add-extras', requireKioskOrAdmin, async (req, res) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const { item_ids = [] } = req.body
+    const { items = [], item_ids = [] } = req.body
+    // Normalize: accept new {item_id, quantity} shape or legacy flat array of UUIDs
+    const itemsInput = items.length ? items : item_ids.map(id => ({ item_id: id, quantity: 1 }))
     const bk = await client.query('SELECT * FROM bookings WHERE id = $1', [req.params.id])
     if (!bk.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Not found' }) }
     const booking = bk.rows[0]
 
+    const inputIds = itemsInput.map(e => e.item_id)
     const itemRows = await client.query(
-      `SELECT ii.id, ist.price FROM inventory_items ii
+      `SELECT ii.id, ist.price, ist.current_stock FROM inventory_items ii
        JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
        WHERE ii.id = ANY($2::uuid[]) AND ist.current_stock > 0 AND ist.price IS NOT NULL`,
-      [booking.branch_id, item_ids])
+      [booking.branch_id, inputIds])
 
     for (const item of itemRows.rows) {
+      const reqEntry = itemsInput.find(x => x.item_id === item.id)
+      const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(item.current_stock) || 1)
       await client.query(
-        'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
-        [booking.id, item.id, item.price])
+        'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,$3,$4)',
+        [booking.id, item.id, qty, item.price])
     }
 
     await client.query('COMMIT')
@@ -822,8 +840,10 @@ router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
   const client = await pool.connect()
   try {
     const { service_ids, product_ids = [] } = req.body
+    // Normalize product_ids: accept flat UUIDs (legacy) or {id, quantity} objects (new)
+    const productsInput = product_ids.map(p => typeof p === 'string' ? { id: p, quantity: 1 } : p)
     const hasServices = Array.isArray(service_ids) && service_ids.length > 0
-    const hasProducts = Array.isArray(product_ids) && product_ids.length > 0
+    const hasProducts = productsInput.length > 0
     if (!hasServices && !hasProducts)
       return res.status(400).json({ message: 'service_ids or product_ids required' })
 
@@ -867,15 +887,18 @@ router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
     }
 
     if (hasProducts) {
+      const pIds = productsInput.map(p => p.id)
       const itemRows = await client.query(
-        `SELECT ii.id, ist.price FROM inventory_items ii
+        `SELECT ii.id, ist.price, ist.current_stock FROM inventory_items ii
          JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
          WHERE ii.id = ANY($2::uuid[]) AND ist.price IS NOT NULL`,
-        [booking.branch_id, product_ids])
+        [booking.branch_id, pIds])
       for (const item of itemRows.rows) {
+        const reqEntry = productsInput.find(p => p.id === item.id)
+        const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(item.current_stock) || 1)
         await client.query(
-          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
-          [booking.id, item.id, item.price])
+          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,$3,$4)',
+          [booking.id, item.id, qty, item.price])
       }
     }
 
@@ -894,7 +917,7 @@ router.patch('/:id/reopen', checkPermission('barbers'), async (req, res) => {
     emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'in_service' })
     emitEvent(booking.branch_id, 'booking_started', { id: booking.id })
 
-    res.json({ ok: true, added: svcRes.rows.length, added_products: hasProducts ? product_ids.length : 0, added_duration_min: newDuration })
+    res.json({ ok: true, added: svcRes.rows.length, added_products: hasProducts ? productsInput.length : 0, added_duration_min: newDuration })
   } catch (err) {
     await client.query('ROLLBACK')
     console.error(err); res.status(500).json({ message: 'Internal server error' })
@@ -927,7 +950,9 @@ router.patch('/:id/admin-update', checkPermission('barbers'), async (req, res) =
       return res.status(404).json({ message: 'Booking not found or not editable' })
     }
     const booking = bkRes.rows[0]
-    const { barber_id, add_service_ids = [], remove_service_ids = [], scheduled_at, add_product_ids = [], remove_product_ids = [] } = req.body
+    const { barber_id, add_service_ids = [], remove_service_ids = [], scheduled_at, add_products = [], add_product_ids = [], remove_product_ids = [] } = req.body
+    // Normalize: accept new {item_id, quantity} objects or legacy flat array of UUIDs
+    const addProductsInput = add_products.length ? add_products : add_product_ids.map(id => ({ item_id: id, quantity: 1 }))
 
     const updates = []
     const uVals   = []
@@ -975,16 +1000,19 @@ router.patch('/:id/admin-update', checkPermission('barbers'), async (req, res) =
         [remove_product_ids, booking.id])
     }
     // add new extras
-    if (add_product_ids.length) {
+    if (addProductsInput.length) {
+      const inputIds = addProductsInput.map(e => e.item_id)
       const itemRows = await client.query(
-        `SELECT ii.id, ist.price FROM inventory_items ii
+        `SELECT ii.id, ist.price, ist.current_stock FROM inventory_items ii
          JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
          WHERE ii.id = ANY($2::uuid[]) AND ist.price IS NOT NULL`,
-        [booking.branch_id, add_product_ids])
+        [booking.branch_id, inputIds])
       for (const item of itemRows.rows) {
+        const reqEntry = addProductsInput.find(e => e.item_id === item.id)
+        const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(item.current_stock) || 1)
         await client.query(
-          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
-          [booking.id, item.id, item.price])
+          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,$3,$4)',
+          [booking.id, item.id, qty, item.price])
       }
     }
     await client.query('COMMIT')
@@ -1081,18 +1109,28 @@ router.post('/admin-force', checkPermission('barbers'), async (req, res) => {
         [booking.id, svc.id, svc.price, svc.commission_rate ?? null])
     }
 
+    // Normalize product_ids: accept flat UUIDs (legacy) or {id, quantity} objects (new)
+    const productsInput = product_ids.map(p => typeof p === 'string' ? { id: p, quantity: 1 } : p)
+
     let extrasTotal = 0
-    if (product_ids.length) {
+    if (productsInput.length) {
+      const pIds = productsInput.map(p => p.id)
       const itemRows = await client.query(
-        `SELECT ii.id, ist.price FROM inventory_items ii
+        `SELECT ii.id, ist.price, ist.current_stock FROM inventory_items ii
          JOIN inventory_stock ist ON ist.item_id = ii.id AND ist.branch_id = $1
          WHERE ii.id = ANY($2::uuid[]) AND ist.price IS NOT NULL`,
-        [branch_id, product_ids])
-      extrasTotal = itemRows.rows.reduce((a, e) => a + parseInt(e.price || 0), 0)
+        [branch_id, pIds])
+      extrasTotal = itemRows.rows.reduce((a, e) => {
+        const reqEntry = productsInput.find(p => p.id === e.id)
+        const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(e.current_stock) || 1)
+        return a + parseInt(e.price || 0) * qty
+      }, 0)
       for (const item of itemRows.rows) {
+        const reqEntry = productsInput.find(p => p.id === item.id)
+        const qty = Math.min(Math.max(parseInt(reqEntry?.quantity) || 1, 1), parseInt(item.current_stock) || 1)
         await client.query(
-          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,1,$3)',
-          [booking.id, item.id, item.price])
+          'INSERT INTO booking_extras (booking_id, item_id, quantity, price) VALUES ($1,$2,$3,$4)',
+          [booking.id, item.id, qty, item.price])
       }
     }
 

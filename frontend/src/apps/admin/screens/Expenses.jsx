@@ -1107,7 +1107,7 @@ export default function Expenses() {
 
       {/* Table */}
       <div className="admin-card" style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 44px 56px', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 88px 56px', padding: '10px 18px', borderBottom: '1px solid ' + T.border }}>
           {['','Date','Type','Branch','Description','Source','Amount','By','Receipt',''].map((h, i) => (
             <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>{h}</div>
           ))}
@@ -1165,7 +1165,7 @@ export default function Expenses() {
 
             return (
               <div key={e.id} style={{ borderBottom: i < expenses.length - 1 ? '1px solid ' + T.surface : 'none' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 44px 56px', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 88px 56px', padding: '12px 18px', alignItems: 'center', cursor: isExpandable ? 'pointer' : 'default', background: isExpanded ? T.bg : 'transparent', transition: 'background 0.1s' }}
                   onClick={toggleExpand}
                   onMouseEnter={ev => { if (!isExpanded) ev.currentTarget.style.background = T.bg }}
                   onMouseLeave={ev => { if (!isExpanded) ev.currentTarget.style.background = 'transparent' }}>
@@ -1198,7 +1198,7 @@ export default function Expenses() {
                   const dBranch = branches.find(b => b.id === d.branch_id)?.name ?? '—'
                   const dDesc = `${d.quantity_received} ${d.unit}${d.item_name ? ' · ' + d.item_name : ''}`
                   return (
-                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 44px 56px', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
+                    <div key={di} style={{ display: 'grid', gridTemplateColumns: '24px 0.7fr 0.8fr 1.2fr 2fr 0.7fr 1fr 0.7fr 88px 56px', padding: '8px 18px', alignItems: 'center', background: T.bg, borderTop: '1px solid ' + T.surface }}>
                       <div />
                       <div />
                       <div />

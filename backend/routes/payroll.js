@@ -21,16 +21,34 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const { branch_id, period_month, period_from, period_to } = req.body
-    if (!period_month || !period_from || !period_to) {
-      return res.status(400).json({ message: 'period_month, period_from, period_to required' })
+    const { branch_id, period_month, period_from, period_to,
+            performance_from, performance_to, attendance_from, attendance_to } = req.body
+
+    const isSplit = !!(performance_from && performance_to && attendance_from && attendance_to)
+
+    if (!isSplit && (!period_from || !period_to)) {
+      return res.status(400).json({ message: 'period_from and period_to required, or all four split fields (performance_from, performance_to, attendance_from, attendance_to)' })
     }
 
+    const eff_perf_from   = isSplit ? performance_from : period_from
+    const eff_perf_to     = isSplit ? performance_to   : period_to
+    const eff_att_from    = isSplit ? attendance_from  : period_from
+    const eff_att_to      = isSplit ? attendance_to    : period_to
+    const eff_period_from = eff_att_from
+    const eff_period_to   = eff_att_to
+    const eff_period_month = period_month || eff_att_from.slice(0, 7)
+
     const periodInsert = await client.query(
-      `INSERT INTO payroll_periods (branch_id, period_month, period_from, period_to, generated_by)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO payroll_periods
+         (branch_id, period_month, period_from, period_to,
+          performance_from, performance_to, attendance_from, attendance_to,
+          generated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (branch_id, period_from, period_to) DO NOTHING RETURNING *`,
-      [branch_id || null, period_month, period_from, period_to, req.user.id])
+      [branch_id || null, eff_period_month, eff_period_from, eff_period_to,
+       isSplit ? performance_from : null, isSplit ? performance_to : null,
+       isSplit ? attendance_from : null, isSplit ? attendance_to : null,
+       req.user.id])
 
     let period
     if (periodInsert.rows.length) {
@@ -44,7 +62,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
         `SELECT * FROM payroll_periods
          WHERE period_from = $1 AND period_to = $2
            AND (branch_id = $3 OR (branch_id IS NULL AND $3 IS NULL))`,
-        [period_from, period_to, branch_id || null])
+        [eff_period_from, eff_period_to, branch_id || null])
       if (!existing.rows.length) {
         await client.query('ROLLBACK')
         return res.status(500).json({ message: 'Period conflict but not found' })
@@ -63,7 +81,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
     const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction    ?? 150000)
     const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week            ?? 1)
 
-    const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
+    const periodDays = Math.round((new Date(eff_att_to) - new Date(eff_att_from)) / 86400000) + 1
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week ?? 6) * 52 / 12)
 
@@ -84,7 +102,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
          WHERE barber_id = $1
            AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
          ORDER BY DATE(clock_in_at AT TIME ZONE 'Asia/Makassar'), clock_in_at DESC`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
 
       const workedDays = attRows.rows.length
       const totalLateMinutes = attRows.rows.reduce((sum, r) => sum + (parseInt(r.late_minutes) || 0), 0)
@@ -92,7 +110,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
       // Off records in period
       const offRows = await client.query(
         `SELECT type FROM off_records WHERE barber_id = $1 AND date BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
       const inexcusedDays = offRows.rows.filter(r => r.type === 'inexcused').length
       const excusedDays   = offRows.rows.filter(r => r.type === 'excused').length
 
@@ -106,7 +124,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
          WHERE bk.barber_id = $1
            AND bk.status = 'completed'
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_perf_from, eff_perf_to])
 
       // Gross revenue — separate query to avoid fan-out from booking_services JOIN
       const grossResult = await client.query(
@@ -119,7 +137,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
          WHERE bk.barber_id = $1
            AND bk.status = 'completed'
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_perf_from, eff_perf_to])
 
       const grossRevTotal = Math.round(parseFloat(grossResult.rows[0]?.gross_rev || 0))
       const commRegular   = Math.round(parseFloat(commResult.rows[0]?.commission_regular || 0))
@@ -131,7 +149,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
          JOIN bookings bk ON bk.id = t.booking_id
          WHERE t.barber_id = $1
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_perf_from, eff_perf_to])
       const totalTips = parseInt(tipsResult.rows[0].total)
 
       // Base salary from barber record
@@ -158,7 +176,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
         `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
          WHERE type = 'kasbon' AND barber_id = $1 AND expense_date BETWEEN $2 AND $3
          AND (deduct_period = 'current' OR deduct_period IS NULL)`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
       kasbonTotal = parseInt(kasbonResult.rows[0].total)
 
       const netPay = baseSalary + commRegular + commOt + totalTips
@@ -189,7 +207,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
          WHERE type = 'kasbon'
            AND barber_id = $1
            AND expense_date BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
 
       const insertedEntry = await client.query(
         'SELECT id FROM payroll_entries WHERE period_id = $1 AND barber_id = $2',
@@ -244,6 +262,12 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
     const period_to   = String(period.period_to).slice(0, 10)
     const branch_id   = period.branch_id
 
+    const isSplit = !!(period.performance_from)
+    const eff_perf_from = isSplit ? String(period.performance_from).slice(0, 10) : period_from
+    const eff_perf_to   = isSplit ? String(period.performance_to).slice(0, 10)   : period_to
+    const eff_att_from  = isSplit ? String(period.attendance_from).slice(0, 10)  : period_from
+    const eff_att_to    = isSplit ? String(period.attendance_to).slice(0, 10)    : period_to
+
     await client.query('BEGIN')
     await client.query(
       `UPDATE payroll_periods SET status = 'draft', generated_at = NOW() WHERE id = $1`,
@@ -258,7 +282,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
     const excusedFlatDeduct      = parseInt(cfg.excused_off_flat_deduction    ?? 150000)
     const offQuotaPerWeek        = parseInt(cfg.off_quota_per_week            ?? 1)
 
-    const periodDays = Math.round((new Date(period_to) - new Date(period_from)) / 86400000) + 1
+    const periodDays = Math.round((new Date(eff_att_to) - new Date(eff_att_from)) / 86400000) + 1
     const periodQuota = Math.floor(periodDays / 7) * offQuotaPerWeek
     const workingDaysStd         = Math.round(parseFloat(cfg.working_days_per_week ?? 6) * 52 / 12)
 
@@ -279,7 +303,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
          WHERE barber_id = $1
            AND DATE(clock_in_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3
          ORDER BY DATE(clock_in_at AT TIME ZONE 'Asia/Makassar'), clock_in_at DESC`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
 
       const workedDays = attRows.rows.length
       const totalLateMinutes = attRows.rows.reduce((sum, r) => sum + (parseInt(r.late_minutes) || 0), 0)
@@ -287,7 +311,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
       // Off records in period
       const offRows = await client.query(
         `SELECT type FROM off_records WHERE barber_id = $1 AND date BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
       const inexcusedDays = offRows.rows.filter(r => r.type === 'inexcused').length
       const excusedDays   = offRows.rows.filter(r => r.type === 'excused').length
 
@@ -301,7 +325,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
          WHERE bk.barber_id = $1
            AND bk.status = 'completed'
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_perf_from, eff_perf_to])
 
       // Gross revenue — separate query to avoid fan-out from booking_services JOIN
       const grossResult = await client.query(
@@ -314,7 +338,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
          WHERE bk.barber_id = $1
            AND bk.status = 'completed'
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_perf_from, eff_perf_to])
 
       const grossRevTotal = Math.round(parseFloat(grossResult.rows[0]?.gross_rev || 0))
       const commRegular   = Math.round(parseFloat(commResult.rows[0]?.commission_regular || 0))
@@ -326,7 +350,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
          JOIN bookings bk ON bk.id = t.booking_id
          WHERE t.barber_id = $1
            AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_perf_from, eff_perf_to])
       const totalTips = parseInt(tipsResult.rows[0].total)
 
       // Base salary from barber record
@@ -353,7 +377,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
         `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
          WHERE type = 'kasbon' AND barber_id = $1 AND expense_date BETWEEN $2 AND $3
          AND (deduct_period = 'current' OR deduct_period IS NULL)`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
       kasbonTotal = parseInt(kasbonResult.rows[0].total)
 
       const netPay = baseSalary + commRegular + commOt + totalTips
@@ -379,7 +403,7 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
          WHERE type = 'kasbon'
            AND barber_id = $1
            AND expense_date BETWEEN $2 AND $3`,
-        [barber.id, period_from, period_to])
+        [barber.id, eff_att_from, eff_att_to])
 
       const insertedEntry = await client.query(
         'SELECT id FROM payroll_entries WHERE period_id = $1 AND barber_id = $2',

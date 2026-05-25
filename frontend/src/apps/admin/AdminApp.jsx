@@ -196,6 +196,7 @@ export default function AdminApp() {
   const [screen, setScreen] = useState('overview')
   const [loading, setLoading] = useState(true)
   const [payrollPeriod, setPayrollPeriod] = useState(null)
+  const [payrollBranchName, setPayrollBranchName] = useState('AllBranch')
   const [userPerms, setUserPerms] = useState({}) // { section: is_enabled }
   const [permsLoaded, setPermsLoaded] = useState(false)
 
@@ -279,12 +280,13 @@ export default function AdminApp() {
           payrollPeriod
             ? <Payroll
                 period={payrollPeriod}
+                branchName={payrollBranchName}
                 onBack={() => setPayrollPeriod(null)}
                 onViewAttendance={() => setScreen('attendance')}
                 user={user}
               />
             : <PayrollList
-                onOpen={p => setPayrollPeriod(p)}
+                onOpen={(p, bn) => { setPayrollPeriod(p); setPayrollBranchName(bn || 'AllBranch') }}
                 onViewAttendance={() => setScreen('attendance')}
               />
         )}

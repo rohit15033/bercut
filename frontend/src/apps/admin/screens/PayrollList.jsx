@@ -70,7 +70,7 @@ function formatPeriodLabel(from, to) {
   return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
 }
 
-async function downloadExport(periodId, label, format = 'xlsx') {
+async function downloadExport(periodId, label, format = 'xlsx', branchName = 'AllBranch') {
   const token = getToken()
   const BASE = import.meta.env.VITE_API_URL ?? '/api'
   try {
@@ -82,7 +82,7 @@ async function downloadExport(periodId, label, format = 'xlsx') {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `payroll_${label.replace(/\s+/g, '_')}.${format}`
+    a.download = `Bercut${branchName}_payroll_${label.replace(/\s+/g, '_')}.${format}`
     a.click()
     URL.revokeObjectURL(url)
   } catch (err) {
@@ -99,6 +99,11 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
   const [customFrom,     setCustomFrom]     = useState('')
   const [customTo,       setCustomTo]       = useState('')
   const [customGenerating, setCustomGenerating] = useState(false)
+  const [splitMode,        setSplitMode]        = useState(false)
+  const [perfFrom,         setPerfFrom]         = useState('')
+  const [perfTo,           setPerfTo]           = useState('')
+  const [attendanceFrom,   setAttendanceFrom]   = useState('')
+  const [attendanceTo,     setAttendanceTo]     = useState('')
   const [confirmRegen,   setConfirmRegen]   = useState(null) // { period, label }
   const [confirmDelete,  setConfirmDelete]  = useState(null) // { period, label }
   const [deletingId,     setDeletingId]     = useState(null)
@@ -141,7 +146,7 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
     setError('')
     try {
       const result = await api.post('/payroll/periods/' + period.id + '/regenerate', {})
-      onOpen(result.period)
+      onOpen(result.period, branches.find(b => String(b.id) === String(selectedBranch))?.name?.replace(/\s+/g, '') || 'AllBranch')
     } catch (err) {
       setError('Failed to reset period. Please try again.')
     } finally {
@@ -150,34 +155,63 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
   }
 
   async function handleCustomGenerate() {
-    if (!customFrom || !customTo) return
-    const duplicate = dbPeriods.find(p =>
-      String(p.period_from).slice(0, 10) === customFrom &&
-      String(p.period_to).slice(0, 10)   === customTo
-    )
-    if (duplicate) {
-      setError('A payroll period for these dates already exists. Open it from the list.')
-      return
-    }
-    setCustomGenerating(true)
-    setError('')
-    try {
-      const fromMonth = customFrom.slice(0, 7)
-      const fromMN = Number(customFrom.slice(5, 7)) - 1
-      const toMN   = Number(customTo.slice(5, 7)) - 1
-      const toYear = customTo.slice(0, 4)
-      const label = `${customFrom.slice(8)} ${MONTH_NAMES[fromMN]?.slice(0,3) ?? ''} – ${customTo.slice(8)} ${MONTH_NAMES[toMN]?.slice(0,3) ?? ''} ${toYear}`
-      const result = await api.post('/payroll/periods/generate', {
-        branch_id:    selectedBranch,
-        period_month: fromMonth,
-        period_from:  customFrom,
-        period_to:    customTo,
-      })
-      onOpen(result.period)
-    } catch (err) {
-      setError('Failed to generate custom period. Please try again.')
-    } finally {
-      setCustomGenerating(false)
+    if (splitMode) {
+      if (!perfFrom || !perfTo || !attendanceFrom || !attendanceTo) return
+      const duplicate = dbPeriods.find(p =>
+        String(p.performance_from).slice(0, 10) === perfFrom &&
+        String(p.performance_to).slice(0, 10)   === perfTo
+      )
+      if (duplicate) {
+        setError('A payroll period for these dates already exists. Open it from the list.')
+        return
+      }
+      setCustomGenerating(true)
+      setError('')
+      try {
+        const result = await api.post('/payroll/periods/generate', {
+          branch_id:        selectedBranch,
+          period_month:     attendanceFrom.slice(0, 7),
+          performance_from: perfFrom,
+          performance_to:   perfTo,
+          attendance_from:  attendanceFrom,
+          attendance_to:    attendanceTo,
+        })
+        onOpen(result.period, branches.find(b => String(b.id) === String(selectedBranch))?.name?.replace(/\s+/g, '') || 'AllBranch')
+      } catch (err) {
+        setError('Failed to generate custom period. Please try again.')
+      } finally {
+        setCustomGenerating(false)
+      }
+    } else {
+      if (!customFrom || !customTo) return
+      const duplicate = dbPeriods.find(p =>
+        String(p.period_from).slice(0, 10) === customFrom &&
+        String(p.period_to).slice(0, 10)   === customTo
+      )
+      if (duplicate) {
+        setError('A payroll period for these dates already exists. Open it from the list.')
+        return
+      }
+      setCustomGenerating(true)
+      setError('')
+      try {
+        const fromMonth = customFrom.slice(0, 7)
+        const fromMN = Number(customFrom.slice(5, 7)) - 1
+        const toMN   = Number(customTo.slice(5, 7)) - 1
+        const toYear = customTo.slice(0, 4)
+        const label = `${customFrom.slice(8)} ${MONTH_NAMES[fromMN]?.slice(0,3) ?? ''} – ${customTo.slice(8)} ${MONTH_NAMES[toMN]?.slice(0,3) ?? ''} ${toYear}`
+        const result = await api.post('/payroll/periods/generate', {
+          branch_id:    selectedBranch,
+          period_month: fromMonth,
+          period_from:  customFrom,
+          period_to:    customTo,
+        })
+        onOpen(result.period, branches.find(b => String(b.id) === String(selectedBranch))?.name?.replace(/\s+/g, '') || 'AllBranch')
+      } catch (err) {
+        setError('Failed to generate custom period. Please try again.')
+      } finally {
+        setCustomGenerating(false)
+      }
     }
   }
 
@@ -286,10 +320,10 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => onOpen(row.dbPeriod)} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
+                <button onClick={() => onOpen(row.dbPeriod, branches.find(b => String(b.id) === String(selectedBranch))?.name?.replace(/\s+/g, '') || 'AllBranch')} style={{ padding: '5px 14px', borderRadius: 6, background: T.topBg, color: T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer' }}>Open</button>
                 <button onClick={() => setConfirmRegen({ period: row.dbPeriod, label: row.label })} disabled={!!generatingId} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: generatingId ? 'not-allowed' : 'pointer', opacity: generatingId ? 0.65 : 1 }}>{isGenerating(row.period_from) ? 'Resetting…' : 'Reset ↺'}</button>
-                <button onClick={() => downloadExport(row.dbPeriod.id, row.label, 'xlsx')} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
-                <button onClick={() => downloadExport(row.dbPeriod.id, row.label, 'csv')} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ CSV</button>
+                <button onClick={() => downloadExport(row.dbPeriod.id, row.label, 'xlsx', branches.find(b => String(b.id) === String(selectedBranch))?.name?.replace(/\s+/g, '') || 'AllBranch')} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ Excel</button>
+                <button onClick={() => downloadExport(row.dbPeriod.id, row.label, 'csv', branches.find(b => String(b.id) === String(selectedBranch))?.name?.replace(/\s+/g, '') || 'AllBranch')} style={{ padding: '5px 12px', borderRadius: 6, background: T.surface, color: T.text2, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, border: '1px solid ' + T.border, cursor: 'pointer' }}>↓ CSV</button>
                 {row.status === 'draft' && (
                   <button
                     onClick={() => setConfirmDelete({ period: row.dbPeriod, label: row.label })}
@@ -310,26 +344,86 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
 
       {/* Custom Period section */}
       <div className="admin-card fu" style={{ padding: '20px 24px' }}>
-        <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 4 }}>Custom Period</div>
-        <div style={{ fontSize: 12, color: T.muted, marginBottom: 16 }}>Generate a payroll period with a custom date range</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>From</span>
-            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-              style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>To</span>
-            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-              style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
-          </div>
-          <button
-            onClick={handleCustomGenerate}
-            disabled={!customFrom || !customTo || customGenerating}
-            style={{ marginTop: 18, padding: '8px 20px', borderRadius: 8, background: (!customFrom || !customTo || customGenerating) ? T.surface2 : T.topBg, color: (!customFrom || !customTo || customGenerating) ? T.muted : T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: (!customFrom || !customTo || customGenerating) ? 'not-allowed' : 'pointer' }}>
-            {customGenerating ? 'Generating…' : 'Generate'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 15, color: T.text }}>Custom Period</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={splitMode}
+              onChange={e => setSplitMode(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 12, color: T.text2, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Split periods</span>
+          </label>
         </div>
+        <div style={{ fontSize: 12, color: T.muted, marginBottom: 16 }}>Generate a payroll period with a custom date range</div>
+        {!splitMode ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>From</span>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>To</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+            </div>
+            <button
+              onClick={handleCustomGenerate}
+              disabled={!customFrom || !customTo || customGenerating}
+              style={{ marginTop: 18, padding: '8px 20px', borderRadius: 8, background: (!customFrom || !customTo || customGenerating) ? T.surface2 : T.topBg, color: (!customFrom || !customTo || customGenerating) ? T.muted : T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: (!customFrom || !customTo || customGenerating) ? 'not-allowed' : 'pointer' }}>
+              {customGenerating ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 16 }}>
+              {/* Performance Period group */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: T.muted }}>Performance Period</div>
+                <div style={{ fontSize: 10, color: T.border, marginTop: 2, marginBottom: 10 }}>commissions, OT, tips, late</div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>From</span>
+                    <input type="date" value={perfFrom} onChange={e => setPerfFrom(e.target.value)}
+                      style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>To</span>
+                    <input type="date" value={perfTo} onChange={e => setPerfTo(e.target.value)}
+                      style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+                  </div>
+                </div>
+              </div>
+              {/* Attendance Period group */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: T.muted }}>Attendance Period</div>
+                <div style={{ fontSize: 10, color: T.border, marginTop: 2, marginBottom: 10 }}>base salary, offs, kasbon</div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>From</span>
+                    <input type="date" value={attendanceFrom} onChange={e => setAttendanceFrom(e.target.value)}
+                      style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>To</span>
+                    <input type="date" value={attendanceTo} onChange={e => setAttendanceTo(e.target.value)}
+                      style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid ' + T.border, fontSize: 13, color: T.text, background: T.white }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex' }}>
+              <button
+                onClick={handleCustomGenerate}
+                disabled={!perfFrom || !perfTo || !attendanceFrom || !attendanceTo || customGenerating}
+                style={{ padding: '8px 20px', borderRadius: 8, background: (!perfFrom || !perfTo || !attendanceFrom || !attendanceTo || customGenerating) ? T.surface2 : T.topBg, color: (!perfFrom || !perfTo || !attendanceFrom || !attendanceTo || customGenerating) ? T.muted : T.white, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: (!perfFrom || !perfTo || !attendanceFrom || !attendanceTo || customGenerating) ? 'not-allowed' : 'pointer' }}>
+                {customGenerating ? 'Generating…' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 10, fontSize: 11, color: T.muted }}>

@@ -447,7 +447,7 @@ function StatusBadge({ status }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function Payroll({ period: periodProp, onBack, onViewAttendance, user }) {
+export default function Payroll({ period: periodProp, onBack, onViewAttendance, user, branchName = 'AllBranch' }) {
   const backFn = onBack || onViewAttendance
 
   const [activePeriod,  setActivePeriod]  = useState(periodProp || null)
@@ -501,7 +501,8 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
   const periodDays = activePeriod
     ? Math.round((new Date(activePeriod.period_to) - new Date(activePeriod.period_from)) / 86400000) + 1
     : 0
-  const excusedQuota = Math.floor(periodDays / 7) * (payrollSettings.off_quota_per_week || 1)
+  const excusedQuota  = Math.floor(periodDays / 7) * (payrollSettings.off_quota_per_week || 1)
+  const lateRatePerMin = payrollSettings.late_deduction_per_minute || LATE_RATE_PER_MIN
 
   function setOverride(entryId, fieldOrObj, val) {
     if (typeof fieldOrObj === 'object') {
@@ -552,13 +553,13 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     const hasLateOv      = ov.lateMin !== undefined
     const hasExcOv       = ov.excusedTimes !== undefined || ov.excusedFixed !== undefined || ov.excusedProrata !== undefined
     const hasInexOv      = ov.inexcusedTimes !== undefined || ov.inexcusedFixed !== undefined || ov.inexcusedProrata !== undefined
-    const lateDed        = hasLateOv ? lateMin * LATE_RATE_PER_MIN           : Number(entry.late_deduction          || 0)
+    const lateDed        = hasLateOv ? lateMin * lateRatePerMin              : Number(entry.late_deduction          || 0)
     const inexcusedDed   = hasInexOv ? inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate) : Number(entry.inexcused_off_deduction || 0)
     const excusedDed     = hasExcOv  ? excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate) : Number(entry.excused_off_deduction   || 0)
     const adjs     = adjustments[entry.id] || []
     const totalAdd = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
     const totalDed = adjs.filter(a => a.type === 'deduction' && !(a.is_kasbon && a.deduct_period === 'next')).reduce((s, a) => s + Number(a.amount), 0)
-    return Number(entry.base_salary || 0) + Number(entry.commission_regular || 0) + Number(entry.commission_ot || 0)
+    return Number(entry.base_salary || 0) + Number(entry.commission_regular || 0) + Number(entry.commission_ot || 0) + Number(entry.total_tips || 0)
          - lateDed - inexcusedDed - excusedDed + totalAdd - totalDed
   }
 
@@ -590,7 +591,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `payroll_${label}.${format}`
+      a.download = `Bercut${branchName}_payroll_${label}.${format}`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -628,7 +629,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
   const nextPLabel = 'next period'
   const periodLabel = fmtPeriodLabel(activePeriod)
 
-  const PGRID = '1.4fr 0.8fr 0.9fr 0.75fr 0.9fr 1.15fr 1.15fr 0.85fr 0.9fr 0.85fr 0.65fr 0.7fr'
+  const PGRID = '1.4fr 0.8fr 0.9fr 0.75fr 0.75fr 0.9fr 1.15fr 1.15fr 0.85fr 0.9fr 0.85fr 0.65fr 0.7fr'
 
   return (
     <div style={{ padding: '28px 32px' }}>
@@ -737,6 +738,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
             { label: 'Base Salary' },
             { label: 'Commission',    sub: 'regular' },
             { label: 'OT Comm.',      sub: 'overtime' },
+            { label: 'Tips' },
             { label: 'Late',          sub: 'min · deduction' },
             { label: 'Excused Off',   sub: 'flat / pro-rata split' },
             { label: 'Inexcused Off', sub: 'flat / pro-rata split' },
@@ -779,7 +781,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
           const hasLateOv  = ov.lateMin !== undefined
           const hasExcOv   = ov.excusedTimes !== undefined || ov.excusedFixed !== undefined || ov.excusedProrata !== undefined
           const hasInexOv  = ov.inexcusedTimes !== undefined || ov.inexcusedFixed !== undefined || ov.inexcusedProrata !== undefined
-          const lateDed    = hasLateOv ? lateMin * LATE_RATE_PER_MIN           : Number(entry.late_deduction          || 0)
+          const lateDed    = hasLateOv ? lateMin * lateRatePerMin              : Number(entry.late_deduction          || 0)
           const excusedDed = hasExcOv  ? excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate) : Number(entry.excused_off_deduction   || 0)
           const inexcusedDed = hasInexOv ? inexcusedFixed * FLAT_OFF_RATE   + Math.round(inexcusedProrata * prorataRate) : Number(entry.inexcused_off_deduction || 0)
           const adjs             = adjustments[entry.id] || []
@@ -823,16 +825,25 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                 )}
               </div>
 
+              {/* Tips */}
+              <div style={{ paddingTop: 2 }}>
+                {Number(entry.total_tips) > 0 ? (
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#16A34A' }}>{fmtM(entry.total_tips)}</div>
+                ) : (
+                  <span style={{ fontSize: 11, color: T.border }}>—</span>
+                )}
+              </div>
+
               {/* Late */}
               <div>
                 <div style={{ marginBottom: 4 }}>
-                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * LATE_RATE_PER_MIN, total_late_minutes: v }).catch(() => {}) }} suffix=" min" color="#D97706" disabled={isLocked} />
+                  <InlineNum value={lateMin} onCommit={v => { setOverride(entry.id, 'lateMin', v); api.patch('/payroll/entries/' + entry.id, { late_deduction: v * lateRatePerMin, total_late_minutes: v }).catch(() => {}) }} suffix=" min" color="#D97706" disabled={isLocked} />
                 </div>
                 {lateDed > 0
                   ? <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#DC2626' }}>−{fmtM(lateDed)}</div>
                   : <span style={{ fontSize: 11, color: T.border }}>—</span>
                 }
-                {lateMin > 0 && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>Rp 2.000/min</div>}
+                {lateMin > 0 && <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>Rp {lateRatePerMin.toLocaleString('id-ID')}/min</div>}
               </div>
 
               {/* Excused Off */}
@@ -983,6 +994,11 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
             <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: '#FDE68A' }}>
               {entries.some(e => Number(e.commission_ot) > 0)
                 ? '+' + fmtM(entries.reduce((s, e) => s + Number(e.commission_ot || 0), 0))
+                : '—'}
+            </div>
+            <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 12, color: T.accent }}>
+              {entries.some(e => Number(e.total_tips) > 0)
+                ? fmtM(entries.reduce((s, e) => s + Number(e.total_tips || 0), 0))
                 : '—'}
             </div>
             <div /><div /><div />

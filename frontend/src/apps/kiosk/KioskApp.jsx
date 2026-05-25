@@ -22,7 +22,7 @@ const screenVariants = {
 }
 const GS = () => (
   <style>{`
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     html, body {
       font-family: 'DM Sans', sans-serif;
       background: ${C.bg};
@@ -429,7 +429,7 @@ function KioskContent({ config }) {
               setOwnColorToggles={setOwnColorToggles}
               settings={settings}
               onNext={() => nav(2)}
-              onBack={() => { if (group.length > 0) { nav(5) } else { nav(0) } }}
+              onBack={() => { if (group.length > 0) { nav(5) } else { reset() } }}
             />
           )}
           {step === 2 && (

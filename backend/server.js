@@ -58,6 +58,7 @@ const { runAutoCancel }        = require('./services/autoCancel')
 const { checkEscalations }     = require('./services/escalation')
 const { assignUpcomingDeferred, autoEndExpiredBreaks } = require('./services/deferredScheduler')
 const { runAutoOffClassifier } = require('./services/autoOffClassifier')
+const { runAutoClockOut }      = require('./services/autoClockOut')
 
 // Points expiry — nightly at 00:05 WITA (UTC+8 = 16:05 UTC prev day)
 cron.schedule('5 16 * * *', () => {
@@ -87,6 +88,11 @@ cron.schedule('* * * * *', () => {
 // Auto-end expired breaks — every minute
 cron.schedule('* * * * *', () => {
   autoEndExpiredBreaks().catch(console.error)
+})
+
+// Auto clock-out barbers after branch closing_time — every minute
+cron.schedule('* * * * *', () => {
+  runAutoClockOut().catch(console.error)
 })
 
 const { checkAndFireReports } = require('./services/reportService')

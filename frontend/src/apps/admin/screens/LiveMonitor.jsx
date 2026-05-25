@@ -227,28 +227,38 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
   const rH   = rMin === 60 ? now.getHours() + 1 : now.getHours()
   const initTime = `${pad(rH % 24)}:${pad(rMin % 60)}`
 
-  const [branchId,     setBranchId]     = useState(defaultBranchId || branches[0]?.id || '')
-  const [customerName, setCustomerName] = useState('')
-  const [customerPhone,setCustomerPhone]= useState('')
-  const [barberId,     setBarberId]     = useState('')
-  const [date,         setDate]         = useState(todayStr)
-  const [time,         setTime]         = useState(initTime)
-  const [notes,        setNotes]        = useState('')
-  const [allServices,  setAllServices]  = useState([])
-  const [selectedSvcs, setSelectedSvcs] = useState([])
-  const [svcOpen,      setSvcOpen]      = useState(false)
-  const [saving,       setSaving]       = useState(false)
+  const [branchId,        setBranchId]        = useState(defaultBranchId || branches[0]?.id || '')
+  const [customerName,    setCustomerName]    = useState('')
+  const [customerPhone,   setCustomerPhone]   = useState('')
+  const [barberId,        setBarberId]        = useState('')
+  const [date,            setDate]            = useState(todayStr)
+  const [time,            setTime]            = useState(initTime)
+  const [notes,           setNotes]           = useState('')
+  const [allServices,     setAllServices]     = useState([])
+  const [selectedSvcs,    setSelectedSvcs]    = useState([])
+  const [svcOpen,         setSvcOpen]         = useState(false)
+  const [saving,          setSaving]          = useState(false)
+  const [allProducts,     setAllProducts]     = useState([])
+  const [selectedProducts,setSelectedProducts]= useState([])
+  const [activeTab,       setActiveTab]       = useState('services')
+  const [loadingProducts, setLoadingProducts] = useState(false)
 
   const branchBarbers = allBarbers.filter(b => b.branch_id === branchId)
 
-  // Reset barber and services when branch changes
+  // Reset barber, services, and products when branch changes
   useEffect(() => {
     setBarberId(branchBarbers[0]?.id || '')
     setSelectedSvcs([])
+    setSelectedProducts([])
     if (!branchId) return
     api.get(`/services?branch_id=${branchId}`)
       .then(d => setAllServices(Array.isArray(d) ? d.filter(s => s.is_active !== false) : []))
       .catch(() => setAllServices([]))
+    setLoadingProducts(true)
+    api.get(`/inventory/kiosk-menu?branch_id=${branchId}`)
+      .then(d => setAllProducts(Array.isArray(d) ? d.filter(p => p.kiosk_visible) : []))
+      .catch(() => setAllProducts([]))
+      .finally(() => setLoadingProducts(false))
   }, [branchId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleSvc(svc) {
@@ -258,8 +268,17 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
         : [...p, svc])
   }
 
+  function toggleProduct(p) {
+    setSelectedProducts(prev =>
+      prev.some(sp => sp.id === p.id)
+        ? prev.filter(sp => sp.id !== p.id)
+        : [...prev, p])
+  }
+
   const fmt = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
-  const total = selectedSvcs.reduce((a, s) => a + Number(s.price ?? 0), 0)
+  const svcTotal  = selectedSvcs.reduce((a, s) => a + Number(s.price ?? 0), 0)
+  const prodTotal = selectedProducts.reduce((a, p) => a + Number(p.price ?? 0), 0)
+  const total     = svcTotal + prodTotal
 
   async function handleSave() {
     if (!customerName.trim()) { alert('Customer name is required'); return }
@@ -273,6 +292,7 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
         customer_phone:  customerPhone.trim() || undefined,
         barber_id:       barberId,
         service_ids:     selectedSvcs.map(s => s.id),
+        product_ids:     selectedProducts.map(p => p.id),
         date,
         time,
         notes: notes.trim() || undefined,
@@ -351,50 +371,144 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
             </select>
           </div>
 
-          {/* Services */}
+          {/* Services & Products tab section */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label style={{ ...labelStyle, marginBottom: 0 }}>Services <span style={{ color: '#DC2626' }}>*</span></label>
-              <button onClick={() => setSvcOpen(o => !o)}
-                style={{ padding: '4px 12px', borderRadius: 6, border: '1.5px solid ' + T.topBg, background: svcOpen ? T.topBg : 'transparent', color: svcOpen ? T.white : T.topBg, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                {svcOpen ? '▲ Close' : '+ Add'}
-              </button>
+            {/* Tab bar */}
+            <div style={{ background: T.surface, borderRadius: 9, padding: 3, display: 'flex', marginBottom: 12 }}>
+              {['services', 'products'].map(tab => {
+                const isActive = activeTab === tab
+                const label = tab === 'services' ? 'Services' : 'Products & Drinks'
+                const count = tab === 'services' ? selectedSvcs.length : selectedProducts.length
+                return (
+                  <button key={tab} onClick={() => setActiveTab(tab)}
+                    data-testid={tab === 'services' ? 'new-booking-tab-services' : 'new-booking-tab-products'}
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none',
+                      fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600,
+                      cursor: 'pointer', transition: 'background 0.15s ease, color 0.15s ease',
+                      background: isActive ? T.topBg : 'transparent',
+                      color: isActive ? T.white : T.muted }}
+                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = T.surface2; e.currentTarget.style.color = T.text2 }}}
+                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.muted }}}>
+                    {label}
+                    {count > 0 && (
+                      <span style={{ marginLeft: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, fontSize: 11, fontWeight: 700, boxSizing: 'border-box',
+                        background: isActive ? 'rgba(255,255,255,0.2)' : T.surface2,
+                        color: isActive ? T.white : T.text2 }}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
 
-            {svcOpen && (
-              <div style={{ background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
-                {allServices.length === 0 && <div style={{ padding: '12px 14px', fontSize: 12, color: T.muted }}>No services found for this branch</div>}
-                {allServices.map(svc => {
-                  const sel = selectedSvcs.find(s => s.id === svc.id)
-                  return (
-                    <button key={svc.id} onClick={() => toggleSvc(svc)}
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '10px 14px', background: sel ? '#F0FDF4' : 'none', border: 'none', borderBottom: '1px solid ' + T.surface, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.white }}
-                      onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: sel ? '#15803D' : T.text }}>{svc.name}{sel ? ' ✓' : ''}</span>
-                      <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.price)}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
-            {selectedSvcs.length === 0 && !svcOpen && (
-              <div style={{ fontSize: 12, color: T.muted, padding: '8px 0' }}>No services selected</div>
-            )}
-            {selectedSvcs.map(sv => (
-              <div key={sv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.name}</div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.price)}</div>
+            {/* Services tab content */}
+            {activeTab === 'services' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                  <button onClick={() => setSvcOpen(o => !o)}
+                    style={{ padding: '4px 12px', borderRadius: 6, border: '1.5px solid ' + T.topBg, background: svcOpen ? T.topBg : 'transparent', color: svcOpen ? T.white : T.topBg, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    {svcOpen ? '▲ Close' : '+ Add'}
+                  </button>
                 </div>
-                <button onClick={() => toggleSvc(sv)}
-                  style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-              </div>
-            ))}
 
-            {selectedSvcs.length > 0 && (
-              <div style={{ fontSize: 12, fontWeight: 700, color: T.text2, textAlign: 'right', paddingTop: 4 }}>
+                {svcOpen && (
+                  <div style={{ background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
+                    {allServices.length === 0 && <div style={{ padding: '12px 14px', fontSize: 12, color: T.muted }}>No services found for this branch</div>}
+                    {allServices.map(svc => {
+                      const sel = selectedSvcs.find(s => s.id === svc.id)
+                      return (
+                        <button key={svc.id} onClick={() => toggleSvc(svc)}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '10px 14px', background: sel ? '#F0FDF4' : 'none', border: 'none', borderBottom: '1px solid ' + T.surface, cursor: 'pointer', textAlign: 'left' }}
+                          onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.white }}
+                          onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: sel ? '#15803D' : T.text }}>{svc.name}{sel ? ' ✓' : ''}</span>
+                          <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.price)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {selectedSvcs.length === 0 && !svcOpen && (
+                  <div style={{ fontSize: 12, color: T.muted, padding: '8px 0' }}>No services selected</div>
+                )}
+                {selectedSvcs.map(sv => (
+                  <div key={sv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.name}</div>
+                      <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.price)}</div>
+                    </div>
+                    <button onClick={() => toggleSvc(sv)}
+                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Products tab content */}
+            {activeTab === 'products' && (
+              <>
+                {loadingProducts ? (
+                  <div style={{ padding: '24px 0', fontSize: 13, color: T.muted, textAlign: 'center' }}>Loading…</div>
+                ) : allProducts.length === 0 ? (
+                  <div style={{ padding: '24px 0', fontSize: 12, color: T.muted, textAlign: 'center' }}>No products available for this branch</div>
+                ) : (
+                  allProducts.map(p => {
+                    const sel = selectedProducts.some(sp => sp.id === p.id)
+                    const outOfStock = p.current_stock === 0
+                    return (
+                      <div key={p.id} onClick={() => toggleProduct(p)}
+                        data-testid={`product-card-${p.id}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8,
+                          border: `1.5px solid ${sel ? T.topBg : T.border}`, background: sel ? T.surface : T.white,
+                          cursor: 'pointer', marginBottom: 6, transition: 'background 0.12s ease' }}
+                        onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.surface }}
+                        onMouseLeave={e => { if (!sel) e.currentTarget.style.background = T.white }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? T.topBg : T.border}`,
+                          background: sel ? T.topBg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>
+                            {p.name}
+                            {outOfStock && (
+                              <span style={{ display: 'inline-block', marginLeft: 8, padding: '2px 7px', borderRadius: 5,
+                                background: '#FEF2F2', color: T.danger, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em' }}>
+                                Out of stock
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, color: outOfStock ? T.danger : T.muted, fontWeight: outOfStock ? 600 : 400, marginTop: 1 }}>
+                            {p.current_stock} in stock
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>
+                          Rp {Number(p.price || 0).toLocaleString('id-ID')}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+
+                {selectedProducts.map(sp => (
+                  <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sp.name}</div>
+                      <div style={{ fontSize: 11, color: T.muted }}>{fmt(sp.price)}</div>
+                    </div>
+                    <button onClick={() => toggleProduct(sp)}
+                      data-testid={`remove-product-${sp.id}`}
+                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Combined total */}
+            {(selectedSvcs.length > 0 || selectedProducts.length > 0) && (
+              <div data-testid="items-total" style={{ fontSize: 12, fontWeight: 700, color: T.text2, textAlign: 'right', paddingTop: 8 }}>
                 Total: {fmt(total)}
               </div>
             )}
@@ -425,13 +539,19 @@ function NewBookingModal({ branches, allBarbers, defaultBranchId, onSave, onClos
 // ── EditBookingModal ──────────────────────────────────────────────────────────
 
 function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
-  const [loadingDetail, setLoadingDetail] = useState(true)
-  const [allServices,   setAllServices]   = useState([])
-  const [currentSvcs,   setCurrentSvcs]   = useState([])
-  const [originalSvcIds, setOriginalSvcIds] = useState([])
-  const [barberId,      setBarberId]      = useState(booking.barber_id || '')
-  const [saving,        setSaving]        = useState(false)
-  const [addOpen,       setAddOpen]       = useState(false)
+  const [loadingDetail,   setLoadingDetail]   = useState(true)
+  const [allServices,     setAllServices]     = useState([])
+  const [currentSvcs,     setCurrentSvcs]     = useState([])
+  const [originalSvcIds,  setOriginalSvcIds]  = useState([])
+  const [barberId,        setBarberId]        = useState(booking.barber_id || '')
+  const [saving,          setSaving]          = useState(false)
+  const [addOpen,         setAddOpen]         = useState(false)
+  const [allProducts,     setAllProducts]     = useState([])
+  const [currentExtras,   setCurrentExtras]   = useState([])   // { id (booking_extras.id), item_id, name, price }
+  const [originalExtraIds,setOriginalExtraIds]= useState([])   // booking_extras.id values from load
+  const [selectedProducts,setSelectedProducts]= useState([])   // new additions: { id (item_id), name, price }
+  const [activeTab,       setActiveTab]       = useState('services')
+  const [loadingProducts, setLoadingProducts] = useState(false)
 
   // Parse booking's scheduled_at into local date + time strings for inputs
   const initDT = booking.scheduled_at ? new Date(booking.scheduled_at) : new Date()
@@ -442,15 +562,21 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
   const [schedTime, setSchedTime] = useState(initTime)
 
   useEffect(() => {
+    setLoadingProducts(true)
     Promise.all([
       api.get(`/bookings/${booking.id}`),
       api.get(`/services?branch_id=${booking.branch_id}`),
-    ]).then(([bk, svcs]) => {
+      api.get(`/inventory/kiosk-menu?branch_id=${booking.branch_id}`),
+    ]).then(([bk, svcs, prods]) => {
       const loaded = (bk.services || []).map(s => ({ service_id: s.service_id, service_name: s.name, price: s.price }))
       setCurrentSvcs(loaded)
       setOriginalSvcIds(loaded.map(s => s.service_id))
       setAllServices(Array.isArray(svcs) ? svcs.filter(s => s.is_active !== false) : [])
-    }).catch(() => {}).finally(() => setLoadingDetail(false))
+      const extras = (bk.extras || []).map(e => ({ id: e.id, item_id: e.item_id, name: e.name, price: e.price }))
+      setCurrentExtras(extras)
+      setOriginalExtraIds(extras.map(e => e.id))
+      setAllProducts(Array.isArray(prods) ? prods.filter(p => p.kiosk_visible) : [])
+    }).catch(() => {}).finally(() => { setLoadingDetail(false); setLoadingProducts(false) })
   }, [booking.id, booking.branch_id])
 
   const currentIds  = currentSvcs.map(s => s.service_id)
@@ -470,6 +596,17 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
     setAddOpen(false)
   }
 
+  function toggleNewProduct(p) {
+    setSelectedProducts(prev =>
+      prev.some(sp => sp.id === p.id)
+        ? prev.filter(sp => sp.id !== p.id)
+        : [...prev, { id: p.id, name: p.name, price: p.price }])
+  }
+
+  function removeExtra(extraId) {
+    setCurrentExtras(prev => prev.filter(e => e.id !== extraId))
+  }
+
   async function handleSave() {
     setSaving(true)
     try {
@@ -477,16 +614,24 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
       const toRemove = originalSvcIds.filter(id => !nowIds.includes(id))
       const toAdd    = nowIds.filter(id => !originalSvcIds.includes(id))
 
+      // Products: new additions are in selectedProducts (item_ids to add)
+      // Removals: extras from original load that are no longer in currentExtras
+      const currentExtraIds = currentExtras.map(e => e.id)
+      const toAddProducts    = selectedProducts.map(p => p.id)   // item_ids
+      const toRemoveProducts = originalExtraIds.filter(id => !currentExtraIds.includes(id)) // booking_extras.ids
+
       // Build scheduled_at ISO string from local date+time inputs
       const newISO    = new Date(`${schedDate}T${schedTime}:00`).toISOString()
       const origISO   = booking.scheduled_at ? new Date(booking.scheduled_at).toISOString() : null
       const timeChanged = newISO !== origISO
 
       await api.patch(`/bookings/${booking.id}/admin-update`, {
-        barber_id:          barberId !== booking.barber_id ? barberId : undefined,
-        add_service_ids:    toAdd,
-        remove_service_ids: toRemove,
-        scheduled_at:       timeChanged ? newISO : undefined,
+        barber_id:           barberId !== booking.barber_id ? barberId : undefined,
+        add_service_ids:     toAdd,
+        remove_service_ids:  toRemove,
+        scheduled_at:        timeChanged ? newISO : undefined,
+        add_product_ids:     toAddProducts.length    ? toAddProducts    : undefined,
+        remove_product_ids:  toRemoveProducts.length ? toRemoveProducts : undefined,
       })
       onSave()
       onClose()
@@ -542,48 +687,169 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
                 </div>
               </div>
 
-              {/* Services */}
+              {/* Services & Products tab section */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted }}>Services</div>
-                  <button onClick={() => setAddOpen(o => !o)}
-                    style={{ padding: '4px 12px', borderRadius: 6, border: '1.5px solid ' + T.topBg, background: addOpen ? T.topBg : 'transparent', color: addOpen ? T.white : T.topBg, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                    + Add Service
-                  </button>
+                {/* Tab bar */}
+                <div style={{ background: T.surface, borderRadius: 9, padding: 3, display: 'flex', marginBottom: 12 }}>
+                  {['services', 'products'].map(tab => {
+                    const isActive = activeTab === tab
+                    const label = tab === 'services' ? 'Services' : 'Products & Drinks'
+                    const count = tab === 'services' ? currentSvcs.length : (currentExtras.length + selectedProducts.length)
+                    return (
+                      <button key={tab} onClick={() => setActiveTab(tab)}
+                        data-testid={tab === 'services' ? 'edit-booking-tab-services' : 'edit-booking-tab-products'}
+                        style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none',
+                          fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600,
+                          cursor: 'pointer', transition: 'background 0.15s ease, color 0.15s ease',
+                          background: isActive ? T.topBg : 'transparent',
+                          color: isActive ? T.white : T.muted }}
+                        onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = T.surface2; e.currentTarget.style.color = T.text2 }}}
+                        onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.muted }}}>
+                        {label}
+                        {count > 0 && (
+                          <span style={{ marginLeft: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, fontSize: 11, fontWeight: 700, boxSizing: 'border-box',
+                            background: isActive ? 'rgba(255,255,255,0.2)' : T.surface2,
+                            color: isActive ? T.white : T.text2 }}>
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
 
-                {/* Add service dropdown */}
-                {addOpen && (
-                  <div style={{ background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
-                    {addableSvcs.length === 0 && (
-                      <div style={{ padding: '12px 14px', fontSize: 12, color: T.muted }}>All services already added</div>
-                    )}
-                    {addableSvcs.map(svc => (
-                      <button key={svc.id} onClick={() => addService(svc)}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderBottom: '1px solid ' + T.surface, cursor: 'pointer', textAlign: 'left' }}
-                        onMouseEnter={e => e.currentTarget.style.background = T.white}
-                        onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{svc.name}</span>
-                        <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.price)}</span>
+                {/* Services tab content */}
+                {activeTab === 'services' && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                      <button onClick={() => setAddOpen(o => !o)}
+                        style={{ padding: '4px 12px', borderRadius: 6, border: '1.5px solid ' + T.topBg, background: addOpen ? T.topBg : 'transparent', color: addOpen ? T.white : T.topBg, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                        + Add Service
                       </button>
+                    </div>
+
+                    {/* Add service dropdown */}
+                    {addOpen && (
+                      <div style={{ background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
+                        {addableSvcs.length === 0 && (
+                          <div style={{ padding: '12px 14px', fontSize: 12, color: T.muted }}>All services already added</div>
+                        )}
+                        {addableSvcs.map(svc => (
+                          <button key={svc.id} onClick={() => addService(svc)}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderBottom: '1px solid ' + T.surface, cursor: 'pointer', textAlign: 'left' }}
+                            onMouseEnter={e => e.currentTarget.style.background = T.white}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{svc.name}</span>
+                            <span style={{ fontSize: 12, color: T.muted }}>{fmt(svc.price)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Current services */}
+                    {currentSvcs.length === 0 && (
+                      <div style={{ padding: '12px 0', fontSize: 12, color: T.muted }}>No services — add at least one</div>
+                    )}
+                    {currentSvcs.map(sv => (
+                      <div key={sv.service_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 7, background: T.white }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.service_name || sv.name}</div>
+                          <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.price_charged)}</div>
+                        </div>
+                        <button onClick={() => removeService(sv.service_id)}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                      </div>
                     ))}
-                  </div>
+                  </>
                 )}
 
-                {/* Current services */}
-                {currentSvcs.length === 0 && (
-                  <div style={{ padding: '12px 0', fontSize: 12, color: T.muted }}>No services — add at least one</div>
+                {/* Products tab content */}
+                {activeTab === 'products' && (
+                  <>
+                    {loadingProducts ? (
+                      <div style={{ padding: '24px 0', fontSize: 13, color: T.muted, textAlign: 'center' }}>Loading…</div>
+                    ) : allProducts.length === 0 ? (
+                      <div style={{ padding: '24px 0', fontSize: 12, color: T.muted, textAlign: 'center' }}>No products available for this branch</div>
+                    ) : (
+                      allProducts.map(p => {
+                        const alreadyInExtras = currentExtras.some(e => e.item_id === p.id)
+                        const sel = alreadyInExtras || selectedProducts.some(sp => sp.id === p.id)
+                        const outOfStock = p.current_stock === 0
+                        return (
+                          <div key={p.id} onClick={() => !alreadyInExtras && toggleNewProduct(p)}
+                            data-testid={`product-card-${p.id}`}
+                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8,
+                              border: `1.5px solid ${sel ? T.topBg : T.border}`, background: sel ? T.surface : T.white,
+                              cursor: alreadyInExtras ? 'default' : 'pointer', marginBottom: 6, transition: 'background 0.12s ease' }}
+                            onMouseEnter={e => { if (!sel && !alreadyInExtras) e.currentTarget.style.background = T.surface }}
+                            onMouseLeave={e => { if (!sel && !alreadyInExtras) e.currentTarget.style.background = T.white }}>
+                            <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? T.topBg : T.border}`,
+                              background: sel ? T.topBg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>
+                                {p.name}
+                                {outOfStock && (
+                                  <span style={{ display: 'inline-block', marginLeft: 8, padding: '2px 7px', borderRadius: 5,
+                                    background: '#FEF2F2', color: T.danger, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em' }}>
+                                    Out of stock
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 11, color: outOfStock ? T.danger : T.muted, fontWeight: outOfStock ? 600 : 400, marginTop: 1 }}>
+                                {p.current_stock} in stock
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>
+                              Rp {Number(p.price || 0).toLocaleString('id-ID')}
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+
+                    {/* Currently booked extras + newly selected (removable) */}
+                    {(currentExtras.length > 0 || selectedProducts.length > 0) && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.muted, marginBottom: 6 }}>Selected products</div>
+                        {currentExtras.map(ex => (
+                          <div key={ex.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{ex.name}</div>
+                              <div style={{ fontSize: 11, color: T.muted }}>{fmt(ex.price)}</div>
+                            </div>
+                            <button onClick={() => removeExtra(ex.id)}
+                              style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                          </div>
+                        ))}
+                        {selectedProducts.map(sp => (
+                          <div key={sp.id} data-testid={`selected-product-${sp.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 6, background: T.white }}>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sp.name}</div>
+                              <div style={{ fontSize: 11, color: T.muted }}>{fmt(sp.price)}</div>
+                            </div>
+                            <button onClick={() => toggleNewProduct(sp)}
+                              data-testid={`remove-product-${sp.id}`}
+                              style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
-                {currentSvcs.map(sv => (
-                  <div key={sv.service_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 8, border: '1px solid ' + T.border, marginBottom: 7, background: T.white }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{sv.service_name || sv.name}</div>
-                      <div style={{ fontSize: 11, color: T.muted }}>{fmt(sv.price_charged)}</div>
-                    </div>
-                    <button onClick={() => removeService(sv.service_id)}
-                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+
+                {/* Combined total */}
+                {(currentSvcs.length > 0 || currentExtras.length > 0 || selectedProducts.length > 0) && (
+                  <div data-testid="items-total" style={{ fontSize: 12, fontWeight: 700, color: T.text2, textAlign: 'right', paddingTop: 8 }}>
+                    Total: {fmt(
+                      currentSvcs.reduce((a, s) => a + Number(s.price_charged ?? s.price ?? 0), 0) +
+                      currentExtras.reduce((a, e) => a + Number(e.price ?? 0), 0) +
+                      selectedProducts.reduce((a, p) => a + Number(p.price ?? 0), 0)
+                    )}
                   </div>
-                ))}
+                )}
               </div>
             </>
           )}
@@ -605,25 +871,39 @@ function EditBookingModal({ booking, allBarbers, onSave, onClose }) {
 // ── ReopenModal ───────────────────────────────────────────────────────────────
 
 function ReopenModal({ booking, onConfirm, onClose }) {
-  const [services,  setServices]  = useState([])
-  const [selected,  setSelected]  = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
+  const [services,         setServices]         = useState([])
+  const [selected,         setSelected]         = useState([])
+  const [loading,          setLoading]          = useState(true)
+  const [saving,           setSaving]           = useState(false)
+  const [allProducts,      setAllProducts]      = useState([])
+  const [selectedProducts, setSelectedProducts] = useState([])
+  const [loadingProducts,  setLoadingProducts]  = useState(false)
+  const [activeTab,        setActiveTab]        = useState('services')
 
   useEffect(() => {
+    setLoadingProducts(true)
     api.get(`/services?branch_id=${booking.branch_id}`)
       .then(data => setServices(Array.isArray(data) ? data.filter(s => s.is_active !== false) : []))
       .catch(() => {})
       .finally(() => setLoading(false))
+    api.get(`/inventory/kiosk-menu?branch_id=${booking.branch_id}`)
+      .then(data => setAllProducts(Array.isArray(data) ? data.filter(p => p.kiosk_visible) : []))
+      .catch(() => setAllProducts([]))
+      .finally(() => setLoadingProducts(false))
   }, [booking.branch_id])
 
   const toggle = id => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
 
+  function toggleProduct(p) {
+    setSelectedProducts(prev =>
+      prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])
+  }
+
   async function handleConfirm() {
-    if (!selected.length) return
+    if (!selected.length && !selectedProducts.length) return
     setSaving(true)
     try {
-      await api.patch(`/bookings/${booking.id}/reopen`, { service_ids: selected })
+      await api.patch(`/bookings/${booking.id}/reopen`, { service_ids: selected, product_ids: selectedProducts })
       onConfirm()
       onClose()
     } catch (err) { alert(err.message || 'Failed to reopen booking') }
@@ -637,20 +917,72 @@ function ReopenModal({ booking, onConfirm, onClose }) {
 
   const existingServiceIds = new Set((booking.services || []).map(s => s.service_id))
 
+  const hasAny = selected.length > 0 || selectedProducts.length > 0
+
+  function ctaLabel() {
+    if (saving) return 'Saving…'
+    const n = selected.length
+    const p = selectedProducts.length
+    if (n === 0 && p === 0) return 'Resume'
+    if (n > 0 && p === 0)  return `Resume with ${n} service${n > 1 ? 's' : ''}`
+    if (n === 0 && p > 0)  return `Resume with ${p} item${p > 1 ? 's' : ''}`
+    return `Resume with ${n} service${n > 1 ? 's' : ''} and ${p} item${p > 1 ? 's' : ''}`
+  }
+
+  function summaryLine() {
+    const n = selected.length
+    const p = selectedProducts.length
+    if (n === 0 && p === 0) return null
+    if (n > 0 && p === 0)   return `Est. additional time: ${newDuration} min`
+    if (n === 0 && p > 0)   return `${p} product${p > 1 ? 's' : ''} added`
+    return `Est. additional time: ${newDuration} min · ${p} product${p > 1 ? 's' : ''} added`
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: T.white, borderRadius: 16, padding: '28px 28px 24px', width: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 17, color: T.text, marginBottom: 4 }}>Add Service & Resume</div>
-        <div style={{ fontSize: 13, color: T.muted, marginBottom: 18 }}>
-          <b>{booking.booking_number}</b> · {booking.customer_name || booking.guest_name || 'Guest'} · Select additional service(s) to add
+        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 17, color: T.text, marginBottom: 4 }}>Add Items & Resume</div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 14 }}>
+          <b>{booking.booking_number}</b> · {booking.customer_name || booking.guest_name || 'Guest'}
         </div>
 
-        {loading ? (
+        {/* Tab bar */}
+        <div style={{ background: T.surface, borderRadius: 9, padding: 3, display: 'flex', marginBottom: 4 }}>
+          {['services', 'products'].map(tab => {
+            const isActive = activeTab === tab
+            const label = tab === 'services' ? 'Services' : 'Products & Drinks'
+            const count = tab === 'services' ? selected.length : selectedProducts.length
+            return (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                data-testid={tab === 'services' ? 'reopen-tab-services' : 'reopen-tab-products'}
+                style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none',
+                  fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', transition: 'background 0.15s ease, color 0.15s ease',
+                  background: isActive ? T.topBg : 'transparent',
+                  color: isActive ? T.white : T.muted }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = T.surface2; e.currentTarget.style.color = T.text2 }}}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.muted }}}>
+                {label}
+                {count > 0 && (
+                  <span style={{ marginLeft: 7, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, fontSize: 11, fontWeight: 700, boxSizing: 'border-box',
+                    background: isActive ? 'rgba(255,255,255,0.2)' : T.surface2,
+                    color: isActive ? T.white : T.text2 }}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {loading && activeTab === 'services' ? (
           <div style={{ padding: '24px 0', color: T.muted, fontSize: 13 }}>Loading services…</div>
         ) : (
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 18 }}>
-            {services.map(svc => {
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 18, marginTop: 4 }}>
+            {/* Services tab */}
+            {activeTab === 'services' && services.map(svc => {
               const sel = selected.includes(svc.id)
               const already = existingServiceIds.has(svc.id)
               return (
@@ -667,20 +999,64 @@ function ReopenModal({ booking, onConfirm, onClose }) {
                 </div>
               )
             })}
+
+            {/* Products tab */}
+            {activeTab === 'products' && (
+              loadingProducts ? (
+                <div style={{ padding: '24px 0', fontSize: 13, color: T.muted, textAlign: 'center' }}>Loading…</div>
+              ) : allProducts.length === 0 ? (
+                <div style={{ padding: '24px 0', fontSize: 12, color: T.muted, textAlign: 'center' }}>No products available for this branch</div>
+              ) : allProducts.map(p => {
+                const sel = selectedProducts.includes(p.id)
+                const outOfStock = p.current_stock === 0
+                return (
+                  <div key={p.id} onClick={() => toggleProduct(p)}
+                    data-testid={`product-card-${p.id}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8,
+                      border: `1.5px solid ${sel ? T.topBg : T.border}`, background: sel ? T.surface : T.white,
+                      cursor: 'pointer', marginBottom: 0, transition: 'background 0.12s ease' }}
+                    onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.surface }}
+                    onMouseLeave={e => { if (!sel) e.currentTarget.style.background = T.white }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? T.topBg : T.border}`,
+                      background: sel ? T.topBg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {sel && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: T.text }}>
+                        {p.name}
+                        {outOfStock && (
+                          <span style={{ display: 'inline-block', marginLeft: 8, padding: '2px 7px', borderRadius: 5,
+                            background: '#FEF2F2', color: T.danger, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em' }}>
+                            Out of stock
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: outOfStock ? T.danger : T.muted, fontWeight: outOfStock ? 600 : 400, marginTop: 1 }}>
+                        {p.current_stock} in stock
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text2 }}>
+                      Rp {Number(p.price || 0).toLocaleString('id-ID')}
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         )}
 
-        {selected.length > 0 && (
-          <div style={{ fontSize: 12, color: '#16A34A', fontWeight: 600, marginBottom: 14 }}>
-            Est. additional time: {newDuration} min
+        {summaryLine() && (
+          <div data-testid="reopen-summary" style={{ fontSize: 12, color: T.text2, fontWeight: 600, marginBottom: 14 }}>
+            {summaryLine()}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '11px 0', borderRadius: 9, border: `1.5px solid ${T.border}`, background: 'transparent', fontWeight: 600, fontSize: 14, cursor: 'pointer', color: T.text2 }}>Cancel</button>
-          <button onClick={handleConfirm} disabled={!selected.length || saving}
-            style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: selected.length && !saving ? '#16A34A' : T.surface, color: selected.length && !saving ? '#fff' : T.muted, fontWeight: 700, fontSize: 14, cursor: selected.length && !saving ? 'pointer' : 'not-allowed' }}>
-            {saving ? 'Saving…' : `Resume with ${selected.length} service${selected.length > 1 ? 's' : ''}`}
+          <button onClick={handleConfirm} disabled={!hasAny || saving}
+            data-testid="reopen-cta-btn"
+            style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: hasAny && !saving ? '#16A34A' : T.surface, color: hasAny && !saving ? '#fff' : T.muted, fontWeight: 700, fontSize: 14, cursor: hasAny && !saving ? 'pointer' : 'not-allowed' }}>
+            {ctaLabel()}
           </button>
         </div>
       </div>
@@ -762,9 +1138,10 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, o
   const isEditable  = EDITABLE_STATUSES.has(booking.status)
   const isPendingPay = booking.status === 'pending_payment'
 
-  function item(label, color, hoverBg, onClick, disabled = false) {
+  function item(label, color, hoverBg, onClick, disabled = false, testId) {
     return (
       <button onClick={disabled ? undefined : () => { onClick(); setOpen(false) }}
+        data-testid={testId}
         style={{ width: '100%', padding: '9px 13px', background: 'none', border: 'none', color: disabled ? T.muted : color, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 13, textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, opacity: disabled ? 0.45 : 1 }}
         onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = hoverBg }}
         onMouseLeave={e => { e.currentTarget.style.background = 'none' }}>
@@ -776,7 +1153,8 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, o
   return (
     <div style={{ position: 'relative' }}>
       <button onClick={() => setOpen(o => !o)}
-        style={{ width: 30, height: 30, borderRadius: 6, background: open ? T.surface : 'transparent', border: `1px solid ${open ? T.border : 'transparent'}`, color: T.muted, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', letterSpacing: '0.05em' }}
+        data-testid={`action-menu-btn-${booking.id}`}
+  style={{ width: 30, height: 30, borderRadius: 6, background: open ? T.surface : 'transparent', border: `1px solid ${open ? T.border : 'transparent'}`, color: T.muted, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', letterSpacing: '0.05em' }}
         onMouseEnter={e => { e.currentTarget.style.background = T.surface; e.currentTarget.style.borderColor = T.border }}
         onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent' } }}>
         ···
@@ -784,9 +1162,9 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, o
       {open && (
         <div style={{ position: 'absolute', right: 0, top: 34, background: T.white, border: `1px solid ${T.border}`, borderRadius: 10, zIndex: 9999, minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', overflow: 'hidden' }}
           onMouseLeave={() => setOpen(false)}>
-          {isEditable && item('✏ Edit Barber / Services', T.text, T.bg, () => onEdit(booking))}
+          {isEditable && item('✏ Edit Barber / Services', T.text, T.bg, () => onEdit(booking), false, `edit-booking-action-${booking.id}`)}
           {isEditable && item('⊕ Group for Payment', '#2563EB', 'rgba(37,99,235,0.06)', () => onGroup(booking))}
-          {isPendingPay && item('＋ Add Service & Resume', '#16A34A', '#F0FDF4', () => onReopen(booking))}
+          {isPendingPay && item('＋ Add Service & Resume', '#16A34A', '#F0FDF4', () => onReopen(booking), false, `reopen-booking-action-${booking.id}`)}
           {!isInProg && !isPendingPay && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
           {booking.status === 'confirmed' && booking.barber_id && item('↩ Unassign Barber', '#D97706', '#FFFBEB', () => onUnassign(booking))}
           {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
@@ -1281,6 +1659,7 @@ export default function LiveMonitor() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowNewBooking(true)}
+            data-testid="new-booking-btn"
             style={{ padding: '9px 16px', borderRadius: 8, background: '#16A34A', color: T.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
             + New Booking
           </button>

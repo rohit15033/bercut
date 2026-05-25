@@ -325,3 +325,183 @@ describe('PATCH /api/bookings/:id/reopen — product_ids', () => {
     expect(res.body.added_duration_min).toBe(45)
   })
 })
+
+// ── Quantity stepper — dynamic qty across all endpoints ──────────────────────
+
+describe('Quantity stepper — dynamic qty across all endpoints', () => {
+  const PENDING_BOOKING = { id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'pending_payment' }
+
+  // Test 1: admin-update with quantity=3 stores qty=3
+  it('admin-update: quantity=3 is stored in INSERT', async () => {
+    // Queries: BEGIN, SELECT booking, SELECT inventory, INSERT booking_extras, COMMIT
+    // then pool.query SELECT booking (return value)
+    client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'confirmed' }] })
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 10 }] })  // SELECT inventory
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+    pool.query.mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, status: 'confirmed' }] })
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/admin-update`)
+      .send({ add_products: [{ item_id: ITEM_ID_1, quantity: 3 }] })
+
+    expect(res.status).toBe(200)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 3, 15000])
+  })
+
+  // Test 2: quantity clamped to current_stock
+  it('admin-update: quantity=99 is clamped to current_stock=5', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'confirmed' }] })
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 5 }] })  // stock=5
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+    pool.query.mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, status: 'confirmed' }] })
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/admin-update`)
+      .send({ add_products: [{ item_id: ITEM_ID_1, quantity: 99 }] })
+
+    expect(res.status).toBe(200)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 5, 15000])
+  })
+
+  // Test 3: quantity=0 is treated as 1 (minimum clamp)
+  it('admin-update: quantity=0 is clamped to minimum of 1', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'confirmed' }] })
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+    pool.query.mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, status: 'confirmed' }] })
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/admin-update`)
+      .send({ add_products: [{ item_id: ITEM_ID_1, quantity: 0 }] })
+
+    expect(res.status).toBe(200)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 1, 15000])
+  })
+
+  // Test 4: add-extras endpoint with quantity=2
+  it('add-extras: quantity=2 is stored in INSERT', async () => {
+    // Queries: BEGIN, SELECT booking, SELECT inventory, INSERT booking_extras, COMMIT
+    client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'in_progress' }] })
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/add-extras`)
+      .send({ items: [{ item_id: ITEM_ID_1, quantity: 2 }] })
+
+    expect(res.status).toBe(200)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 2, 15000])
+  })
+
+  // Test 5: reopen with quantity=4 in product_ids
+  it('reopen: quantity=4 in {id, quantity} product_ids is stored in INSERT', async () => {
+    // Queries: BEGIN, SELECT booking, SELECT inventory, INSERT extras,
+    //          UPDATE booking (status=in_progress), UPDATE barber, COMMIT
+    client.query
+      .mockResolvedValueOnce({ rows: [] })               // BEGIN
+      .mockResolvedValueOnce({ rows: [PENDING_BOOKING] }) // SELECT booking
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // UPDATE booking
+      .mockResolvedValueOnce({ rows: [] })  // UPDATE barber
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/reopen`)
+      .send({ product_ids: [{ id: ITEM_ID_1, quantity: 4 }] })
+
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 4, 15000])
+  })
+
+  // Test 6: admin-force with quantity=3, extrasTotal calculated correctly
+  it('admin-force: quantity=3 yields extrasTotal=45000 and INSERT has qty=3', async () => {
+    // Queries: BEGIN, SELECT services, SELECT COUNT+1, INSERT booking,
+    //          INSERT booking_services, SELECT inventory, INSERT booking_extras, COMMIT
+    // then pool.query: SELECT barber name
+    client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: SVC_ID_1, name: 'Haircut', price: 50000, commission_rate: 35 }] })
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })  // booking number
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'confirmed' }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_services
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+    pool.query.mockResolvedValueOnce({ rows: [{ name: 'Test Barber' }] })
+
+    const res = await request(app)
+      .post('/api/bookings/admin-force')
+      .send({
+        branch_id: BRANCH_ID, customer_name: 'Test Customer',
+        barber_id: BARBER_ID, service_ids: [SVC_ID_1],
+        date: '2026-05-22', time: '10:00',
+        product_ids: [{ id: ITEM_ID_1, quantity: 3 }],
+      })
+
+    expect(res.status).toBe(201)
+    // 50000 (service) + 3×15000 (extras) = 95000
+    expect(res.body.total_amount).toBe(95000)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 3, 15000])
+  })
+
+  // Test 7: backwards compat — flat UUID array still produces qty=1 after change
+  it('admin-update: legacy flat add_product_ids still defaults to qty=1', async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, branch_id: BRANCH_ID, barber_id: BARBER_ID, status: 'confirmed' }] })
+      .mockResolvedValueOnce({ rows: [{ id: ITEM_ID_1, price: 15000, current_stock: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })  // INSERT booking_extras
+      .mockResolvedValueOnce({ rows: [] })  // COMMIT
+    pool.query.mockResolvedValueOnce({ rows: [{ id: BOOKING_ID, status: 'confirmed' }] })
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/admin-update`)
+      .send({ add_product_ids: [ITEM_ID_1] })
+
+    expect(res.status).toBe(200)
+
+    const insertCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && c[0].includes('INSERT INTO booking_extras'))
+    expect(insertCall).toBeDefined()
+    // Legacy path: no quantity field → normalised to {item_id, quantity: 1}
+    expect(insertCall[1]).toEqual([BOOKING_ID, ITEM_ID_1, 1, 15000])
+  })
+})

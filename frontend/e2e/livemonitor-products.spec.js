@@ -361,3 +361,162 @@ test.describe('NewBookingModal — Services tab (direct catalog)', () => {
     await expect(page.getByTestId('items-total')).toContainText('60.000')
   })
 })
+
+// ── NewBookingModal — quantity stepper ────────────────────────────────────────
+
+test.describe('NewBookingModal — quantity stepper', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupAdmin(page)
+    await goToLiveMonitor(page)
+    await openNewBookingModal(page)
+    await page.getByTestId('new-booking-tab-products').click()
+    await expect(page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)).toBeVisible()
+  })
+
+  test('stepper appears on selection and shows qty 1', async ({ page }) => {
+    const card = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    // Before selection — stepper buttons must not be visible
+    await expect(card.getByRole('button', { name: '−' })).not.toBeVisible()
+    await expect(card.getByRole('button', { name: '+' })).not.toBeVisible()
+
+    // Select the card
+    await card.click()
+
+    // After selection — both stepper buttons must appear
+    await expect(card.getByRole('button', { name: '−' })).toBeVisible()
+    await expect(card.getByRole('button', { name: '+' })).toBeVisible()
+
+    // The qty display between the buttons must show 1
+    const qtySpan = card.locator('span').filter({ hasText: /^1$/ })
+    await expect(qtySpan).toBeVisible()
+  })
+
+  test('plus increments quantity and chip subtitle shows 2 ×', async ({ page }) => {
+    const card = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    await card.click()
+
+    const plusBtn = card.getByRole('button', { name: '+' })
+    await plusBtn.click()
+
+    // Qty display must show 2
+    const qtySpan = card.locator('span').filter({ hasText: /^2$/ })
+    await expect(qtySpan).toBeVisible()
+
+    // The selected chip subtitle must include "2 ×"
+    const chip = page.getByTestId(`selected-product-${PROD_IN_STOCK_ID}`)
+    await expect(chip).toContainText('2 ×')
+  })
+
+  test('total updates with quantity: qty=2 of Rp 75.000 shows 150.000', async ({ page }) => {
+    const card = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    await card.click()
+
+    const plusBtn = card.getByRole('button', { name: '+' })
+    await plusBtn.click()
+
+    // 2 × 75000 = 150000 → formatted as "150.000"
+    const totalEl = page.getByTestId('items-total')
+    await expect(totalEl).toBeVisible()
+    await expect(totalEl).toContainText('150.000')
+  })
+
+  test('minus decrements quantity from 3 to 2', async ({ page }) => {
+    const card = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    await card.click()
+
+    const plusBtn  = card.getByRole('button', { name: '+' })
+    const minusBtn = card.getByRole('button', { name: '−' })
+
+    // Click + twice to reach qty=3
+    await plusBtn.click()
+    await plusBtn.click()
+
+    const qtyAt3 = card.locator('span').filter({ hasText: /^3$/ })
+    await expect(qtyAt3).toBeVisible()
+
+    // Click − once — should drop to 2
+    await minusBtn.click()
+
+    const qtyAt2 = card.locator('span').filter({ hasText: /^2$/ })
+    await expect(qtyAt2).toBeVisible()
+  })
+
+  test('minus at qty=1 deselects the card completely', async ({ page }) => {
+    const card     = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    const minusBtn = card.getByRole('button', { name: '−' })
+
+    // Select (qty=1)
+    await card.click()
+    await expect(minusBtn).toBeVisible()
+
+    // Click − at qty=1 — should deselect
+    await minusBtn.click()
+
+    // Stepper buttons must no longer be visible
+    await expect(card.getByRole('button', { name: '−' })).not.toBeVisible()
+    await expect(card.getByRole('button', { name: '+' })).not.toBeVisible()
+
+    // The selected chip must be gone
+    await expect(page.getByTestId(`selected-product-${PROD_IN_STOCK_ID}`)).not.toBeVisible()
+  })
+
+  test('plus is non-functional at max stock (qty stays at 10)', async ({ page }) => {
+    const card    = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    const plusBtn = card.getByRole('button', { name: '+' })
+
+    await card.click()
+
+    // Click + nine times to go from qty=1 to qty=10 (current_stock is 10)
+    for (let i = 0; i < 9; i++) {
+      await plusBtn.click()
+    }
+
+    const qtyAt10 = card.locator('span').filter({ hasText: /^10$/ })
+    await expect(qtyAt10).toBeVisible()
+
+    // At max stock the + button has pointerEvents:none — it won't respond to clicks.
+    // Attempt one more click (force:true to bypass pointer-events) and confirm qty stays at 10.
+    await plusBtn.click({ force: true })
+    await expect(qtyAt10).toBeVisible()
+  })
+
+  // ── ReopenModal stepper (test 7) ─────────────────────────────────────────────
+
+  test('ReopenModal — stepper appears and increments qty', async ({ page }) => {
+    // This test needs a different setup — use a fresh page context via setup inside the test
+    // The beforeEach already called setupAdmin with only [mockBooking]; we need to re-route
+    // to include mockReopenBooking and stub the reopen endpoint.
+    // Re-route bookings to include both bookings for this test.
+    await page.route('**/api/bookings?date=**', route =>
+      route.fulfill({ json: [mockBooking, mockReopenBooking] })
+    )
+    await page.route(`**/api/bookings/${BOOKING_REOPEN_ID}/reopen`, route =>
+      route.fulfill({ status: 200, json: { ok: true } })
+    )
+
+    // Navigate to live monitor fresh so the updated booking route takes effect
+    await page.goto('/admin')
+    await page.getByRole('button', { name: 'Live Queue' }).click()
+    await expect(page.getByText('Live Queue Management')).toBeVisible()
+
+    // Open the reopen modal for the pending_payment booking
+    await page.getByTestId(`action-menu-btn-${BOOKING_REOPEN_ID}`).click()
+    await page.getByTestId(`reopen-booking-action-${BOOKING_REOPEN_ID}`).click()
+    await expect(page.getByText('Add Items & Resume')).toBeVisible()
+
+    // Switch to Products tab
+    await page.getByTestId('reopen-tab-products').click()
+    await expect(page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)).toBeVisible()
+
+    // Select the in-stock product — stepper must appear
+    const card = page.getByTestId(`product-card-${PROD_IN_STOCK_ID}`)
+    await card.click()
+    await expect(card.getByRole('button', { name: '−' })).toBeVisible()
+    await expect(card.getByRole('button', { name: '+' })).toBeVisible()
+
+    // Click + once — qty must show 2
+    await card.getByRole('button', { name: '+' }).click()
+    const qtySpan = card.locator('span').filter({ hasText: /^2$/ })
+    await expect(qtySpan).toBeVisible()
+  })
+})

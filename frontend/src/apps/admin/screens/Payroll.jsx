@@ -566,9 +566,18 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
     const hasLateOv      = ov.lateMin !== undefined
     const hasExcOv       = ov.excusedTimes !== undefined || ov.excusedFixed !== undefined || ov.excusedProrata !== undefined
     const hasInexOv      = ov.inexcusedTimes !== undefined || ov.inexcusedFixed !== undefined || ov.inexcusedProrata !== undefined
+    const offUseProrata  = ov.offUseProrata !== undefined ? ov.offUseProrata : !!(entry.off_use_prorata)
     const lateDed        = hasLateOv ? lateMin * lateRatePerMin              : Number(entry.late_deduction          || 0)
-    const inexcusedDed   = hasInexOv ? inexcusedFixed * FLAT_OFF_RATE     + Math.round(inexcusedProrata * prorataRate) : Number(entry.inexcused_off_deduction || 0)
-    const excusedDed     = hasExcOv  ? excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate) : Number(entry.excused_off_deduction   || 0)
+    const inexcusedDed   = hasInexOv
+      ? inexcusedFixed * FLAT_OFF_RATE + Math.round(inexcusedProrata * prorataRate)
+      : offUseProrata
+        ? Math.round(inexcusedTimes * prorataRate)
+        : Number(entry.inexcused_off_deduction || 0)
+    const excusedDed     = hasExcOv
+      ? excusedFixed * EXCUSED_OVER_RATE + Math.round(excusedProrata * prorataRate)
+      : offUseProrata
+        ? Math.round(excusedOver * prorataRate)
+        : Number(entry.excused_off_deduction || 0)
     const adjs     = adjustments[entry.id] || []
     const totalAdd = adjs.filter(a => a.type === 'addition').reduce((s, a) => s + Number(a.amount), 0)
     const totalDed = adjs.filter(a => a.type === 'deduction' && !(a.is_kasbon && a.deduct_period === 'next')).reduce((s, a) => s + Number(a.amount), 0)
@@ -828,8 +837,8 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
             { label: 'OT Comm.',      sub: 'overtime' },
             { label: 'Tips' },
             { label: 'Late',          sub: 'min · deduction' },
-            { label: 'Excused Off',   sub: 'flat / pro-rata split' },
-            { label: 'Inexcused Off', sub: 'flat / pro-rata split' },
+            { label: 'Excused Off',   sub: 'flat or pro-rata' },
+            { label: 'Inexcused Off', sub: 'flat or pro-rata' },
             { label: 'Kasbon',        sub: 'this period' },
             { label: 'Additions' },
             { label: 'Other Ded.' },
@@ -869,9 +878,22 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
           const hasLateOv  = ov.lateMin !== undefined
           const hasExcOv   = ov.excusedTimes !== undefined || ov.excusedFixed !== undefined || ov.excusedProrata !== undefined
           const hasInexOv  = ov.inexcusedTimes !== undefined || ov.inexcusedFixed !== undefined || ov.inexcusedProrata !== undefined
+          const offUseProrata = ov.offUseProrata !== undefined
+            ? ov.offUseProrata
+            : !!(entry.off_use_prorata)
+          const offDedColor  = offUseProrata ? '#0F766E' : '#DC2626'
+          const offDedPrefix = offUseProrata ? '−÷' : '−'
           const lateDed    = hasLateOv ? lateMin * lateRatePerMin              : Number(entry.late_deduction          || 0)
-          const excusedDed = hasExcOv  ? excusedFixed   * EXCUSED_OVER_RATE + Math.round(excusedProrata   * prorataRate) : Number(entry.excused_off_deduction   || 0)
-          const inexcusedDed = hasInexOv ? inexcusedFixed * FLAT_OFF_RATE   + Math.round(inexcusedProrata * prorataRate) : Number(entry.inexcused_off_deduction || 0)
+          const excusedDed = hasExcOv
+            ? excusedFixed * EXCUSED_OVER_RATE + Math.round(excusedProrata * prorataRate)
+            : offUseProrata
+              ? Math.round(excusedOver * prorataRate)
+              : Number(entry.excused_off_deduction || 0)
+          const inexcusedDed = hasInexOv
+            ? inexcusedFixed * FLAT_OFF_RATE + Math.round(inexcusedProrata * prorataRate)
+            : offUseProrata
+              ? Math.round(inexcusedTimes * prorataRate)
+              : Number(entry.inexcused_off_deduction || 0)
           const adjs             = adjustments[entry.id] || []
           const kasbonAdjs       = adjs.filter(a => a.is_kasbon && a.type === 'deduction' && a.deduct_period === 'current')
           const kasbonDeferred   = adjs.filter(a => a.is_kasbon && a.deduct_period === 'next')
@@ -899,6 +921,52 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                       <div style={{ fontSize: 11, color: T.muted }}>{days} {label}</div>
                     )
                   })()}
+                  {!isLocked ? (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        const next = !offUseProrata
+                        setOverride(entry.id, 'offUseProrata', next)
+                        api.patch('/payroll/entries/' + entry.id, { off_use_prorata: next }).catch(() => {})
+                      }}
+                      title={offUseProrata ? 'Pro-rata active — click to switch to flat' : 'Flat rate active — click to switch to pro-rata'}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        padding: '2px 7px',
+                        borderRadius: 999,
+                        border: '1px solid ' + (offUseProrata ? '#0F766E' : T.border),
+                        background: offUseProrata ? '#CCFBF1' : T.surface,
+                        cursor: 'pointer',
+                        marginTop: 3,
+                      }}
+                    >
+                      <span style={{ fontSize: 10, fontWeight: 700, color: offUseProrata ? '#0F766E' : T.muted, fontFamily: "'DM Sans', sans-serif" }}>
+                        {'÷ Pro-rata' + (offUseProrata ? ' ✓' : '')}
+                      </span>
+                    </button>
+                  ) : (
+                    <span
+                      title={offUseProrata ? 'Pro-rata active' : 'Flat rate active'}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        padding: '2px 7px',
+                        borderRadius: 999,
+                        border: '1px solid ' + (offUseProrata ? '#0F766E' : T.border),
+                        background: offUseProrata ? '#CCFBF1' : T.surface,
+                        opacity: 0.55,
+                        marginTop: 3,
+                        cursor: 'not-allowed',
+                      }}
+                    >
+                      <span style={{ fontSize: 10, fontWeight: 700, color: offUseProrata ? '#0F766E' : T.muted, fontFamily: "'DM Sans', sans-serif" }}>
+                        {'÷ Pro-rata' + (offUseProrata ? ' ✓' : '')}
+                      </span>
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -974,10 +1042,10 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                       <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
                       {excusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(excusedProrata * prorataRate))}</span>}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>−{fmtM(excusedDed)}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: offDedColor, borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>{offDedPrefix}{fmtM(excusedDed)}</div>
                   </div>
                 ) : excusedDed > 0 ? (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>−{fmtM(excusedDed)}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: offDedColor }}>{offDedPrefix}{fmtM(excusedDed)}</div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}
@@ -1014,10 +1082,10 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                       <span style={{ fontSize: 9, color: T.muted }}>{workingDays}d</span>
                       {inexcusedProrata > 0 && <span style={{ fontSize: 10, color: '#DC2626' }}>−{fmtM(Math.round(inexcusedProrata * prorataRate))}</span>}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>−{fmtM(inexcusedDed)}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: offDedColor, borderTop: '1px solid #FEE2E2', paddingTop: 3 }}>{offDedPrefix}{fmtM(inexcusedDed)}</div>
                   </div>
                 ) : inexcusedDed > 0 ? (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>−{fmtM(inexcusedDed)}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: offDedColor }}>{offDedPrefix}{fmtM(inexcusedDed)}</div>
                 ) : (
                   <span style={{ fontSize: 11, color: T.border }}>—</span>
                 )}

@@ -5,6 +5,18 @@ import { api } from '../../../shared/api.js'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
+// Returns a concise date-range string.
+// Same-month: "1–31 May 2026"
+// Cross-month: "26 Apr – 25 May 2026"
+function fmtShortRange(from, to) {
+  if (!from || !to) return '—'
+  const f = String(from).slice(0, 10)
+  const t = String(to).slice(0, 10)
+  const [, fMo, fDa] = f.split('-').map(Number)
+  const [tYr, tMo, tDa] = t.split('-').map(Number)
+  if (fMo === tMo) return `${fDa}–${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
+  return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
+}
 
 function fmtDateTime(iso) {
   if (!iso) return '—'
@@ -306,9 +318,41 @@ export default function PayrollList({ onOpen, onViewAttendance }) {
               }}>
 
               {/* Period label */}
-              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: T.text }}>
-                {row.label}
-              </div>
+              {(() => {
+                const isSplit = !!(row.dbPeriod.performance_from)
+                return (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: T.text }}>
+                        {row.label}
+                      </span>
+                      {isSplit && (
+                        <span style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: T.surface2,
+                          color: T.muted,
+                          fontFamily: "'DM Sans', sans-serif",
+                          flexShrink: 0,
+                        }}>
+                          Split
+                        </span>
+                      )}
+                    </div>
+                    {isSplit && (
+                      <div style={{ fontSize: 10, color: T.muted, marginTop: 3, fontFamily: "'Inter', sans-serif" }}>
+                        Perf: {fmtShortRange(row.dbPeriod.performance_from, row.dbPeriod.performance_to)}
+                        &nbsp;&nbsp;·&nbsp;&nbsp;
+                        Att: {fmtShortRange(row.dbPeriod.attendance_from, row.dbPeriod.attendance_to)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* Status badge */}
               <div><StatusBadge status={row.status} /></div>

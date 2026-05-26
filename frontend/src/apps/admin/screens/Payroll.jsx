@@ -17,6 +17,19 @@ function fmtPeriodLabel(period) {
   return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
 }
 
+// Returns a concise date-range string.
+// Same-month: "1–31 May 2026"
+// Cross-month: "26 Apr – 25 May 2026"
+function fmtShortRange(from, to) {
+  if (!from || !to) return '—'
+  const f = String(from).slice(0, 10)
+  const t = String(to).slice(0, 10)
+  const [, fMo, fDa] = f.split('-').map(Number)
+  const [tYr, tMo, tDa] = t.split('-').map(Number)
+  if (fMo === tMo) return `${fDa}–${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
+  return `${fDa} ${MONTH_NAMES[fMo-1].slice(0,3)} – ${tDa} ${MONTH_NAMES[tMo-1].slice(0,3)} ${tYr}`
+}
+
 function fmtDateTime(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -630,6 +643,7 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
   const periodLabel = fmtPeriodLabel(activePeriod)
 
   const PGRID = '1.4fr 0.8fr 0.9fr 0.75fr 0.75fr 0.9fr 1.15fr 1.15fr 0.85fr 0.9fr 0.85fr 0.65fr 0.7fr'
+  const isSplit = !!(activePeriod?.performance_from)
 
   return (
     <div style={{ padding: '28px 32px' }}>
@@ -669,22 +683,96 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
               ← Back
             </button>
           )}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>
-                {periodLabel || 'Payroll'}
+          {(() => {
+            // For split periods, show "Month Year" as the heading (attendance window anchor).
+            // This avoids implying one date range covers everything.
+            const headingLabel = isSplit && activePeriod && activePeriod.attendance_to
+              ? (() => {
+                  const t = String(activePeriod.attendance_to).slice(0, 10)
+                  const [tYr, tMo] = t.split('-').map(Number)
+                  return `${MONTH_NAMES[tMo - 1]} ${tYr}`
+                })()
+              : (periodLabel || 'Payroll')
+
+            const subtitleText = isSplit
+              ? 'Split-period payroll — two date windows in use'
+              : 'Period payroll — base salary + commission + deductions'
+
+            return (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>
+                    {headingLabel}
+                  </div>
+                  {isSplit && (
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      padding: '3px 9px',
+                      borderRadius: 4,
+                      background: T.surface2,
+                      color: T.muted,
+                      fontFamily: "'DM Sans', sans-serif",
+                      alignSelf: 'center',
+                    }}>
+                      Split
+                    </span>
+                  )}
+                  {activePeriod && <StatusBadge status={activePeriod.status || 'draft'} />}
+                </div>
+                <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>
+                  {subtitleText}
+                </div>
+                {activePeriod?.generated_at && (
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                    Generated: {fmtDateTime(activePeriod.generated_at)}
+                  </div>
+                )}
+                {isSplit && activePeriod && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      background: T.surface,
+                      border: '1px solid ' + T.border,
+                      color: T.text2,
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>Perf</span>
+                      <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>
+                        {fmtShortRange(activePeriod.performance_from, activePeriod.performance_to)}
+                      </span>
+                    </span>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      background: T.surface,
+                      border: '1px solid ' + T.border,
+                      color: T.text2,
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.muted }}>Att</span>
+                      <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>
+                        {fmtShortRange(activePeriod.attendance_from, activePeriod.attendance_to)}
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
-              {activePeriod && <StatusBadge status={activePeriod.status || 'draft'} />}
-            </div>
-            <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>
-              Period payroll — base salary + commission + deductions
-            </div>
-            {activePeriod?.generated_at && (
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
-                Generated: {fmtDateTime(activePeriod.generated_at)}
-              </div>
-            )}
-          </div>
+            )
+          })()}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
@@ -804,7 +892,13 @@ export default function Payroll({ period: periodProp, onBack, onViewAttendance, 
                 </div>
                 <div>
                   <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13, color: T.text }}>{entry.barber_name}</div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{Number(entry.present_days || entry.working_days || 0)} days present</div>
+                  {(() => {
+                    const days = Number(entry.present_days || entry.working_days || 0)
+                    const label = isSplit ? 'days att.' : 'days present'
+                    return (
+                      <div style={{ fontSize: 11, color: T.muted }}>{days} {label}</div>
+                    )
+                  })()}
                 </div>
               </div>
 

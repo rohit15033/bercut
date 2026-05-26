@@ -112,6 +112,8 @@ router.get('/:id/chairs', checkPermission('branches'), async (req, res) => {
        FROM chairs ch
        LEFT JOIN barbers b ON b.id = ch.barber_id
        LEFT JOIN chair_overrides co ON co.chair_id = ch.id AND co.resolved_by IS NULL
+                                   AND co.date_from <= CURRENT_DATE
+                                   AND (co.date_to IS NULL OR co.date_to >= CURRENT_DATE)
        LEFT JOIN barbers ob ON ob.id = co.barber_id
        WHERE ch.branch_id = $1 ORDER BY ch.sort_order ASC`,
       [req.params.id])

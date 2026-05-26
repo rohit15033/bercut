@@ -443,6 +443,7 @@ CREATE TABLE IF NOT EXISTS chair_overrides (
   reason      TEXT,
   created_by  UUID        REFERENCES users(id) ON DELETE SET NULL,
   resolved_by UUID        REFERENCES users(id) ON DELETE SET NULL,
+  resolved_at TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -667,5 +668,6 @@ CREATE INDEX IF NOT EXISTS idx_point_transactions_customer   ON point_transactio
 CREATE INDEX IF NOT EXISTS idx_audit_log_created             ON audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_off_records_barber_date       ON off_records(barber_id, date);
 CREATE INDEX IF NOT EXISTS idx_chair_overrides_chair_date    ON chair_overrides(chair_id, date_from, date_to);
+CREATE INDEX IF NOT EXISTS idx_chair_overrides_barber        ON chair_overrides(barber_id);
 CREATE INDEX IF NOT EXISTS idx_payroll_entries_period        ON payroll_entries(period_id);
 CREATE INDEX IF NOT EXISTS idx_customers_phone               ON customers(phone);

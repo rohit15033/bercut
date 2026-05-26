@@ -159,18 +159,34 @@ router.delete('/:id/chairs/:chairId', checkPermission('branches'), async (req, r
 // ── Chair Overrides ────────────────────────────────────────────────────────────
 
 router.post('/:id/chairs/:chairId/overrides', checkPermission('branches'), async (req, res) => {
+  const { barber_id, date_from, date_to } = req.body
+  if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+  if (!date_from) return res.status(400).json({ message: 'date_from required' })
+  const client = await pool.connect()
   try {
-    const { barber_id, date_from, date_to } = req.body
-    if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
-    if (!date_from) return res.status(400).json({ message: 'date_from required' })
-    await pool.query(
+    await client.query('BEGIN')
+    await client.query(
       'UPDATE chair_overrides SET resolved_by = $1, resolved_at = NOW() WHERE chair_id = $2 AND resolved_by IS NULL',
-      ['admin', req.params.chairId])
-    const { rows } = await pool.query(
+      [req.user?.id || null, req.params.chairId])
+    await client.query(
+      `UPDATE chair_overrides
+       SET resolved_by = $1, resolved_at = NOW()
+       WHERE barber_id = $2
+         AND resolved_by IS NULL
+         AND date_from <= CURRENT_DATE
+         AND (date_to IS NULL OR date_to >= CURRENT_DATE)`,
+      [req.user?.id || null, barber_id])
+    const { rows } = await client.query(
       `INSERT INTO chair_overrides (chair_id, barber_id, date_from, date_to) VALUES ($1, $2, $3, $4) RETURNING *`,
       [req.params.chairId, barber_id, date_from, date_to || null])
+    await client.query('COMMIT')
     res.status(201).json(rows[0])
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err); res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
 })
 
 router.delete('/:id/chairs/:chairId/overrides', checkPermission('branches'), async (req, res) => {
@@ -178,7 +194,7 @@ router.delete('/:id/chairs/:chairId/overrides', checkPermission('branches'), asy
     await pool.query(
       `UPDATE chair_overrides SET resolved_by = $1, resolved_at = NOW()
        WHERE chair_id = $2 AND resolved_by IS NULL`,
-      ['admin', req.params.chairId])
+      [req.user?.id || null, req.params.chairId])
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

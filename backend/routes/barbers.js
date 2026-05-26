@@ -120,9 +120,31 @@ router.get('/all', checkPermission('barbers'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT b.id, b.name, b.branch_id, b.specialty, b.phone, b.status, b.is_active, b.sort_order, b.pay_type, b.base_salary, b.daily_rate,
-              c.label AS chair_label
+              c.label AS chair_label,
+              cb.name AS chair_branch_name,
+              active_co.chair_label AS override_chair_label,
+              active_co.branch_name AS override_branch_name,
+              active_co.date_from AS override_date_from,
+              active_co.date_to AS override_date_to,
+              active_co.home_barber_name AS override_home_barber_name
        FROM barbers b
        LEFT JOIN chairs c ON c.barber_id = b.id
+       LEFT JOIN branches cb ON cb.id = c.branch_id
+       LEFT JOIN LATERAL (
+         SELECT co.date_from, co.date_to,
+                ch.label AS chair_label,
+                br.name AS branch_name,
+                hb.name AS home_barber_name
+         FROM chair_overrides co
+         JOIN chairs ch ON ch.id = co.chair_id
+         JOIN branches br ON br.id = ch.branch_id
+         LEFT JOIN barbers hb ON hb.id = ch.barber_id
+         WHERE co.barber_id = b.id
+           AND co.resolved_by IS NULL
+           AND co.date_from <= CURRENT_DATE
+           AND (co.date_to IS NULL OR co.date_to >= CURRENT_DATE)
+         LIMIT 1
+       ) active_co ON true
        WHERE b.is_active = true
        ORDER BY b.name ASC`)
     res.json(rows)

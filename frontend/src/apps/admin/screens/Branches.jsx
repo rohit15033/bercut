@@ -126,9 +126,17 @@ function OverrideModal({ chair, barbers, branchId, onSave, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState({ barber_id: '', date_from: today, date_to: '', reason: '' })
   const [loading, setLoading] = useState(false)
+  // pendingBarber: barber clicked but not yet confirmed (only for "currently overriding" ones)
+  const [pendingBarber, setPendingBarber] = useState(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const options = barbers.filter(b => b.branch_id !== branchId)
+  // Exclude the chair's own home barber
+  const candidates = barbers.filter(b => b.id !== chair.barber_id)
+
+  const freeBarbers            = candidates.filter(b => !b.chair_label && !b.override_chair_label)
+  const homeAssignedBarbers    = candidates.filter(b =>  b.chair_label && !b.override_chair_label)
+  const currentlyOverriding    = candidates.filter(b =>  b.override_chair_label)
+
   const selected = barbers.find(b => b.id === form.barber_id)
   const valid = form.barber_id && form.date_from
 
@@ -147,9 +155,73 @@ function OverrideModal({ chair, barbers, branchId, onSave, onClose }) {
     finally { setLoading(false) }
   }
 
+  const handleBarberClick = (b) => {
+    if (b.override_chair_label) {
+      // Require inline confirmation
+      setPendingBarber(b)
+      set('barber_id', '')
+    } else {
+      setPendingBarber(null)
+      set('barber_id', b.id)
+    }
+  }
+
+  const confirmPending = () => {
+    if (!pendingBarber) return
+    set('barber_id', pendingBarber.id)
+    setPendingBarber(null)
+  }
+
+  const cancelPending = () => {
+    setPendingBarber(null)
+  }
+
+  const sectionHeader = (label, count) => (
+    <div style={{ ...lbl, marginBottom: 6, marginTop: 4 }}>{label} · {count}</div>
+  )
+
+  const rowBase = (b) => ({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 10px',
+    borderRadius: 7,
+    cursor: 'pointer',
+    border: `1px solid ${form.barber_id === b.id ? T.accent : 'transparent'}`,
+    background: form.barber_id === b.id ? `${T.accent}18` : (pendingBarber?.id === b.id ? '#FFFBEB' : T.white),
+    marginBottom: 2,
+    transition: 'background 0.15s',
+  })
+
+  const renderBarberRow = (b) => (
+    <div key={b.id} style={rowBase(b)} onClick={() => handleBarberClick(b)}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{b.name}</div>
+        {b.specialty && <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{b.specialty}</div>}
+      </div>
+      {b.override_chair_label ? (
+        <div style={{
+          fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5,
+          background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E',
+          whiteSpace: 'nowrap', marginLeft: 8,
+        }}>
+          Covering {b.override_branch_name} · Chair {b.override_chair_label}
+        </div>
+      ) : b.chair_label ? (
+        <div style={{
+          fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5,
+          background: T.surface, border: `1px solid ${T.border}`, color: T.muted,
+          whiteSpace: 'nowrap', marginLeft: 8,
+        }}>
+          Chair {b.chair_label} · {b.chair_branch_name}
+        </div>
+      ) : null}
+    </div>
+  )
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="admin-card" style={{ width: 460, padding: '24px 28px' }}>
+      <div className="admin-card" style={{ width: 480, padding: '24px 28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
             <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 16, color: T.text }}>Override Chair {chair.label}</div>
@@ -161,14 +233,72 @@ function OverrideModal({ chair, barbers, branchId, onSave, onClose }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* ── Barber selection list ── */}
           <div>
             <label style={lbl}>Covering Barber *</label>
-            <select value={form.barber_id} onChange={e => set('barber_id', e.target.value)} style={sel}>
-              <option value="">— Select barber —</option>
-              {options.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-            {selected && <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{selected.specialty || ''}</div>}
+            <div style={{
+              maxHeight: 220, overflowY: 'auto',
+              border: `1.5px solid ${T.border}`, borderRadius: 9,
+              padding: '8px 8px 4px',
+              background: T.bg,
+            }}>
+              {freeBarbers.length > 0 && (
+                <div>
+                  {sectionHeader('FREE', freeBarbers.length)}
+                  {freeBarbers.map(renderBarberRow)}
+                </div>
+              )}
+              {homeAssignedBarbers.length > 0 && (
+                <div style={{ marginTop: freeBarbers.length > 0 ? 8 : 0 }}>
+                  {sectionHeader('HOME-ASSIGNED', homeAssignedBarbers.length)}
+                  {homeAssignedBarbers.map(renderBarberRow)}
+                </div>
+              )}
+              {currentlyOverriding.length > 0 && (
+                <div style={{ marginTop: (freeBarbers.length > 0 || homeAssignedBarbers.length > 0) ? 8 : 0 }}>
+                  {sectionHeader('CURRENTLY OVERRIDING', currentlyOverriding.length)}
+                  {currentlyOverriding.map(renderBarberRow)}
+                </div>
+              )}
+              {candidates.length === 0 && (
+                <div style={{ fontSize: 12, color: T.muted, padding: '10px 4px', textAlign: 'center' }}>No available barbers</div>
+              )}
+            </div>
+
+            {/* Inline confirmation banner for "currently overriding" barbers */}
+            {pendingBarber && (
+              <div style={{
+                marginTop: 8, padding: '10px 12px', borderRadius: 8,
+                background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E',
+                fontSize: 11, lineHeight: 1.6,
+              }}>
+                <div style={{ marginBottom: 8 }}>
+                  <strong>⚠ {pendingBarber.name}</strong> is currently covering Chair {pendingBarber.override_chair_label} at {pendingBarber.override_branch_name}.
+                  Selecting them will cancel that override — Chair {pendingBarber.override_chair_label} will revert to {pendingBarber.override_home_barber_name || 'unassigned'}. Confirm?
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={cancelPending} style={{
+                    padding: '5px 12px', borderRadius: 6, border: '1px solid #FDE68A',
+                    background: T.white, color: '#92400E', fontWeight: 600, fontSize: 11, cursor: 'pointer',
+                  }}>Cancel</button>
+                  <button onClick={confirmPending} style={{
+                    padding: '5px 12px', borderRadius: 6, border: 'none',
+                    background: '#92400E', color: T.white, fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                  }}>Confirm</button>
+                </div>
+              </div>
+            )}
+
+            {/* Selection hint */}
+            {selected && !pendingBarber && (
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>
+                Selected: <strong style={{ color: T.text }}>{selected.name}</strong>{selected.specialty ? ` · ${selected.specialty}` : ''}
+              </div>
+            )}
           </div>
+
+          {/* ── Date fields ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={lbl}>From *</label>
@@ -204,7 +334,7 @@ function OverrideModal({ chair, barbers, branchId, onSave, onClose }) {
 }
 
 // ── ChairPanel ─────────────────────────────────────────────────────────────────
-function ChairPanel({ branch, allBarbers }) {
+function ChairPanel({ branch, allBarbers, onRefreshBarbers }) {
   const [chairs,       setChairs]       = useState([])
   const [newLabel,     setNewLabel]     = useState('')
   const [overrideFor,  setOverrideFor]  = useState(null)
@@ -265,7 +395,7 @@ function ChairPanel({ branch, allBarbers }) {
           chair={overrideFor}
           barbers={allBarbers}
           branchId={branch.id}
-          onSave={load}
+          onSave={() => { load(); onRefreshBarbers?.() }}
           onClose={() => setOverrideFor(null)}
         />
       )}
@@ -722,6 +852,10 @@ export default function Branches() {
   }
   useEffect(() => { load() }, [])
 
+  const refreshBarbers = () => {
+    api.get('/barbers/all').then(bars => setAllBarbers(Array.isArray(bars) ? bars : []))
+  }
+
   const filtered = filterStatus === 'all'      ? branches
                  : filterStatus === 'active'   ? branches.filter(b => b.is_active)
                  : branches.filter(b => !b.is_active)
@@ -824,7 +958,7 @@ export default function Branches() {
                 </div>
 
                 {/* Chair panel */}
-                {isExpanded && <ChairPanel branch={branch} allBarbers={allBarbers} />}
+                {isExpanded && <ChairPanel branch={branch} allBarbers={allBarbers} onRefreshBarbers={refreshBarbers} />}
               </div>
             )
           })}

@@ -138,11 +138,21 @@ router.patch('/:id/chairs/:chairId', checkPermission('branches'), async (req, re
     if (barber_id  !== undefined) { sets.push(`barber_id = $${idx++}`);  vals.push(barber_id) }
     if (sort_order !== undefined) { sets.push(`sort_order = $${idx++}`); vals.push(sort_order) }
     if (!sets.length) return res.status(400).json({ message: 'Nothing to update' })
-    vals.push(req.params.chairId)
+    vals.push(req.params.chairId, req.params.id)
     const { rows } = await pool.query(
-      `UPDATE chairs SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals)
+      `UPDATE chairs SET ${sets.join(', ')} WHERE id = $${idx} AND branch_id = $${idx + 1} RETURNING *`, vals)
     if (!rows.length) return res.status(404).json({ message: 'Not found' })
     res.json(rows[0])
+  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+})
+
+router.delete('/:id/chairs/:chairId', checkPermission('branches'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'DELETE FROM chairs WHERE id = $1 AND branch_id = $2 RETURNING *',
+      [req.params.chairId, req.params.id])
+    if (!rows.length) return res.status(404).json({ message: 'Not found' })
+    res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 

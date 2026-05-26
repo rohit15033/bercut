@@ -230,6 +230,14 @@ function ChairPanel({ branch, allBarbers }) {
     } catch (err) { alert(err.message) }
   }
 
+  const deleteChair = async (chairId) => {
+    if (!confirm('Delete this chair? Any active overrides will also be removed.')) return
+    try {
+      await api.delete(`/branches/${branch.id}/chairs/${chairId}`)
+      load()
+    } catch (err) { alert(err.message) }
+  }
+
   const assignBarber = async (chairId, barberId) => {
     try {
       await api.patch(`/branches/${branch.id}/chairs/${chairId}`, { barber_id: barberId || null })
@@ -278,6 +286,11 @@ function ChairPanel({ branch, allBarbers }) {
                   </div>
                   <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>Chair {chair.label}</span>
                 </div>
+                <button onClick={() => deleteChair(chair.id)}
+                  title="Delete chair"
+                  style={{ width: 22, height: 22, borderRadius: 5, border: 'none', background: T.surface, color: T.muted, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  ✕
+                </button>
               </div>
 
               <div style={{ marginBottom: hasOverride ? 8 : 0 }}>

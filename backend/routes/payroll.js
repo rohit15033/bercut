@@ -158,17 +158,9 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
       // Deductions
       const lateDeduction = totalLateMinutes * lateDeductPerMin
 
-      const prorataRate = Math.round(parseInt(barber.base_salary || 0) / workingDaysStd)
-      const isProrata   = barber.off_deduction_type === 'prorata'
-
-      const inexcusedDeduct = isProrata
-        ? Math.round(inexcusedDays * prorataRate)
-        : inexcusedDays * inexcusedFlatDeduct
-
-      const excusedOver   = Math.max(0, excusedDays - periodQuota)
-      const excusedDeduct = isProrata
-        ? Math.round(excusedOver * prorataRate)
-        : excusedOver * excusedFlatDeduct
+      const inexcusedDeduct = inexcusedDays * inexcusedFlatDeduct
+      const excusedOver     = Math.max(0, excusedDays - periodQuota)
+      const excusedDeduct   = excusedOver * excusedFlatDeduct
 
       // Kasbon total from expenses (used for net_pay calculation)
       let kasbonTotal = 0
@@ -188,8 +180,8 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
             gross_service_revenue, commission_regular, commission_ot, total_tips,
             total_late_minutes, inexcused_fixed_days, excused_fixed_days,
             working_days, late_deduction, inexcused_off_deduction, excused_off_deduction,
-            kasbon_total, net_pay)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            kasbon_total, net_pay, off_use_prorata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          ON CONFLICT (period_id, barber_id) DO UPDATE SET
            gross_service_revenue=$6, commission_regular=$7, commission_ot=$8, total_tips=$9,
            total_late_minutes=$10, inexcused_fixed_days=$11, excused_fixed_days=$12,
@@ -199,7 +191,7 @@ router.post('/periods/generate', checkPermission('payroll'), async (req, res) =>
          baseSalary, grossRevTotal, commRegular, commOt, totalTips,
          totalLateMinutes, inexcusedDays, excusedDays,
          workingDaysStd, lateDeduction, inexcusedDeduct, excusedDeduct,
-         kasbonTotal, netPay])
+         kasbonTotal, netPay, false])
 
       // Auto-import kasbon from expenses into payroll_adjustments
       const kasbonExpenses = await client.query(
@@ -269,6 +261,14 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
     const eff_att_to    = isSplit ? String(period.attendance_to).slice(0, 10)    : period_to
 
     await client.query('BEGIN')
+
+    // Snapshot existing off_use_prorata flags before deleting entries
+    const existingEntries = await client.query(
+      `SELECT barber_id, off_use_prorata FROM payroll_entries WHERE period_id = $1`,
+      [period.id])
+    const offUseProrataMap = {}
+    existingEntries.rows.forEach(r => { offUseProrataMap[r.barber_id] = r.off_use_prorata })
+
     await client.query(
       `UPDATE payroll_periods SET status = 'draft', generated_at = NOW() WHERE id = $1`,
       [period.id])
@@ -359,14 +359,14 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
       // Deductions
       const lateDeduction = totalLateMinutes * lateDeductPerMin
 
-      const prorataRate = Math.round(parseInt(barber.base_salary || 0) / workingDaysStd)
-      const isProrata   = barber.off_deduction_type === 'prorata'
+      const excusedOver  = Math.max(0, excusedDays - periodQuota)
+      const isProrata    = !!offUseProrataMap[barber.id]
+      const prorataRate  = Math.round(parseInt(barber.base_salary || 0) / workingDaysStd)
 
       const inexcusedDeduct = isProrata
         ? Math.round(inexcusedDays * prorataRate)
         : inexcusedDays * inexcusedFlatDeduct
 
-      const excusedOver   = Math.max(0, excusedDays - periodQuota)
       const excusedDeduct = isProrata
         ? Math.round(excusedOver * prorataRate)
         : excusedOver * excusedFlatDeduct
@@ -389,13 +389,13 @@ router.post('/periods/:id/regenerate', checkPermission('payroll'), async (req, r
             gross_service_revenue, commission_regular, commission_ot, total_tips,
             total_late_minutes, inexcused_fixed_days, excused_fixed_days,
             working_days, late_deduction, inexcused_off_deduction, excused_off_deduction,
-            kasbon_total, net_pay)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+            kasbon_total, net_pay, off_use_prorata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
         [period.id, barber.id, targetBranchId, barber.pay_type || 'commission',
          baseSalary, Math.round(grossRevTotal), commRegular, commOt, totalTips,
          totalLateMinutes, inexcusedDays, excusedDays,
          workingDaysStd, lateDeduction, inexcusedDeduct, excusedDeduct,
-         kasbonTotal, netPay])
+         kasbonTotal, netPay, isProrata])
 
       // Auto-import kasbon from expenses into payroll_adjustments
       const kasbonExpenses = await client.query(
@@ -474,7 +474,7 @@ router.patch('/entries/:id', checkPermission('payroll'), async (req, res) => {
     const allowed = ['working_days','late_deduction','total_late_minutes',
       'inexcused_off_deduction','inexcused_fixed_days',
       'excused_off_deduction','excused_fixed_days',
-      'kasbon_total','net_pay','base_salary']
+      'kasbon_total','net_pay','base_salary','off_use_prorata']
     const sets = []; const vals = []; let idx = 1
     for (const key of allowed) {
       if (req.body[key] !== undefined) { sets.push(`${key} = $${idx++}`); vals.push(req.body[key]) }

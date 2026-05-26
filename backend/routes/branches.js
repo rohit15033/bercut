@@ -108,13 +108,18 @@ router.get('/:id/chairs', checkPermission('branches'), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT ch.*, b.name AS barber_name,
               co.barber_id AS override_barber_id, ob.name AS override_barber_name,
-              co.id AS override_id
+              co.id AS override_id,
+              fco.barber_id AS future_override_barber_id, fb.name AS future_override_barber_name,
+              fco.date_from AS future_override_date_from, fco.date_to AS future_override_date_to
        FROM chairs ch
        LEFT JOIN barbers b ON b.id = ch.barber_id
        LEFT JOIN chair_overrides co ON co.chair_id = ch.id AND co.resolved_by IS NULL
                                    AND co.date_from <= CURRENT_DATE
                                    AND (co.date_to IS NULL OR co.date_to >= CURRENT_DATE)
        LEFT JOIN barbers ob ON ob.id = co.barber_id
+       LEFT JOIN chair_overrides fco ON fco.chair_id = ch.id AND fco.resolved_by IS NULL
+                                    AND fco.date_from > CURRENT_DATE
+       LEFT JOIN barbers fb ON fb.id = fco.barber_id
        WHERE ch.branch_id = $1 ORDER BY ch.sort_order ASC`,
       [req.params.id])
     res.json(rows)

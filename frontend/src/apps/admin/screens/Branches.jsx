@@ -407,12 +407,15 @@ function ChairPanel({ branch, allBarbers, onRefreshBarbers }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 14 }}>
         {chairs.map(chair => {
           const hasOverride = !!chair.override_barber_id
+          const hasScheduled = !hasOverride && !!chair.future_override_barber_id
+          const borderColor = hasOverride ? '#FDE68A' : hasScheduled ? '#BAE6FD' : T.border
+          const shadow = hasOverride ? '0 0 0 2px #FEF9C3' : hasScheduled ? '0 0 0 2px #E0F2FE' : 'none'
           return (
-            <div key={chair.id} style={{ background: T.white, border: `1px solid ${hasOverride ? '#FDE68A' : T.border}`, borderRadius: 10, padding: '12px 14px', boxShadow: hasOverride ? '0 0 0 2px #FEF9C3' : 'none' }}>
+            <div key={chair.id} style={{ background: T.white, border: `1px solid ${borderColor}`, borderRadius: 10, padding: '12px 14px', boxShadow: shadow }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 6, background: hasOverride ? '#D97706' : T.topBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 11, color: hasOverride ? '#fff' : T.accent }}>{chair.label}</span>
+                  <div style={{ width: 28, height: 28, borderRadius: 6, background: hasOverride ? '#D97706' : hasScheduled ? '#0284C7' : T.topBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 11, color: (hasOverride || hasScheduled) ? '#fff' : T.accent }}>{chair.label}</span>
                   </div>
                   <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 13, color: T.text }}>Chair {chair.label}</span>
                 </div>
@@ -442,6 +445,21 @@ function ChairPanel({ branch, allBarbers, onRefreshBarbers }) {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#D97706', marginBottom: 3 }}>⟳ Covering Now</div>
                       <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 12, color: T.text }}>{chair.override_barber_name}</div>
+                    </div>
+                    <button onClick={() => removeOverride(chair.id)}
+                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5, background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : hasScheduled ? (
+                <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#0284C7', marginBottom: 3 }}>
+                        ⏰ Scheduled · {chair.future_override_date_from}{chair.future_override_date_to && chair.future_override_date_to !== chair.future_override_date_from ? ` – ${chair.future_override_date_to}` : ''}
+                      </div>
+                      <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 12, color: T.text }}>{chair.future_override_barber_name}</div>
                     </div>
                     <button onClick={() => removeOverride(chair.id)}
                       style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5, background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>

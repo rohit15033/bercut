@@ -128,8 +128,8 @@ function OverrideModal({ chair, barbers, branchId, onSave, onClose }) {
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const options = barbers.filter(b => b.branch_id === branchId && b.id !== chair.barber_id)
-  const selected = barbers.find(b => b.id === parseInt(form.barber_id))
+  const options = barbers.filter(b => b.branch_id !== branchId)
+  const selected = barbers.find(b => b.id === form.barber_id)
   const valid = form.barber_id && form.date_from
 
   const submit = async () => {

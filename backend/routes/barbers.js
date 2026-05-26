@@ -72,11 +72,15 @@ router.get('/', async (req, res) => {
       FROM barbers b
       WHERE b.is_active = true
         AND (
-          b.branch_id = $1
+          EXISTS (
+            SELECT 1 FROM chairs c
+            WHERE c.barber_id = b.id AND c.branch_id = $1
+          )
           OR EXISTS (
             SELECT 1 FROM chair_overrides co
             JOIN chairs c ON c.id = co.chair_id
             WHERE co.barber_id = b.id AND c.branch_id = $1
+              AND co.resolved_by IS NULL
               AND co.date_from <= CURRENT_DATE
               AND (co.date_to IS NULL OR co.date_to >= CURRENT_DATE)
           )
@@ -86,6 +90,7 @@ router.get('/', async (req, res) => {
           JOIN chairs c ON c.id = co.chair_id
           WHERE co.barber_id = b.id
             AND c.branch_id != $1
+            AND co.resolved_by IS NULL
             AND co.date_from <= CURRENT_DATE
             AND (co.date_to IS NULL OR co.date_to >= CURRENT_DATE)
         )`

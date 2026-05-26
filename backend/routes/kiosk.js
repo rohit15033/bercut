@@ -57,12 +57,16 @@ router.post('/register', async (req, res) => {
                           ORDER BY co.id DESC NULLS LAST
                           LIMIT 1) AS chair_label
                   FROM barbers b
-                  WHERE (b.branch_id = $1 OR EXISTS (
-                    SELECT 1 FROM chair_overrides co2
-                    JOIN chairs c2 ON c2.id = co2.chair_id
-                    WHERE co2.barber_id = b.id AND c2.branch_id = $1
-                      AND co2.date_from <= CURRENT_DATE AND (co2.date_to IS NULL OR co2.date_to >= CURRENT_DATE)
-                  )) AND b.is_active = true
+                  WHERE (
+                    EXISTS (SELECT 1 FROM chairs c WHERE c.barber_id = b.id AND c.branch_id = $1)
+                    OR EXISTS (
+                      SELECT 1 FROM chair_overrides co2
+                      JOIN chairs c2 ON c2.id = co2.chair_id
+                      WHERE co2.barber_id = b.id AND c2.branch_id = $1
+                        AND co2.resolved_by IS NULL
+                        AND co2.date_from <= CURRENT_DATE AND (co2.date_to IS NULL OR co2.date_to >= CURRENT_DATE)
+                    )
+                  ) AND b.is_active = true
                   ORDER BY b.name`, [row.branch_id])
     ])
 

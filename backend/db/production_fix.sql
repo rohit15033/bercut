@@ -23,6 +23,7 @@ END $$;
 -- 3. Add any other missing columns to barber_breaks
 ALTER TABLE barber_breaks ADD COLUMN IF NOT EXISTS duration_minutes SMALLINT;
 ALTER TABLE barber_breaks ADD COLUMN IF NOT EXISTS reason VARCHAR(30) DEFAULT 'lunch';
+ALTER TABLE barber_breaks ADD COLUMN IF NOT EXISTS note TEXT;
 
 -- 4. Fix pgcrypto if missing
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -30,3 +31,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 5. Add missing columns to services (for packages)
 ALTER TABLE services ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE services ADD COLUMN IF NOT EXISTS mutex_group VARCHAR(50);
+
+
+-- 6. Xendit Terminal H2H — add terminal_id config to kiosk_settings
+ALTER TABLE kiosk_settings ADD COLUMN IF NOT EXISTS xendit_terminal_id TEXT;
+UPDATE kiosk_settings SET xendit_terminal_id = '15130328' WHERE xendit_terminal_id IS NULL;

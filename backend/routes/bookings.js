@@ -105,8 +105,57 @@ router.post('/', requireKioskOrAdmin, branchScope, requireBranch, async (req, re
       if (isNow || within30Min) {
         const freeIds = await getFreeBarberIds(client, branchId, scheduledISO, totalDur, isNow)
         barberId = await pickIdleBarber(client, branchId, freeIds)
+      } else {
+        // Future slot outside 30-min window: deferred booking.
+        // Lock existing deferred bookings to serialize concurrent inserts, then capacity-check.
+        await client.query(
+          `SELECT bk.id FROM bookings bk
+           WHERE bk.branch_id = $1
+             AND bk.barber_id IS NULL
+             AND bk.status = 'confirmed'
+             AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
+           FOR UPDATE`,
+          [branchId, bookingDate]
+        )
+
+        const capRes = await client.query(
+          `WITH booking_windows AS (
+             SELECT bk.id, bk.barber_id,
+                    bk.scheduled_at,
+                    bk.scheduled_at + (SUM(s.duration_minutes) + 5) * INTERVAL '1 minute' AS ends_at
+             FROM bookings bk
+             JOIN booking_services bsv ON bsv.booking_id = bk.id
+             JOIN services s ON s.id = bsv.service_id
+             WHERE bk.branch_id = $1
+               AND bk.status IN ('confirmed','in_progress')
+               AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = $2
+             GROUP BY bk.id, bk.scheduled_at, bk.barber_id
+           ),
+           overlapping AS (
+             SELECT barber_id FROM booking_windows
+             WHERE $3::timestamptz < ends_at
+               AND $3::timestamptz + ($4 * INTERVAL '1 minute') > scheduled_at
+           )
+           SELECT
+             (SELECT COUNT(*) FROM barbers
+              WHERE branch_id = $1 AND is_active = true
+                AND status NOT IN ('clocked_out','off','on_break')) AS total_barbers,
+             COUNT(*) FILTER (WHERE barber_id IS NOT NULL) AS confirmed_count,
+             COUNT(*) FILTER (WHERE barber_id IS NULL)     AS deferred_count
+           FROM overlapping`,
+          [branchId, bookingDate, scheduledISO, totalDur]
+        )
+
+        const totalBarbers   = parseInt(capRes.rows[0].total_barbers  || 0)
+        const confirmedCount = parseInt(capRes.rows[0].confirmed_count || 0)
+        const deferredCount  = parseInt(capRes.rows[0].deferred_count  || 0)
+
+        if (confirmedCount + deferredCount >= totalBarbers) {
+          await client.query('ROLLBACK')
+          return res.status(409).json({ message: 'No barbers available at this time slot' })
+        }
+        // Scheduler picks up barber assignment later.
       }
-      // Future slot outside 30-min window stays deferred; scheduler picks it up later.
     } else {
       const barberCheck = await client.query(
         `SELECT status FROM barbers WHERE id = $1 AND is_active = true`, [barberId])
@@ -441,22 +490,22 @@ router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
     // Only allow starting the earliest unstarted confirmed booking for this barber today
     // This enforces the "topmost booking only" constraint at backend level (not just frontend)
     const { rows } = await pool.query(`
-      WITH earliest AS (
-        SELECT id FROM bookings
-        WHERE barber_id = (
-          SELECT barber_id FROM bookings WHERE id = $1
-        )
-          AND branch_id = $2
-          AND DATE(scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
-          AND status = 'confirmed'
-        ORDER BY scheduled_at ASC
+      WITH target AS (
+        SELECT barber_id, branch_id FROM bookings WHERE id = $1
+      ),
+      earliest AS (
+        SELECT b.id FROM bookings b
+        JOIN target t ON b.barber_id = t.barber_id AND b.branch_id = t.branch_id
+        WHERE DATE(b.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
+          AND b.status = 'confirmed'
+        ORDER BY b.scheduled_at ASC
         LIMIT 1
       )
       UPDATE bookings
       SET status = 'in_progress', started_at = NOW()
       WHERE id = $1 AND id = (SELECT id FROM earliest)
       RETURNING *`,
-      [req.params.id, req.branchId])
+      [req.params.id])
     if (!rows.length) return res.status(409).json({ message: 'Cannot start booking' })
     await pool.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
     emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'in_service' })

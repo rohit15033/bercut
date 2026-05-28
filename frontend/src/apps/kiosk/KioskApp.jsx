@@ -182,6 +182,8 @@ function KioskContent({ config }) {
   const dirRef = useRef(1)
   const nav = (n) => { dirRef.current = n >= stepRef.current ? 1 : -1; setStep(n) }
   const [paymentRefreshKey, setPaymentRefreshKey] = useState(0)
+  const [slotRefreshKey, setSlotRefreshKey]       = useState(0)
+  const [slotFilledMsg, setSlotFilledMsg]         = useState('')
   const [barberPanelOpen, setBarberPanelOpen] = useState(false)
   const [staffPanelOpen,  setStaffPanelOpen]  = useState(false)
   const [quickPanelOpen,  setQuickPanelOpen]  = useState(false)
@@ -432,6 +434,7 @@ function KioskContent({ config }) {
           {step === 2 && (
             <BarberSelection
               barbers={barbers}
+              branchId={branchId}
               services={services}
               serviceIds={cart}
               barber={barber}
@@ -452,6 +455,9 @@ function KioskContent({ config }) {
               setSlot={setSlot}
               selectedExtras={selectedExtras}
               setSelectedExtras={setSelectedExtras}
+              refreshKey={slotRefreshKey}
+              slotFilledMsg={slotFilledMsg}
+              clearSlotFilledMsg={() => setSlotFilledMsg('')}
               onNext={() => nav(4)}
               onBack={() => nav(2)}
             />
@@ -471,6 +477,12 @@ function KioskContent({ config }) {
               branchId={branchId}
               settings={settings}
               groupId={groupId}
+              onSlotUnavailable={() => {
+                setSlot(null)
+                setSlotFilledMsg('That slot just filled up — please pick another time')
+                setSlotRefreshKey(k => k + 1)
+                nav(3)
+              }}
               onConfirm={(bk, pts) => {
                 setBooking(bk)
                 setPointsUsed(pts || 0)

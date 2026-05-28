@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { tokens as T, getToken } from '../../../shared/tokens.js'
 import { api } from '../../../shared/api.js'
 import * as XLSX from 'xlsx'
+import DateRangePicker from '../../../shared/DateRangePicker.jsx'
 
 const fmt  = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID')
 const fmtM = n => {
@@ -25,6 +26,21 @@ function fmtDate(s) {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!m) return s
   return `${MONTH_NAMES[parseInt(m[2])-1]} ${parseInt(m[3])} ${m[1]}`
+}
+
+function getPeriodDates(period, customFrom, customTo) {
+  if (period === 'custom') return { from: customFrom, to: customTo }
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+  if (period === 'today') { const t = iso(now); return { from: t, to: t } }
+  if (period === 'week') {
+    const day = now.getDay()
+    const mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1))
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    return { from: iso(mon), to: iso(sun) }
+  }
+  return { from: `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`, to: iso(now) }
 }
 
 // Largest Remainder Method distribution
@@ -494,57 +510,29 @@ function CategoryModal({ onConfirm, onClose }) {
   )
 }
 
-// ── DateFilter ────────────────────────────────────────────────────────────────
+// ── PeriodFilter ──────────────────────────────────────────────────────────────
 
-function DateFilter({ from, to, onChange }) {
-  const now = new Date()
-  const [mode, setMode] = useState('month')
-  const [my,   setMy]   = useState({ year: now.getFullYear(), month: now.getMonth() })
-
-  function monthRange(year, month) {
-    const f    = `${year}-${String(month+1).padStart(2,'0')}-01`
-    const last = new Date(year, month+1, 0).getDate()
-    const t    = `${year}-${String(month+1).padStart(2,'0')}-${String(last).padStart(2,'0')}`
-    return [f, t]
-  }
-  function gotoMonth(y, m) {
-    setMy({ year: y, month: m })
-    const [f, t] = monthRange(y, m)
-    onChange(f, t)
-  }
-  function prevMonth() {
-    const m = my.month === 0 ? 11 : my.month - 1
-    const y = my.month === 0 ? my.year - 1 : my.year
-    gotoMonth(y, m)
-  }
-  function nextMonth() {
-    const m = my.month === 11 ? 0  : my.month + 1
-    const y = my.month === 11 ? my.year + 1 : my.year
-    gotoMonth(y, m)
-  }
-
+function PeriodFilter({ period, filterFrom, filterTo, onPeriod, onDates }) {
+  const presets = [
+    { key: 'today', label: 'Today'      },
+    { key: 'week',  label: 'This Week'  },
+    { key: 'month', label: 'This Month' },
+    { key: 'custom',label: 'Custom'     },
+  ]
   const btnSt = active => ({
-    padding: '4px 12px', borderRadius: 5, border: 'none',
+    padding: '5px 13px', borderRadius: 5, border: 'none',
     background: active ? T.topBg : 'transparent',
-    color: active ? T.white : T.muted,
-    fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer',
+    color:      active ? T.white  : T.muted,
+    fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 12, cursor: 'pointer', transition: 'all 0.12s',
   })
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <div style={{ display: 'flex', gap: 2, background: T.surface, padding: 2, borderRadius: 7 }}>
-        <button style={btnSt(mode === 'month')} onClick={() => { setMode('month'); const [f, t] = monthRange(my.year, my.month); onChange(f, t) }}>Month</button>
-        <button style={btnSt(mode === 'all')}   onClick={() => { setMode('all');   onChange(null, null) }}>All</button>
+        {presets.map(p => (
+          <button key={p.key} style={btnSt(period === p.key)} onClick={() => onPeriod(p.key)}>{p.label}</button>
+        ))}
       </div>
-      {mode === 'month' && (
-        <div style={{ display: 'flex', alignItems: 'center', background: T.white, border: '1px solid ' + T.border, borderRadius: 8, overflow: 'hidden' }}>
-          <button onClick={prevMonth} style={{ padding: '6px 11px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: T.text2, borderRight: '1px solid ' + T.border }}>‹</button>
-          <span style={{ padding: '6px 14px', fontSize: 13, fontWeight: 600, color: T.text, minWidth: 118, textAlign: 'center', userSelect: 'none' }}>
-            {MONTH_NAMES[my.month]} {my.year}
-          </span>
-          <button onClick={nextMonth} style={{ padding: '6px 11px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: T.text2, borderLeft: '1px solid ' + T.border }}>›</button>
-        </div>
-      )}
+      {period === 'custom' && <DateRangePicker from={filterFrom} to={filterTo} onChange={onDates} />}
     </div>
   )
 }
@@ -587,10 +575,10 @@ export default function Expenses() {
   const [filterBranch, setFilterBranch] = useState('')
   const [filterType,   setFilterType]   = useState('all')
 
-  const now = new Date()
-  const pad = n => String(n).padStart(2, '0')
-  const [filterFrom, setFilterFrom] = useState(`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`)
-  const [filterTo,   setFilterTo]   = useState(`${now.getFullYear()}-${pad(now.getMonth()+1)}-${new Date(now.getFullYear(), now.getMonth()+1, 0).getDate()}`)
+  const [period,     setPeriod]     = useState('month')
+  const _initDates = getPeriodDates('month', null, null)
+  const [filterFrom, setFilterFrom] = useState(_initDates.from)
+  const [filterTo,   setFilterTo]   = useState(_initDates.to)
 
   // Form state
   const [expType,       setExpType]       = useState('regular')
@@ -814,8 +802,6 @@ export default function Expenses() {
     }
   }
 
-  const totalExpenses = expenses.reduce((a, e) => a + Number(e.amount || 0), 0)
-
   const TYPE_BADGE = {
     regular:   { label: 'Regular',   color: '#2563EB', bg: '#EFF6FF' },
     inventory: { label: 'Inventory', color: '#9333EA', bg: '#F3E8FF' },
@@ -861,7 +847,7 @@ export default function Expenses() {
       {lightboxUrl && <ReceiptLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 26, color: T.text }}>Expenses</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Log operating costs, stock purchases, and salary advances</div>
@@ -897,6 +883,34 @@ export default function Expenses() {
           </button>
         </div>
       </div>
+
+      {/* Stat boxes */}
+      {(() => {
+        const totalSpend   = expenses.reduce((a, e) => a + Number(e.amount || 0), 0)
+        const regularExps  = expenses.filter(e => e.type === 'regular')
+        const inventoryExps= expenses.filter(e => e.type === 'inventory')
+        const kasbonExps   = expenses.filter(e => e.type === 'kasbon')
+        const regularSum   = regularExps.reduce((a, e) => a + Number(e.amount || 0), 0)
+        const inventorySum = inventoryExps.reduce((a, e) => a + Number(e.amount || 0), 0)
+        const kasbonSum    = kasbonExps.reduce((a, e) => a + Number(e.amount || 0), 0)
+        const stats = [
+          { label: 'Total Spend',  value: fmtM(totalSpend),   count: expenses.length,      accent: T.topBg,   textColor: T.accent,   prominent: true },
+          { label: 'Regular',      value: fmtM(regularSum),   count: regularExps.length,   accent: '#2563EB', textColor: '#2563EB',  prominent: false },
+          { label: 'Inventory',    value: fmtM(inventorySum), count: inventoryExps.length, accent: '#9333EA', textColor: '#9333EA', prominent: false },
+          { label: 'Kasbon',       value: fmtM(kasbonSum),    count: kasbonExps.length,    accent: '#D97706', textColor: '#D97706', prominent: false },
+        ]
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+            {stats.map((s, i) => (
+              <div key={s.label} className="admin-card" style={{ padding: '18px 20px', animation: `fadeUp 0.25s ease ${i * 0.05}s both`, background: s.prominent ? T.topBg : T.white, border: s.prominent ? '1px solid ' + T.topBg : '1px solid ' + T.border }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: s.prominent ? 'rgba(245,226,0,0.7)' : T.muted, marginBottom: 6 }}>{s.label}</div>
+                <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 24, color: s.prominent ? T.accent : s.textColor, lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: s.prominent ? 'rgba(245,226,0,0.6)' : T.muted, marginTop: 5 }}>{s.count} {s.count === 1 ? 'record' : 'records'}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Add form */}
       {showForm && (
@@ -1086,7 +1100,20 @@ export default function Expenses() {
 
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-        <DateFilter from={filterFrom} to={filterTo} onChange={(f, t) => { setFilterFrom(f); setFilterTo(t) }} />
+        <PeriodFilter
+          period={period}
+          filterFrom={filterFrom}
+          filterTo={filterTo}
+          onPeriod={k => {
+            setPeriod(k)
+            if (k !== 'custom') {
+              const { from: f, to: t } = getPeriodDates(k, null, null)
+              setFilterFrom(f)
+              setFilterTo(t)
+            }
+          }}
+          onDates={(f, t) => { setFilterFrom(f); setFilterTo(t) }}
+        />
         <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
           style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.white, fontSize: 13, color: T.text, cursor: 'pointer' }}>
           <option value=''>All Branches</option>
@@ -1099,9 +1126,6 @@ export default function Expenses() {
               {f.label}
             </button>
           ))}
-        </div>
-        <div style={{ marginLeft: 'auto', fontFamily: "'Inter', sans-serif", fontWeight: 700, fontSize: 14, color: T.text }}>
-          Total: {fmtM(totalExpenses)}
         </div>
       </div>
 

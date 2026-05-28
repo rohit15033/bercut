@@ -26,8 +26,7 @@ async function runAutoClockOut() {
 async function autoClockOutForBranch(branch_id, nowHHMM) {
   try {
     const { rows: settings } = await pool.query(
-      `SELECT closing_time FROM whatsapp_settings WHERE branch_id = $1 LIMIT 1`,
-      [branch_id]
+      `SELECT closing_time FROM whatsapp_settings LIMIT 1`
     )
     const closingHHMM = settings.length && settings[0].closing_time
       ? String(settings[0].closing_time).slice(0, 5)

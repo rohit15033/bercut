@@ -375,7 +375,7 @@ const InlineNumpad = memo(function InlineNumpad({ value, onChange, country }) {
   )
 })
 
-export default function Confirm({ cart, services, barber, slot, selectedExtras, menuItems, name, setName, phone, setPhone, branchId, settings, groupId, onConfirm, onBack }) {
+export default function Confirm({ cart, services, barber, slot, selectedExtras, menuItems, name, setName, phone, setPhone, branchId, settings, groupId, onConfirm, onBack, onSlotUnavailable }) {
   const [country,       setCountry]       = useState(COUNTRIES[0])
   const [showCP,        setShowCP]        = useState(false)
   const [customer,      setCustomer]      = useState(null)
@@ -464,6 +464,10 @@ export default function Confirm({ cart, services, barber, slot, selectedExtras, 
       onConfirm(bk, pointsUsed)
     } catch (err) {
       submittingRef.current = false   // allow retry on error
+      if (err.status === 409 && err.message === 'No barbers available at this time slot') {
+        onSlotUnavailable()
+        return
+      }
       setError(err.message || 'Booking failed. Please try again.')
     } finally {
       setLoading(false)

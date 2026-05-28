@@ -11,7 +11,16 @@ const PAST_DATE   = '2026-05-13' // used as "today" when testing future dates
 // ── helpers ─────────────────────────────────────────────────────────────────────
 
 function mockBarberExists() {
-  pool.query.mockResolvedValueOnce({ rows: [{ id: BARBER_ID }] })
+  pool.query.mockResolvedValueOnce({ rows: [{ id: BARBER_ID, branch_id: BRANCH_ID }] })
+}
+function mockDeferred(rows = []) {
+  pool.query.mockResolvedValueOnce({ rows })
+}
+function mockTotalBarbers(count = 3) {
+  pool.query.mockResolvedValueOnce({ rows: [{ count: String(count) }] })
+}
+function mockConfirmedBranch(rows = []) {
+  pool.query.mockResolvedValueOnce({ rows })
 }
 function mockBookings(rows = []) {
   pool.query.mockResolvedValueOnce({ rows })
@@ -37,15 +46,19 @@ describe('getAvailableSlots', () => {
     mockBarberExists()
     mockBookings()
     mockBreaks()
+    mockDeferred()
+    mockTotalBarbers()
+    mockConfirmedBranch()
     mockNow('12:00', PAST_DATE) // isToday = false
 
     const slots = await getAvailableSlots(BARBER_ID, FUTURE_DATE, 30)
+    const times = slots.map(s => s.time)
 
-    expect(slots[0]).toBe('10:00')
-    expect(slots[slots.length - 1]).toBe('19:30')
+    expect(times[0]).toBe('10:00')
+    expect(times[times.length - 1]).toBe('19:30')
     // 10:00 to 19:30 in 30-min steps = 20 slots
     expect(slots).toHaveLength(20)
-    expect(slots).not.toContain('19:45') // 19:45 is not on a 30-min grid boundary
+    expect(times).not.toContain('19:45') // 19:45 is not on a 30-min grid boundary
   })
 
   it('blocks 10:00 and 10:30 for a 60-min confirmed booking at 10:00', async () => {
@@ -54,14 +67,18 @@ describe('getAvailableSlots', () => {
       slot_time: '10:00', started_time: null, status: 'confirmed', total_duration: '60',
     }])
     mockBreaks()
+    mockDeferred()
+    mockTotalBarbers()
+    mockConfirmedBranch()
     mockNow('12:00', PAST_DATE)
 
     const slots = await getAvailableSlots(BARBER_ID, FUTURE_DATE, 30)
+    const times = slots.map(s => s.time)
 
-    expect(slots).not.toContain('10:00')
-    expect(slots).not.toContain('10:30')
-    expect(slots).not.toContain('11:00') // still inside block end + buffer (60+5=65 min → 11:05)
-    expect(slots).toContain('11:30')
+    expect(times).not.toContain('10:00')
+    expect(times).not.toContain('10:30')
+    expect(times).not.toContain('11:00') // still inside block end + buffer (60+5=65 min → 11:05)
+    expect(times).toContain('11:30')
   })
 
   it('in_progress booking uses started_at instead of scheduled_at', async () => {
@@ -71,14 +88,18 @@ describe('getAvailableSlots', () => {
       slot_time: '10:30', started_time: '10:00', status: 'in_progress', total_duration: '30',
     }])
     mockBreaks()
+    mockDeferred()
+    mockTotalBarbers()
+    mockConfirmedBranch()
     mockNow('10:15', PAST_DATE)
 
     const slots = await getAvailableSlots(BARBER_ID, FUTURE_DATE, 30)
+    const times = slots.map(s => s.time)
 
     // effectiveStart=600(10:00), estimatedEnd=630(10:30), blocked end=635
     // 10:30 slot (630) < 635 → blocked; 11:00 (660) >= 635 → free
-    expect(slots).not.toContain('10:30')
-    expect(slots).toContain('11:00')
+    expect(times).not.toContain('10:30')
+    expect(times).toContain('11:00')
   })
 
   it('overrun in_progress booking (now > estimatedEnd) extends block to nowMin+5', async () => {
@@ -89,26 +110,34 @@ describe('getAvailableSlots', () => {
       slot_time: '09:30', started_time: '09:30', status: 'in_progress', total_duration: '30',
     }])
     mockBreaks()
+    mockDeferred()
+    mockTotalBarbers()
+    mockConfirmedBranch()
     mockNow('10:20', FUTURE_DATE) // isToday = true, nowMin=620
 
     const slots = await getAvailableSlots(BARBER_ID, FUTURE_DATE, 30)
+    const times = slots.map(s => s.time)
 
     // overrun block end = 620+5 = 625; first off-grid bonus = roundUpTo5(625) = 625 = 10:25
-    expect(slots[0]).toBe('10:25')
-    expect(slots).toContain('11:00')
+    expect(times[0]).toBe('10:25')
+    expect(times).toContain('11:00')
   })
 
   it('excludes slots when total duration would exceed closeTime (21:00)', async () => {
     mockBarberExists()
     mockBookings()
     mockBreaks()
+    mockDeferred()
+    mockTotalBarbers()
+    mockConfirmedBranch()
     mockNow('12:00', PAST_DATE)
 
     // duration = 90 min — last slot where t + 90 <= 1260 is 19:30 (1170+90=1260 ✓)
     const slots = await getAvailableSlots(BARBER_ID, FUTURE_DATE, 90)
+    const times = slots.map(s => s.time)
 
-    expect(slots).toContain('19:30')
-    expect(slots).not.toContain('20:00') // 20:00+90=21:30 > closeTime
+    expect(times).toContain('19:30')
+    expect(times).not.toContain('20:00') // 20:00+90=21:30 > closeTime
   })
 })
 
@@ -130,6 +159,7 @@ describe('getNowWindow', () => {
     pool.query.mockResolvedValueOnce({ rows: [{ id: BARBER_ID }] })
     mockBookings()
     mockBreaks()
+    mockDeferred()
 
     const result = await getNowWindow(BRANCH_ID, null, today)
 
@@ -151,6 +181,7 @@ describe('getNowWindow', () => {
       total_duration: '90',
     }]})
     mockBreaks()
+    mockDeferred()
 
     const result = await getNowWindow(BRANCH_ID, null, today)
 
@@ -171,6 +202,7 @@ describe('getNowWindow', () => {
       total_duration: '30',
     }]})
     mockBreaks()
+    mockDeferred()
 
     const result = await getNowWindow(BRANCH_ID, null, today)
 

@@ -2,27 +2,29 @@ const router = require('express').Router()
 const { requireKioskOrAdmin } = require('../middleware/auth')
 const { getAvailableSlots, getUnionSlots, getNowWindow } = require('../services/slotGenerator')
 
-// GET /api/slots?barber_id=&date=&duration_min=&walkin=true
+// GET /api/slots?barber_id=&date=&duration_min=&min_duration_min=&walkin=true
 router.get('/', requireKioskOrAdmin, async (req, res) => {
   try {
-    const { barber_id, date, duration_min, walkin } = req.query
+    const { barber_id, date, duration_min, min_duration_min } = req.query
     if (!barber_id || !date) {
       return res.status(400).json({ message: 'barber_id and date required' })
     }
-    const slots = await getAvailableSlots(barber_id, date, parseInt(duration_min || 30), walkin === 'true')
+    const durationMin = parseInt(duration_min || 30)
+    const minDurationMin = min_duration_min ? parseInt(min_duration_min) : null
+    const slots = await getAvailableSlots(barber_id, date, durationMin, minDurationMin)
     res.json(slots)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
-// GET /api/slots/any-available?branch_id=&date=&duration_min=&walkin=true
+// GET /api/slots/any-available?branch_id=&date=&duration_min=&min_duration_min=&walkin=true
 // Returns union of all active barbers' available slots for the branch
 router.get('/any-available', requireKioskOrAdmin, async (req, res) => {
   try {
-    const { branch_id, date, duration_min, walkin } = req.query
+    const { branch_id, date, duration_min, walkin, min_duration_min } = req.query
     if (!branch_id || !date) return res.status(400).json({ message: 'branch_id and date required' })
     const durationMin = parseInt(duration_min || 30)
-
-    const slots = await getUnionSlots(branch_id, date, durationMin, walkin === 'true')
+    const minDurationMin = min_duration_min ? parseInt(min_duration_min) : null
+    const slots = await getUnionSlots(branch_id, date, durationMin, walkin === 'true', minDurationMin)
     res.json(slots)
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })

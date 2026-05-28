@@ -9,9 +9,10 @@ const toMin = (hhmm) => {
   return h * 60 + m
 }
 
-export default function BarberSelection({ barbers, services, serviceIds, barber, setBarber, onNext, onBack }) {
+export default function BarberSelection({ barbers, branchId, services, serviceIds, barber, setBarber, onNext, onBack }) {
   const [nextSlots, setNextSlots] = useState({})
   const [nowWindows, setNowWindows] = useState({})
+  const [anyAvailableSlot, setAnyAvailableSlot] = useState(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
 
   const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
@@ -25,17 +26,27 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
       setLoadingSlots(true)
       const results = {}
       const windows = {}
-      await Promise.all(barbers.map(async b => {
-        if (['clocked_out', 'off'].includes(b.status)) return
-        try {
-          const [slots, nowWin] = await Promise.all([
-            kioskApi.get(`/slots?barber_id=${b.id}&date=${dateStr}&duration_min=${totalDur}`),
-            kioskApi.get(`/slots/now-window?barber_id=${b.id}&date=${dateStr}`)
-          ])
-          if (slots && slots.length > 0) results[b.id] = slots[0]
-          if (nowWin) windows[b.id] = nowWin
-        } catch (e) { console.error(e) }
-      }))
+      await Promise.all([
+        ...barbers.map(async b => {
+          if (['clocked_out', 'off'].includes(b.status)) return
+          try {
+            const [slots, nowWin] = await Promise.all([
+              kioskApi.get(`/slots?barber_id=${b.id}&date=${dateStr}&duration_min=${totalDur}`),
+              kioskApi.get(`/slots/now-window?barber_id=${b.id}&date=${dateStr}`)
+            ])
+            if (slots && slots.length > 0) results[b.id] = slots[0]?.time ?? slots[0]
+            if (nowWin) windows[b.id] = nowWin
+          } catch (e) { console.error(e) }
+        }),
+        (async () => {
+          if (!branchId) return
+          try {
+            const slots = await kioskApi.get(`/slots/any-available?branch_id=${branchId}&date=${dateStr}&duration_min=${totalDur}`)
+            const first = Array.isArray(slots) && slots.length > 0 ? slots[0] : null
+            setAnyAvailableSlot(first ? (first.time ?? first) : null)
+          } catch (e) { setAnyAvailableSlot(null) }
+        })(),
+      ])
       setNextSlots(results)
       setNowWindows(windows)
       setLoadingSlots(false)
@@ -52,9 +63,7 @@ export default function BarberSelection({ barbers, services, serviceIds, barber,
   const nowWita = `${w.getHours().toString().padStart(2, '0')}:${w.getMinutes().toString().padStart(2, '0')}`
   const nowMin = toMin(nowWita)
   
-  // Find the earliest time among all barbers for "Any Available"
-  const allAvailableTimes = Object.values(nextSlots).sort()
-  const earliestAnyTime = allAvailableTimes[0] || null
+  const earliestAnyTime = anyAvailableSlot
 
   const sortedBarbers = [...barbers].sort((a, b) => {
     const aU = ['clocked_out', 'off', 'on_break'].includes(a.status)

@@ -5,11 +5,13 @@ import { kioskApi } from '../../../shared/api.js'
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
 const OVERLAP_MIN = 15  // customers can wait up to 15 min for next booking
 
-export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, services, menuItems, slot, setSlot, selectedExtras, setSelectedExtras, onNext, onBack }) {
+export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, services, menuItems, slot, setSlot, selectedExtras, setSelectedExtras, onNext, onBack, refreshKey = 0, slotFilledMsg = '', clearSlotFilledMsg }) {
   const [slots, setSlots]               = useState([])
   const [loadingSlots, setLoadingSlots] = useState(true)
   const [nowWindow, setNowWindow]       = useState(null)
-  const [nowPickerOpen, setNowPickerOpen] = useState(false)
+  const [nowPickerOpen, setNowPickerOpen]     = useState(false)
+  const [pinchedPickerOpen, setPinchedPickerOpen] = useState(false)
+  const [activePinchedSlot, setActivePinchedSlot] = useState(null)
   const originalCartRef = useRef(serviceIds)
 
   const today   = new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', timeZone:'Asia/Makassar' })
@@ -19,21 +21,26 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
     const svc = services.find(x => x.id === id)
     return s + (svc?.duration_minutes || svc?.duration_min || 30)
   }, 0)
+  const minServiceDur = serviceIds.reduce((min, id) => {
+    const svc = services.find(x => x.id === id)
+    return Math.min(min, svc?.duration_minutes || svc?.duration_min || 30)
+  }, totalDur)
 
   const isAnyAvailable = barber?.source === 'any_available'
 
   useEffect(() => {
     setLoadingSlots(true)
     setNowWindow(null)
+    const minParam = minServiceDur < totalDur ? `&min_duration_min=${minServiceDur}` : ''
     const url = isAnyAvailable
-      ? `/slots/any-available?branch_id=${branchId}&date=${dateStr}&duration_min=${totalDur}&walkin=true`
-      : barber?.id ? `/slots?barber_id=${barber.id}&date=${dateStr}&duration_min=${totalDur}&walkin=true` : null
+      ? `/slots/any-available?branch_id=${branchId}&date=${dateStr}&duration_min=${totalDur}&walkin=true${minParam}`
+      : barber?.id ? `/slots?barber_id=${barber.id}&date=${dateStr}&duration_min=${totalDur}&walkin=true${minParam}` : null
     if (!url) { setSlots([]); setLoadingSlots(false); return }
     kioskApi.get(url)
       .then(data => setSlots(Array.isArray(data) ? data : (data.slots || [])))
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false))
-  }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAnyAvailable, barber?.id, branchId, dateStr, totalDur, minServiceDur, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const nowWitaStr = (() => {
     const d = new Date()
@@ -43,7 +50,9 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
   })()
   const nowMin = (() => { const [h, m] = nowWitaStr.split(':').map(Number); return h * 60 + m })()
 
-  const firstSlotMin = slots.length > 0 ? (() => { const [h, m] = slots[0].split(':').map(Number); return h * 60 + m })() : null
+  const firstNormal = slots.find(s => !s.pinched)
+  const firstNormalTime = firstNormal?.time ?? null
+  const firstSlotMin = firstNormalTime ? (() => { const [h, m] = firstNormalTime.split(':').map(Number); return h * 60 + m })() : null
   const barberAvailableNow = !['clocked_out', 'off', 'on_break', 'busy', 'in_service'].includes(barber?.status)
   const canNowFromSlots = barberAvailableNow && firstSlotMin !== null && firstSlotMin <= nowMin + 4
 
@@ -52,7 +61,7 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
   // - nowWindowFitsAll: total duration fits within the max available window
   const nowWindowFitsAll = nowWindow?.freeNow && nowWindow?.windowMin >= totalDur
   const canNow = canNowFromSlots || nowWindowFitsAll
-  const nextSlot = !canNow && slots.length > 0 ? slots[0] : null
+  const nextSlot = !canNow && firstNormalTime ? firstNormalTime : null
 
   // showNowPicker: user can't book NOW, but could if they pick shorter services
   const maxWindow = nowWindow?.windowMin ?? 0
@@ -62,6 +71,12 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
   useEffect(() => {
     if (!canNow && slot === 'Now') setSlot(null)
   }, [canNow, slot, setSlot])
+
+  useEffect(() => {
+    if (!slotFilledMsg) return
+    const t = setTimeout(() => clearSlotFilledMsg?.(), 5000)
+    return () => clearTimeout(t)
+  }, [slotFilledMsg]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (loadingSlots || canNowFromSlots) { setNowWindow(null); return }
@@ -83,6 +98,15 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
     if (!selectedIds.length) return
     setServiceIds(selectedIds)
     setSlot('Now')
+    onNext()
+  }
+
+  const confirmPinched = (selectedIds) => {
+    if (!selectedIds.length || !activePinchedSlot) return
+    setServiceIds(selectedIds)
+    setSlot(activePinchedSlot.time)
+    setPinchedPickerOpen(false)
+    setActivePinchedSlot(null)
     onNext()
   }
 
@@ -180,6 +204,16 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
 
         {/* Slot grid */}
         <div className="fu" style={{ animationDelay:'0.05s', marginBottom:'clamp(10px,1.4vw,14px)' }}>
+          {slotFilledMsg && (
+            <div data-testid="slot-filled-msg" style={{
+              background: '#fef3c7', color: '#b45309',
+              borderRadius: 8, padding: '8px 14px',
+              fontSize: 'clamp(12px,1.4vw,14px)', fontWeight: 600,
+              marginBottom: 8, textAlign: 'center'
+            }}>
+              {slotFilledMsg}
+            </div>
+          )}
           {loadingSlots
             ? <div style={{ color:C.muted, fontSize:'clamp(13px,1.5vw,15px)', padding:16 }}>Loading slots…</div>
             : (
@@ -215,12 +249,24 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
                   </button>
                 )}
 
-                {slots.map((s, i) => (
-                  <button key={s} data-testid={`slot-${s}`} onClick={() => setSlot(s)}
-                    style={{ padding:'clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)', borderRadius:12, fontSize:'clamp(15px,2vw,20px)', fontFamily:"'Inter',sans-serif", fontWeight:700, background:slot === s ? C.topBg : C.white, color:slot === s ? C.white : C.text, border:`2px solid ${slot === s ? C.topBg : C.border}`, transition:'all 0.15s', minWidth:'clamp(80px,10vw,110px)', minHeight:'clamp(52px,7vh,64px)', animation:`fadeUp 0.28s ease ${i * 0.04}s both` }}>
-                    {s}
-                  </button>
-                ))}
+                {slots.map((s, i) => {
+                  const sTime = s.time ?? s
+                  const isPinched = s.pinched === true
+                  const isSel = slot === sTime
+                  return isPinched ? (
+                    <button key={sTime} data-testid={`slot-pinched-${sTime}`}
+                      onClick={() => { setActivePinchedSlot(s); setPinchedPickerOpen(true) }}
+                      style={{ padding:'clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)', borderRadius:12, fontFamily:"'Inter',sans-serif", fontWeight:700, background: isSel ? C.topBg : C.surface2, color: isSel ? C.white : C.text2, border:`2px dashed ${isSel ? C.topBg : C.border}`, transition:'all 0.15s', minWidth:'clamp(80px,10vw,110px)', minHeight:'clamp(52px,7vh,64px)', animation:`fadeUp 0.28s ease ${i * 0.04}s both`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, cursor:'pointer' }}>
+                      <span style={{ fontSize:'clamp(15px,2vw,20px)' }}>{sTime}</span>
+                      <span style={{ fontSize:'clamp(9px,1.1vw,11px)', fontWeight:400, color: isSel ? 'rgba(255,255,255,0.7)' : C.text2 }}>Adjust services →</span>
+                    </button>
+                  ) : (
+                    <button key={sTime} data-testid={`slot-${sTime}`} onClick={() => setSlot(sTime)}
+                      style={{ padding:'clamp(12px,1.8vh,16px) clamp(18px,2.6vw,28px)', borderRadius:12, fontSize:'clamp(15px,2vw,20px)', fontFamily:"'Inter',sans-serif", fontWeight:700, background: isSel ? C.topBg : C.white, color: isSel ? C.white : C.text, border:`2px solid ${isSel ? C.topBg : C.border}`, transition:'all 0.15s', minWidth:'clamp(80px,10vw,110px)', minHeight:'clamp(52px,7vh,64px)', animation:`fadeUp 0.28s ease ${i * 0.04}s both` }}>
+                      {sTime}
+                    </button>
+                  )
+                })}
                 {!loadingSlots && slots.length === 0 && (
                   <div style={{ color:C.muted, fontSize:'clamp(12px,1.4vw,14px)', padding:'16px 0' }}>
                     No available slots today. Try a different barber.
@@ -298,6 +344,20 @@ export default function TimeSlot({ barber, branchId, serviceIds, setServiceIds, 
           onClose={() => setNowPickerOpen(false)}
         />
       )}
+
+      {pinchedPickerOpen && activePinchedSlot && (
+        <NowPickerModal
+          windowMin={activePinchedSlot.windowMin}
+          maxWindow={activePinchedSlot.windowMin}
+          barberWindows={{}}
+          nextSlot={null}
+          originalServices={originalCartRef.current.map(id => services.find(x => x.id === id)).filter(Boolean)}
+          allServices={services}
+          onConfirm={confirmPinched}
+          onClose={() => { setPinchedPickerOpen(false); setActivePinchedSlot(null) }}
+          slotLabel={activePinchedSlot.time}
+        />
+      )}
     </div>
   )
 }
@@ -323,7 +383,7 @@ const normSvc = s => ({
   nameId: s.name_id || s.nameId || '',
 })
 
-function NowPickerModal({ windowMin, maxWindow, barberWindows, nextSlot, originalServices = [], allServices = [], onConfirm, onClose, isBlocked, totalDur }) {
+function NowPickerModal({ windowMin, maxWindow, barberWindows, nextSlot, originalServices = [], allServices = [], onConfirm, onClose, slotLabel }) {
   const [currentServices, setCurrentServices] = useState(originalServices)
   const [checkedIds, setCheckedIds]           = useState(new Set(originalServices.map(s => s.id)))
   const [changingId, setChangingId]           = useState(null)
@@ -423,7 +483,7 @@ function NowPickerModal({ windowMin, maxWindow, barberWindows, nextSlot, origina
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
             <div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:900, fontSize:'clamp(16px,2.1vw,22px)', color:C.topText }}>
-                {changingId ? '↔ Change Service' : 'Change to a shorter service to book now'}
+                {changingId ? '↔ Change Service' : slotLabel ? `Select services for ${slotLabel}` : 'Change to a shorter service to book now'}
               </div>
               <div style={{ fontSize:'clamp(11px,1.3vw,13px)', color:'#aaa', marginTop:4 }}>
                 {changingId
@@ -525,7 +585,7 @@ function NowPickerModal({ windowMin, maxWindow, barberWindows, nextSlot, origina
                   </div>
                 )}
                 <button data-testid="nowpicker-confirm-btn" onClick={() => onConfirm([...checkedIds])} disabled={!fits} className="btnP" style={{ flex:1 }}>
-                  {fits ? `Start Now → (${checkedDur} min)` : `${overflowMin} min over`}
+                  {fits ? (slotLabel ? `Book ${slotLabel} → (${checkedDur} min)` : `Start Now → (${checkedDur} min)`) : `${overflowMin} min over`}
                 </button>
               </>
             )

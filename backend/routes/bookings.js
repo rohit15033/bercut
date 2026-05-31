@@ -492,20 +492,21 @@ router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
     const isAdminForce = req.user && req.query.force === 'true'
     let rows
     if (isAdminForce) {
-      // Guard: barber must not already have a booking in_progress
+      // Verify booking exists and is confirmed
       const { rows: booking } = await client.query(
-        `SELECT barber_id FROM bookings WHERE id = $1 AND status = 'confirmed'`,
+        `SELECT barber_id, branch_id FROM bookings WHERE id = $1 AND status = 'confirmed'`,
         [req.params.id])
       if (!booking.length) {
         await client.query('ROLLBACK')
         return res.status(409).json({ message: 'Cannot start booking' })
       }
-      const { rows: busy } = await client.query(
-        `SELECT 1 FROM bookings WHERE barber_id = $1 AND status = 'in_progress' LIMIT 1`,
-        [booking[0].barber_id])
-      if (busy.length) {
+      // Cap at 2 simultaneous in_progress per barber per branch (parallel service limit)
+      const { rows: activeCount } = await client.query(
+        `SELECT COUNT(*) AS cnt FROM bookings WHERE barber_id = $1 AND branch_id = $2 AND status = 'in_progress'`,
+        [booking[0].barber_id, booking[0].branch_id])
+      if (parseInt(activeCount[0].cnt) >= 2) {
         await client.query('ROLLBACK')
-        return res.status(409).json({ message: 'Barber already has a service in progress' })
+        return res.status(409).json({ message: 'Barber already has 2 services in progress' })
       }
       // Admin force-start: bypass queue-order constraint, just require confirmed status
       ;({ rows } = await client.query(
@@ -566,10 +567,15 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
     }
     const booking = rows[0]
 
-    // Auto-set barber back to available
-    await client.query("UPDATE barbers SET status = 'available' WHERE id = $1", [booking.barber_id])
+    // Only reset barber to available if no other in_progress booking remains (supports parallel services)
     const { emitEvent } = require('./events')
-    emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'available' })
+    const { rows: stillActive } = await client.query(
+      `SELECT 1 FROM bookings WHERE barber_id = $1 AND status = 'in_progress' LIMIT 1`,
+      [booking.barber_id])
+    if (!stillActive.length) {
+      await client.query("UPDATE barbers SET status = 'available' WHERE id = $1 AND status = 'in_service'", [booking.barber_id])
+      emitEvent(booking.branch_id, 'barber_update', { barber_id: booking.barber_id, status: 'available' })
+    }
 
     // earn points
     const gs = await client.query('SELECT points_earn_rate, points_redemption_rate FROM global_settings LIMIT 1')

@@ -104,17 +104,17 @@ describe('PATCH /api/bookings/:id/start — force-start', () => {
     // Force-start path issues client.query calls in this order:
     // 1. BEGIN
     // 2. SELECT barber_id FROM bookings WHERE id=$1 AND status='confirmed'  → row found
-    // 3. SELECT 1 FROM bookings WHERE barber_id=$1 AND status='in_progress' → no row (barber free)
+    // 3. SELECT COUNT(*) AS cnt FROM bookings WHERE barber_id=$1 AND status='in_progress' → { cnt: '0' }
     // 4. UPDATE bookings SET status='in_progress'... RETURNING *             → booking row
     // 5. UPDATE barbers SET status='in_service'...
     // 6. COMMIT
     client.query
-      .mockResolvedValueOnce({ rows: [] })                   // BEGIN
-      .mockResolvedValueOnce({ rows: [{ barber_id: BARBER_ID }] }) // SELECT barber_id
-      .mockResolvedValueOnce({ rows: [] })                   // SELECT in_progress check (free)
-      .mockResolvedValueOnce({ rows: [booking] })            // UPDATE booking
-      .mockResolvedValueOnce({ rows: [] })                   // UPDATE barber status
-      .mockResolvedValueOnce({ rows: [] })                   // COMMIT
+      .mockResolvedValueOnce({ rows: [] })                                               // BEGIN
+      .mockResolvedValueOnce({ rows: [{ barber_id: BARBER_ID, branch_id: BRANCH_ID }] }) // SELECT barber_id, branch_id
+      .mockResolvedValueOnce({ rows: [{ cnt: '0' }] })                                   // COUNT in_progress
+      .mockResolvedValueOnce({ rows: [booking] })                                        // UPDATE booking
+      .mockResolvedValueOnce({ rows: [] })                                               // UPDATE barber status
+      .mockResolvedValueOnce({ rows: [] })                                               // COMMIT
 
     const res = await request(app)
       .patch(`/api/bookings/${BOOKING_ID}/start?force=true`)
@@ -123,15 +123,15 @@ describe('PATCH /api/bookings/:id/start — force-start', () => {
     expect(res.body).toHaveProperty('status', 'in_progress')
     expect(res.body).toHaveProperty('id', BOOKING_ID)
 
-    // Verify the SELECT barber_id guard was issued
+    // Verify the SELECT barber_id, branch_id guard was issued
     const selectBarberCall = client.query.mock.calls[1]
-    expect(selectBarberCall[0]).toMatch(/SELECT barber_id FROM bookings WHERE id = \$1 AND status = 'confirmed'/i)
+    expect(selectBarberCall[0]).toMatch(/SELECT barber_id, branch_id FROM bookings WHERE id = \$1 AND status = 'confirmed'/i)
 
-    // Verify the in_progress guard was issued
-    const inProgressCall = client.query.mock.calls[2]
-    expect(inProgressCall[0]).toMatch(/SELECT 1 FROM bookings WHERE barber_id = \$1 AND status = 'in_progress'/i)
+    // Verify the branch-scoped COUNT in_progress query was issued
+    const countCall = client.query.mock.calls[2]
+    expect(countCall[0]).toMatch(/SELECT COUNT\(\*\) AS cnt FROM bookings WHERE barber_id = \$1 AND branch_id = \$2 AND status = 'in_progress'/i)
 
-    // Verify the force-start UPDATE (no CTE / earliest keyword)
+    // Verify the force-start UPDATE (no CTE / earliest keyword) — call index 3
     const updateCall = client.query.mock.calls[3]
     expect(updateCall[0]).toMatch(/WHERE id = \$1 AND status = 'confirmed'/i)
     expect(updateCall[0]).not.toMatch(/earliest/i)
@@ -240,31 +240,234 @@ describe('PATCH /api/bookings/:id/start — force-start', () => {
     expect(cteCall[0]).toMatch(/earliest/i)
   })
 
-  // ── Test 6: barber already in_progress guard fires ───────────────────────
-  it('returns 409 when admin uses ?force=true but barber already has a booking in_progress', async () => {
+  // ── Test 6: parallel in_progress — force-start no longer blocked ────────
+  // Change: the in_progress guard was removed; admin can now start a booking even
+  // when the barber already has another in_progress service (parallel services supported).
+  it('returns 200 when admin uses ?force=true and barber already has another booking in_progress', async () => {
     mockRequireKioskOrAdmin = (req, res, next) => {
       req.branchId = BRANCH_ID
       req.user = { id: 'admin-user-1', role: 'admin' }
       next()
     }
 
-    // SELECT barber_id finds the confirmed booking row,
-    // but the in_progress check finds an existing in_progress booking for that barber.
+    const booking = confirmedBooking()
+
+    // Force-start path — cap is 2 concurrent; barber has 1 existing so allowed:
+    // 1. BEGIN
+    // 2. SELECT barber_id ... status='confirmed'                                → row found
+    // 3. SELECT COUNT(*) AS cnt FROM bookings WHERE barber_id=$1 AND status='in_progress' → { cnt: '1' }
+    // 4. UPDATE bookings                                                         → booking row
+    // 5. UPDATE barbers SET status='in_service'
+    // 6. COMMIT
     client.query
-      .mockResolvedValueOnce({ rows: [] })                         // BEGIN
-      .mockResolvedValueOnce({ rows: [{ barber_id: BARBER_ID }] }) // SELECT barber_id — row found
-      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })        // SELECT 1 in_progress — barber busy
-      .mockResolvedValueOnce({ rows: [] })                         // ROLLBACK
+      .mockResolvedValueOnce({ rows: [] })                                               // BEGIN
+      .mockResolvedValueOnce({ rows: [{ barber_id: BARBER_ID, branch_id: BRANCH_ID }] }) // SELECT barber_id, branch_id — confirmed row
+      .mockResolvedValueOnce({ rows: [{ cnt: '1' }] })                                   // COUNT in_progress — one existing, under cap
+      .mockResolvedValueOnce({ rows: [booking] })                                        // UPDATE booking → in_progress
+      .mockResolvedValueOnce({ rows: [] })                                               // UPDATE barber status
+      .mockResolvedValueOnce({ rows: [] })                                               // COMMIT
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/start?force=true`)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('status', 'in_progress')
+    expect(res.body).toHaveProperty('id', BOOKING_ID)
+
+    // Branch-scoped COUNT query must have been issued (not the old SELECT 1 guard)
+    const countCall = client.query.mock.calls[2]
+    expect(countCall[0]).toMatch(/SELECT COUNT\(\*\) AS cnt FROM bookings WHERE barber_id = \$1 AND branch_id = \$2 AND status = 'in_progress'/i)
+
+    // Must NOT have issued any SELECT 1 ... in_progress guard
+    const allQueries = client.query.mock.calls.map(c => c[0])
+    const hadInProgressGuard = allQueries.some(
+      q => typeof q === 'string' && /SELECT 1 FROM bookings WHERE barber_id.*status = 'in_progress'/i.test(q)
+    )
+    expect(hadInProgressGuard).toBe(false)
+  })
+
+  // ── Test A: barber has 1 in_progress (under cap) → 200 ──────────────────────
+  it('returns 200 when admin uses ?force=true and barber has exactly 1 in_progress (under cap)', async () => {
+    mockRequireKioskOrAdmin = (req, res, next) => {
+      req.branchId = BRANCH_ID
+      req.user = { id: 'admin-user-1', role: 'admin' }
+      next()
+    }
+
+    const booking = confirmedBooking()
+
+    // 1. BEGIN
+    // 2. SELECT barber_id ... status='confirmed'  → row found
+    // 3. COUNT in_progress → { cnt: '1' } (one existing, cap is 2 → allowed)
+    // 4. UPDATE bookings                           → booking row
+    // 5. UPDATE barbers SET status='in_service'
+    // 6. COMMIT
+    client.query
+      .mockResolvedValueOnce({ rows: [] })                                               // BEGIN
+      .mockResolvedValueOnce({ rows: [{ barber_id: BARBER_ID, branch_id: BRANCH_ID }] }) // SELECT barber_id, branch_id
+      .mockResolvedValueOnce({ rows: [{ cnt: '1' }] })                                   // COUNT in_progress — 1 existing, under cap
+      .mockResolvedValueOnce({ rows: [booking] })                                        // UPDATE booking → in_progress
+      .mockResolvedValueOnce({ rows: [] })                                               // UPDATE barber status
+      .mockResolvedValueOnce({ rows: [] })                                               // COMMIT
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/start?force=true`)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('status', 'in_progress')
+    expect(res.body).toHaveProperty('id', BOOKING_ID)
+
+    // Confirm the branch-scoped COUNT query was used with correct params
+    const countCall = client.query.mock.calls[2]
+    expect(countCall[0]).toMatch(/SELECT COUNT\(\*\) AS cnt FROM bookings WHERE barber_id = \$1 AND branch_id = \$2 AND status = 'in_progress'/i)
+    expect(countCall[1]).toEqual([BARBER_ID, BRANCH_ID])
+  })
+
+  // ── Test B: barber already has 2 in_progress (cap hit) → 409 ────────────────
+  it('returns 409 when admin uses ?force=true and barber already has 2 services in_progress', async () => {
+    mockRequireKioskOrAdmin = (req, res, next) => {
+      req.branchId = BRANCH_ID
+      req.user = { id: 'admin-user-1', role: 'admin' }
+      next()
+    }
+
+    // 1. BEGIN
+    // 2. SELECT barber_id ... status='confirmed'  → row found
+    // 3. COUNT in_progress → { cnt: '2' } (cap reached → 409)
+    // 4. ROLLBACK
+    client.query
+      .mockResolvedValueOnce({ rows: [] })                                               // BEGIN
+      .mockResolvedValueOnce({ rows: [{ barber_id: BARBER_ID, branch_id: BRANCH_ID }] }) // SELECT barber_id, branch_id
+      .mockResolvedValueOnce({ rows: [{ cnt: '2' }] })                                   // COUNT in_progress — cap hit
+      .mockResolvedValueOnce({ rows: [] })                                               // ROLLBACK
 
     const res = await request(app)
       .patch(`/api/bookings/${BOOKING_ID}/start?force=true`)
 
     expect(res.status).toBe(409)
-    expect(res.body).toHaveProperty('message', 'Barber already has a service in progress')
+    expect(res.body).toHaveProperty('message', 'Barber already has 2 services in progress')
 
-    // Verify the in_progress guard query was issued with the correct barber_id
+    // Verify no UPDATE bookings was attempted after the cap check
+    const updateAttempt = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && /UPDATE bookings SET status = 'in_progress'/i.test(c[0])
+    )
+    expect(updateAttempt).toBeUndefined()
+  })
+})
+
+// ── PATCH /:id/complete — barber status conditional reset ────────────────────
+
+describe('PATCH /api/bookings/:id/complete — barber status reset', () => {
+  let client
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    client = pool._client
+    client.query.mockReset()
+    client.release.mockReset()
+    pool.query.mockReset()
+    pool.connect.mockResolvedValue(client)
+  })
+
+  // ── Test 7: barber stays in_service when another in_progress remains ─────
+  it('does NOT update barber to available when another in_progress booking exists', async () => {
+    const booking = {
+      id:         BOOKING_ID,
+      barber_id:  BARBER_ID,
+      branch_id:  BRANCH_ID,
+      status:     'pending_payment',
+      customer_id: null,
+      group_id:   null,
+    }
+
+    // Complete handler query sequence:
+    // 1. BEGIN
+    // 2. UPDATE bookings SET status='pending_payment' RETURNING *  → booking row
+    // 3. SELECT 1 FROM bookings WHERE barber_id=... AND status='in_progress' → row found (still active)
+    //    (no UPDATE barbers here — barber has another active service)
+    // 4. SELECT points_earn_rate... FROM global_settings            → no customer_id so points skipped
+    // 5. SELECT service_id FROM booking_services                    → empty (no consumables)
+    // 6. SELECT item_id FROM booking_extras                         → empty
+    // 7. COMMIT
+    client.query
+      .mockResolvedValueOnce({ rows: [] })          // BEGIN
+      .mockResolvedValueOnce({ rows: [booking] })   // UPDATE bookings → pending_payment
+      .mockResolvedValueOnce({ rows: [{ 1: 1 }] })  // SELECT 1 in_progress — still active
+      .mockResolvedValueOnce({ rows: [] })          // SELECT global_settings
+      .mockResolvedValueOnce({ rows: [] })          // SELECT booking_services (consumables)
+      .mockResolvedValueOnce({ rows: [] })          // SELECT booking_extras
+      .mockResolvedValueOnce({ rows: [] })          // COMMIT
+
+    // pool.query used after COMMIT:
+    // tryAssignDeferred is mocked to return null so no deferred lookup happens.
+    // Only the two total-amount queries fire.
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })  // total from booking_services
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })  // total from booking_extras
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/complete`)
+
+    expect(res.status).toBe(200)
+
+    // Verify the in_progress check was issued
     const inProgressCall = client.query.mock.calls[2]
     expect(inProgressCall[0]).toMatch(/SELECT 1 FROM bookings WHERE barber_id = \$1 AND status = 'in_progress'/i)
     expect(inProgressCall[1]).toEqual([BARBER_ID])
+
+    // Verify UPDATE barbers SET status='available' was NOT called on the client
+    const barberResetCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && /UPDATE barbers SET status = 'available'/i.test(c[0])
+    )
+    expect(barberResetCall).toBeUndefined()
+  })
+
+  // ── Test 8: barber resets to available when no other in_progress remains ─
+  it('updates barber to available when no other in_progress booking remains', async () => {
+    const booking = {
+      id:         BOOKING_ID,
+      barber_id:  BARBER_ID,
+      branch_id:  BRANCH_ID,
+      status:     'pending_payment',
+      customer_id: null,
+      group_id:   null,
+    }
+
+    // Query sequence — step 3 returns empty rows so the barber reset IS issued:
+    // 1. BEGIN
+    // 2. UPDATE bookings SET status='pending_payment' RETURNING *  → booking row
+    // 3. SELECT 1 FROM bookings WHERE barber_id=... AND status='in_progress' → empty (no more active)
+    // 4. UPDATE barbers SET status='available'                      → barber reset
+    // 5. SELECT points_earn_rate... FROM global_settings            → empty
+    // 6. SELECT service_id FROM booking_services                    → empty
+    // 7. SELECT item_id FROM booking_extras                         → empty
+    // 8. COMMIT
+    client.query
+      .mockResolvedValueOnce({ rows: [] })          // BEGIN
+      .mockResolvedValueOnce({ rows: [booking] })   // UPDATE bookings → pending_payment
+      .mockResolvedValueOnce({ rows: [] })          // SELECT 1 in_progress — none remaining
+      .mockResolvedValueOnce({ rows: [] })          // UPDATE barbers SET status='available'
+      .mockResolvedValueOnce({ rows: [] })          // SELECT global_settings
+      .mockResolvedValueOnce({ rows: [] })          // SELECT booking_services (consumables)
+      .mockResolvedValueOnce({ rows: [] })          // SELECT booking_extras
+      .mockResolvedValueOnce({ rows: [] })          // COMMIT
+
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })  // total from booking_services
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })  // total from booking_extras
+
+    const res = await request(app)
+      .patch(`/api/bookings/${BOOKING_ID}/complete`)
+
+    expect(res.status).toBe(200)
+
+    // Verify UPDATE barbers SET status='available' WAS called on the client
+    // and that it includes the AND status = 'in_service' guard
+    const barberResetCall = client.query.mock.calls.find(
+      c => typeof c[0] === 'string' && /UPDATE barbers SET status = 'available'/i.test(c[0])
+    )
+    expect(barberResetCall).toBeDefined()
+    expect(barberResetCall[0]).toMatch(/AND status = 'in_service'/i)
+    expect(barberResetCall[1]).toEqual([BARBER_ID])
   })
 })

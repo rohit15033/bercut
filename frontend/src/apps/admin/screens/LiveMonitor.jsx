@@ -1304,7 +1304,7 @@ function ActionMenu({ booking, barberBusy, onCancel, onStart, onEdit, onGroup, o
           {isEditable && item('✏ Edit Barber / Services', T.text, T.bg, () => onEdit(booking), false, `edit-booking-action-${booking.id}`)}
           {isEditable && item('⊕ Group for Payment', '#2563EB', 'rgba(37,99,235,0.06)', () => onGroup(booking))}
           {isPendingPay && item('＋ Add Service & Resume', '#16A34A', '#F0FDF4', () => onReopen(booking), false, `reopen-booking-action-${booking.id}`)}
-          {!isInProg && !isPendingPay && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
+          {!isInProg && !isPendingPay && booking.status !== 'deferred' && item('▶ Force Start', '#15803D', '#F0FDF4', () => onStart(booking), barberBusy)}
           {booking.status === 'confirmed' && booking.barber_id && item('↩ Unassign Barber', '#D97706', '#FFFBEB', () => onUnassign(booking))}
           {item('✕ Cancel Booking', '#DC2626', '#FEF2F2', () => onCancel(booking))}
         </div>
@@ -1678,7 +1678,7 @@ export default function LiveMonitor() {
   }
 
   async function handleConfirmForceStart(booking) {
-    try { await api.patch(`/bookings/${booking.id}/start`, {}) } catch (err) { alert(err.message) }
+    try { await api.patch(`/bookings/${booking.id}/start?force=true`, {}) } catch (err) { alert(err.message) }
     setForceStartModal(null)
     loadData()
   }

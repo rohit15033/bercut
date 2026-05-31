@@ -486,32 +486,68 @@ router.patch('/:id/unassign', requireKioskOrAdmin, async (req, res) => {
 // ── PATCH /api/bookings/:id/start ─────────────────────────────────────────────
 
 router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
+  const client = await pool.connect()
   try {
-    // Only allow starting the earliest unstarted confirmed booking for this barber today
-    // This enforces the "topmost booking only" constraint at backend level (not just frontend)
-    const { rows } = await pool.query(`
-      WITH target AS (
-        SELECT barber_id, branch_id FROM bookings WHERE id = $1
-      ),
-      earliest AS (
-        SELECT b.id FROM bookings b
-        JOIN target t ON b.barber_id = t.barber_id AND b.branch_id = t.branch_id
-        WHERE DATE(b.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
-          AND b.status = 'confirmed'
-        ORDER BY b.scheduled_at ASC
-        LIMIT 1
-      )
-      UPDATE bookings
-      SET status = 'in_progress', started_at = NOW()
-      WHERE id = $1 AND id = (SELECT id FROM earliest)
-      RETURNING *`,
-      [req.params.id])
-    if (!rows.length) return res.status(409).json({ message: 'Cannot start booking' })
-    await pool.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
+    await client.query('BEGIN')
+    const isAdminForce = req.user && req.query.force === 'true'
+    let rows
+    if (isAdminForce) {
+      // Guard: barber must not already have a booking in_progress
+      const { rows: booking } = await client.query(
+        `SELECT barber_id FROM bookings WHERE id = $1 AND status = 'confirmed'`,
+        [req.params.id])
+      if (!booking.length) {
+        await client.query('ROLLBACK')
+        return res.status(409).json({ message: 'Cannot start booking' })
+      }
+      const { rows: busy } = await client.query(
+        `SELECT 1 FROM bookings WHERE barber_id = $1 AND status = 'in_progress' LIMIT 1`,
+        [booking[0].barber_id])
+      if (busy.length) {
+        await client.query('ROLLBACK')
+        return res.status(409).json({ message: 'Barber already has a service in progress' })
+      }
+      // Admin force-start: bypass queue-order constraint, just require confirmed status
+      ;({ rows } = await client.query(
+        `UPDATE bookings SET status = 'in_progress', started_at = NOW()
+         WHERE id = $1 AND status = 'confirmed' RETURNING *`,
+        [req.params.id]))
+    } else {
+      // Only allow starting the earliest unstarted confirmed booking for this barber today
+      // This enforces the "topmost booking only" constraint at backend level (not just frontend)
+      ;({ rows } = await client.query(`
+        WITH target AS (
+          SELECT barber_id, branch_id FROM bookings WHERE id = $1
+        ),
+        earliest AS (
+          SELECT b.id FROM bookings b
+          JOIN target t ON b.barber_id = t.barber_id AND b.branch_id = t.branch_id
+          WHERE DATE(b.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
+            AND b.status = 'confirmed'
+          ORDER BY b.scheduled_at ASC
+          LIMIT 1
+        )
+        UPDATE bookings
+        SET status = 'in_progress', started_at = NOW()
+        WHERE id = $1 AND id = (SELECT id FROM earliest)
+        RETURNING *`,
+        [req.params.id]))
+    }
+    if (!rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ message: 'Cannot start booking' })
+    }
+    await client.query(`UPDATE barbers SET status = 'in_service' WHERE id = $1`, [rows[0].barber_id])
+    await client.query('COMMIT')
     emitEvent(rows[0].branch_id, 'barber_update', { barber_id: rows[0].barber_id, status: 'in_service' })
     emitEvent(rows[0].branch_id, 'booking_started', rows[0])
     res.json(rows[0])
-  } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err); res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
 })
 
 // ── PATCH /api/bookings/:id/complete ──────────────────────────────────────────

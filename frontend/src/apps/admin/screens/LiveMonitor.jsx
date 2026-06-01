@@ -1475,7 +1475,7 @@ function BarberQueueBlock({ barber, allBarbers, onCancel, onStart, onEdit, onGro
               return (
                 <BookingRow key={bk.id} booking={{ ...bk, calculatedEstEnd: estEnd }}
                   onCancel={onCancel} onStart={onStart} onEdit={onEdit} onGroup={onGroup} onReopen={onReopen} onUnassign={onUnassign}
-                  allBarbers={allBarbers} barberBusy={barber.status === 'in_service'}
+                  allBarbers={allBarbers} barberBusy={(barber.queue || []).filter(b => b.status === 'in_progress').length >= 2}
                   nextSlot={nextSlotTime}
                 />
               )

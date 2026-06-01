@@ -4,6 +4,7 @@ import { kioskApi } from '../../../shared/api.js'
 import { speak } from '../../../shared/speak.js'
 
 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID')
+const fmtTime = t => t ? t.slice(0, 5) : null
 
 const STATUS_META = {
   available:   { dot: '#4caf50', label: 'Siap',        bg: '#1a3a1a' },
@@ -193,7 +194,7 @@ function AddServiceModal({ booking, services, items, onConfirm, onClose }) {
               <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(16px,2vw,20px)', color: C.text }}>+{fmt(svcTotal + itemTotal)}</div>
             </div>
             <button onClick={() => onConfirm({ serviceIds: addedSvc, items: [...addedItems.values()].map(({item, qty}) => ({ item_id: item.id, quantity: qty })) })}
-              style={{ padding: 'clamp(13px,1.7vw,15px) clamp(20px,2.6vw,26px)', borderRadius: 12, background: C.topBg, color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', border: 'none', cursor: 'pointer', minHeight: 52 }}>
+              style={{ padding: 'clamp(13px,1.7vw,15px) clamp(20px,2.6vw,26px)', borderRadius: 12, background: C.topBg, color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', border: 'none', cursor: 'pointer', minHeight: 56 }}>
               Konfirmasi ({totalAdded}) →
             </button>
           </div>
@@ -214,6 +215,9 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
   const [showAddSvc, setShowAddSvc] = useState(null)
   const [alertSent,  setAlertSent]  = useState({})
   const [calling,    setCalling]    = useState({})
+  const [confirmModal, setConfirmModal] = useState(null)
+  // shape: { bookingId, customerName, services, extras, accentColor }
+  const [unassigned, setUnassigned] = useState(null)
 
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Makassar' })
 
@@ -231,13 +235,16 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+    kioskApi.get(`/bookings/unassigned?branch_id=${branchId}`)
+      .then(data => setUnassigned(data))
+      .catch(() => setUnassigned(null))
   }
 
   useEffect(() => { load() }, [branchId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (lastQueueUpdate) load() }, [lastQueueUpdate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getActive = barberId => bookings.find(b => b.barber_id === barberId && b.status === 'in_progress') || null
-  const getNext   = barberId => bookings.find(b => b.barber_id === barberId && b.status === 'confirmed')   || null
+  const getActives = barberId => bookings.filter(b => b.barber_id === barberId && b.status === 'in_progress')
+  const getNext    = barberId => bookings.find(b => b.barber_id === barberId && b.status === 'confirmed')   || null
 
   const handleStart = async (bookingId) => {
     setBusyId(bookingId)
@@ -251,10 +258,23 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
   const handleComplete = async (bookingId) => {
     setBusyId(bookingId)
     try {
-      const res = await kioskApi.patch(`/bookings/${bookingId}/complete`)
+      await kioskApi.patch(`/bookings/${bookingId}/complete`)
+      setConfirmModal(null)   // clear only on success
       onClose()
     } catch (err) { alert(err.message || 'Gagal menyelesaikan layanan') }
     finally { setBusyId(null) }
+  }
+
+  const requestComplete = (booking, accentColor = C.accent) => {
+    const services = (booking.booking_services || []).map(s => s.service_name || s.name).filter(Boolean)
+    const extras   = (booking.booking_extras   || []).map(e => `${e.name}${e.quantity > 1 ? ` ×${e.quantity}` : ''}`).filter(Boolean)
+    setConfirmModal({
+      bookingId: booking.id,
+      customerName: booking.customer_name || 'Guest',
+      services,
+      extras,
+      accentColor,
+    })
   }
 
   const handleAddItems = async (bookingId, { serviceIds = [], items = [] }) => {
@@ -295,6 +315,22 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
     setTimeout(() => setCalling(prev => ({ ...prev, [barber.id]: false })), 3000)
   }
 
+  const handleClaimAndStart = async (bookingId, barberId) => {
+    setBusyId(bookingId)
+    try {
+      await kioskApi.patch(`/bookings/${bookingId}/claim-and-start`, { barber_id: barberId })
+      onHome()
+    } catch (err) {
+      if (err.status === 409 || /already claimed/i.test(err.message)) {
+        load()
+      } else {
+        alert(err.message || 'Gagal mengambil antrian')
+      }
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 7500, background: C.topBg, display: 'flex', flexDirection: 'column' }}>
 
@@ -324,6 +360,51 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
         </div>
       </div>
 
+      {/* Confirmation modal */}
+      {confirmModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,8,0.82)', zIndex: 8200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmModal(null) }}>
+          <div style={{ background: '#1e1e1c', border: '1.5px solid #333', borderRadius: 14, padding: '20px 18px', width: 'clamp(260px,32vw,320px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ textAlign: 'center', fontSize: 22 }}>✂️</div>
+            <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(15px,1.8vw,17px)', color: C.white, textAlign: 'center', lineHeight: 1.3 }}>
+              Selesai melayani<br />{confirmModal.customerName}?
+            </div>
+            <div style={{ fontSize: 'clamp(11px,1.3vw,12px)', color: '#888', textAlign: 'center', lineHeight: 1.5 }}>
+              Layar pembayaran akan muncul<br />otomatis untuk pelanggan
+            </div>
+            {(confirmModal.services.length > 0 || confirmModal.extras.length > 0) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {confirmModal.services.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                    {confirmModal.services.map((s, i) => (
+                      <span key={i} style={{ background: '#1c1c1a', border: '1px solid #2a2a28', borderRadius: 6, padding: '4px 10px', fontSize: 'clamp(11px,1.3vw,13px)', fontWeight: 600, color: '#ccc' }}>{s}</span>
+                    ))}
+                  </div>
+                )}
+                {confirmModal.extras.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center' }}>
+                    {confirmModal.extras.map((e, i) => (
+                      <span key={i} style={{ background: '#101a1a', border: '1px solid #183333', borderRadius: 6, padding: '3px 8px', fontSize: 'clamp(10px,1.2vw,12px)', fontWeight: 500, color: '#5dd' }}>🛒 {e}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button onClick={() => setConfirmModal(null)}
+                style={{ flex: 1, height: 44, borderRadius: 9, background: '#2a2a28', color: '#888', border: 'none', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Batal
+              </button>
+              <button onClick={() => !busyId && handleComplete(confirmModal.bookingId)}
+                disabled={!!busyId}
+                style={{ flex: 2, height: 44, borderRadius: 9, background: confirmModal.accentColor, color: confirmModal.accentColor === C.accent ? C.accentText : '#fff', border: 'none', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 14, cursor: busyId ? 'not-allowed' : 'pointer', opacity: busyId ? 0.6 : 1 }}>
+                {busyId ? '…' : 'Ya, Selesai ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barber grid */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 'clamp(14px,2vw,22px) clamp(16px,2.4vw,28px)', WebkitOverflowScrolling: 'touch' }}>
         {loading && (
@@ -336,11 +417,11 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(280px,30vw,420px), 1fr))', gap: 'clamp(12px,1.6vw,18px)' }}>
             {barbers.map(b => {
               const rawStatusFromDb = b.current_status || b.status || 'clocked_out'
-              const rawStatus = rawStatusFromDb === 'in_service' && !getActive(b.id) ? 'available' : rawStatusFromDb
-              const sm        = STATUS_META[rawStatus] || STATUS_META.clocked_out
-              const active    = getActive(b.id)
-              const next      = getNext(b.id)
-              const canStart  = !active && rawStatus !== 'clocked_out' && rawStatus !== 'on_break'
+              const actives     = getActives(b.id)
+              const activeCount = actives.length
+              const rawStatus   = rawStatusFromDb === 'in_service' && activeCount === 0 ? 'available' : rawStatusFromDb
+              const sm          = STATUS_META[rawStatus] || STATUS_META.clocked_out
+              const next        = getNext(b.id)
               const isCalling = calling[b.id]
               const sent      = alertSent[b.id]
 
@@ -348,7 +429,7 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
                 <div key={b.id} style={{ background: '#1a1a18', borderRadius: 16, border: '1.5px solid #2a2a28', overflow: 'hidden' }}>
 
                   {/* Barber row */}
-                  <div style={{ padding: 'clamp(12px,1.6vw,16px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: (active || next) ? '1px solid #252523' : 'none' }}>
+                  <div style={{ padding: 'clamp(12px,1.5vw,15px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: (activeCount > 0 || next) ? '1px solid #252523' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div style={{ width: 'clamp(42px,5.2vw,52px)', height: 'clamp(42px,5.2vw,52px)', borderRadius: '50%', background: '#111110', border: `2px solid ${rawStatus === 'clocked_out' ? '#2a2a28' : C.accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <span style={{ fontFamily: "'Inter',sans-serif", fontWeight: 900, fontSize: 'clamp(12px,1.5vw,16px)', color: rawStatus === 'clocked_out' ? '#444' : C.accent }}>{b.name.slice(0, 2).toUpperCase()}</span>
@@ -367,90 +448,230 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
                     </div>
                   </div>
 
-                  {/* Active booking */}
-                  {active && (
-                    <div style={{ padding: 'clamp(12px,1.6vw,16px)', background: '#111', borderBottom: next ? '1px solid #252523' : 'none' }}>
-                      <div style={{ fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: '#ef9a50', textTransform: 'uppercase', marginBottom: 7 }}>⚡ Sedang Dilayani</div>
-                      <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(15px,1.9vw,18px)', color: C.white, marginBottom: 8 }}>{active.customer_name || 'Guest'}</div>
-                      {/* Service chips — tap × to remove (only shown when >1 service) */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                        {(active.booking_services || []).length === 0 && (
-                          <span style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: '#888' }}>—</span>
+                  {/* Active booking(s) — supports 1 or 2 parallel in_progress */}
+                  {activeCount >= 1 && (
+                    <div style={{ padding: 'clamp(12px,1.5vw,14px)', background: '#111', borderBottom: next ? '1px solid #252523' : 'none' }}>
+                      {/* Section kicker */}
+                      <div style={{ fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: C.accent, textTransform: 'uppercase', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        ⚡ Sedang Dilayani
+                        {activeCount === 2 && (
+                          <span style={{ background: C.accent, color: C.accentText, fontSize: 9, fontWeight: 700, borderRadius: 10, padding: '1px 5px' }}>2</span>
                         )}
-                        {(active.booking_services || []).map((s, si) => (
-                          <div key={s.id || si} style={{ display: 'flex', alignItems: 'center', gap: 4, background: s.added_mid_cut ? '#1a1a10' : '#1e1e1c', border: `1px solid ${s.added_mid_cut ? '#3a3a18' : '#333'}`, borderRadius: 6, padding: s.added_mid_cut ? '5px 4px 5px 10px' : '5px 10px' }}>
-                            <span style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: s.added_mid_cut ? C.accent : '#ccc', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>{s.service_name || s.name}</span>
-                            {s.added_mid_cut && (
-                              <button onClick={() => handleRemoveService(active.id, s.service_id)}
-                                style={{ background: 'none', border: 'none', color: '#666', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, WebkitTapHighlightColor: 'transparent' }}
-                                onMouseEnter={e => e.currentTarget.style.color = C.danger}
-                                onMouseLeave={e => e.currentTarget.style.color = '#666'}
-                              >×</button>
-                            )}
-                          </div>
-                        ))}
-                        {(active.booking_extras || []).map((e, ei) => (
-                          <div key={e.id || ei} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#101a1a', border: '1px solid #183333', borderRadius: 6, padding: '5px 4px 5px 10px' }}>
-                            <span style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: '#5dd', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>🛒 {e.name}</span>
-                            <button onClick={() => handleRemoveExtra(active.id, e.id)}
-                              style={{ background: 'none', border: 'none', color: '#666', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '0 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, WebkitTapHighlightColor: 'transparent' }}
-                              onMouseEnter={e2 => e2.currentTarget.style.color = C.danger}
-                              onMouseLeave={e2 => e2.currentTarget.style.color = '#666'}
-                            >×</button>
-                          </div>
-                        ))}
                       </div>
-                      <div style={{ display: 'flex', gap: 10 }}>
-                        <button onClick={() => setShowAddSvc(active)}
-                          style={{ flex: 1, padding: 'clamp(12px,1.6vw,15px)', borderRadius: 10, background: '#2a2a28', color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(12px,1.5vw,14px)', border: 'none', cursor: 'pointer', minHeight: 52 }}>
-                          + Tambah
-                        </button>
-                        <button onClick={() => handleComplete(active.id)} disabled={busyId === active.id}
-                          style={{ flex: 2, padding: 'clamp(12px,1.6vw,15px)', borderRadius: 10, background: C.accent, color: C.accentText, fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(13px,1.6vw,16px)', border: 'none', cursor: busyId === active.id ? 'not-allowed' : 'pointer', minHeight: 52, opacity: busyId === active.id ? 0.6 : 1 }}>
-                          {busyId === active.id ? '…' : 'Selesai ✓'}
-                        </button>
-                      </div>
+
+                      {actives.map((act, idx) => {
+                        const COLORS = ['#F5E200', '#4caf50']
+                        const accentColor = COLORS[idx] || COLORS[0]
+                        const bgTint = idx === 0 ? 'rgba(245,226,0,0.06)' : 'rgba(76,175,80,0.06)'
+
+                        return (
+                          <div key={act.id}>
+                            {idx > 0 && <div style={{ borderTop: '1px solid #1c1c1a', margin: '6px 0' }} />}
+                            <div style={{ background: bgTint, borderLeft: `3px solid ${accentColor}`, borderRadius: 10, padding: '12px 12px 12px 14px' }}>
+                              {/* Customer name */}
+                              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(14px,1.7vw,16px)', color: C.white, marginBottom: 5 }}>{act.customer_name || 'Guest'}</div>
+                              {/* Service chips */}
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 4 }}>
+                                {(act.booking_services || []).length === 0 && (
+                                  <span style={{ fontSize: 'clamp(10px,1.1vw,11px)', color: '#888' }}>—</span>
+                                )}
+                                {(act.booking_services || []).map((s, si) => (
+                                  <div key={s.id || si} style={{ display: 'flex', alignItems: 'center', gap: 4, background: s.added_mid_cut ? '#1a1a10' : '#1c1c1a', border: `1px solid ${s.added_mid_cut ? '#3a3a18' : '#2a2a28'}`, borderRadius: 6, padding: s.added_mid_cut ? '4px 4px 4px 10px' : '4px 10px' }}>
+                                    <span style={{ fontSize: 'clamp(10px,1.1vw,11px)', color: s.added_mid_cut ? C.accent : '#bbb', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>{s.service_name || s.name}</span>
+                                    {s.added_mid_cut && (
+                                      <button onClick={() => handleRemoveService(act.id, s.service_id)}
+                                        style={{ background: 'none', border: 'none', color: '#666', fontSize: 15, lineHeight: 1, cursor: 'pointer', padding: '0 3px', borderRadius: 4, WebkitTapHighlightColor: 'transparent' }}
+                                        onMouseEnter={e => e.currentTarget.style.color = C.danger}
+                                        onMouseLeave={e => e.currentTarget.style.color = '#666'}
+                                      >×</button>
+                                    )}
+                                  </div>
+                                ))}
+                                {(act.booking_extras || []).map((e, ei) => (
+                                  <div key={e.id || ei} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#101a1a', border: '1px solid #183333', borderRadius: 6, padding: '4px 4px 4px 10px' }}>
+                                    <span style={{ fontSize: 'clamp(10px,1.1vw,11px)', color: '#5dd', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>🛒 {e.name}</span>
+                                    <button onClick={() => handleRemoveExtra(act.id, e.id)}
+                                      style={{ background: 'none', border: 'none', color: '#666', fontSize: 15, lineHeight: 1, cursor: 'pointer', padding: '0 3px', borderRadius: 4, WebkitTapHighlightColor: 'transparent' }}
+                                      onMouseEnter={e2 => e2.currentTarget.style.color = C.danger}
+                                      onMouseLeave={e2 => e2.currentTarget.style.color = '#666'}
+                                    >×</button>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Progress row */}
+                              {(() => {
+                                const totalDur = (act.booking_services || []).reduce((s, sv) => s + (sv.duration_minutes || 0), 0) || 30
+                                const elapsedMs = act.started_at ? Date.now() - new Date(act.started_at).getTime() : 0
+                                const elapsedMin = Math.max(0, Math.floor(elapsedMs / 60000))
+                                const pct = Math.min(100, Math.round(elapsedMin / totalDur * 100))
+                                const estEnd = act.started_at
+                                  ? new Date(new Date(act.started_at).getTime() + totalDur * 60000)
+                                      .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' })
+                                  : null
+                                const startStr = act.started_at
+                                  ? new Date(act.started_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' })
+                                  : null
+                                return (
+                                  <div style={{ marginTop: 6, marginBottom: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                      <span style={{ fontSize: 'clamp(10px,1.2vw,12px)', fontWeight: 700, color: '#aaa' }}>{elapsedMin} menit</span>
+                                      {startStr && estEnd && (
+                                        <span style={{ fontSize: 'clamp(10px,1.1vw,11px)', color: '#555' }}>
+                                          Mulai {startStr} · Est. selesai {estEnd}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ height: 4, background: '#2a2a28', borderRadius: 2, overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${pct}%`, background: accentColor, borderRadius: 2 }} />
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                              {/* Buttons */}
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => setShowAddSvc(act)}
+                                  style={{ flex: 1, padding: 'clamp(10px,1.4vw,12px)', borderRadius: 9, background: '#2a2a28', color: C.white, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: 'pointer', minHeight: 56 }}>
+                                  + Tambah
+                                </button>
+                                <button onClick={() => !busyId && requestComplete(act, accentColor)} disabled={!!busyId}
+                                  style={{ flex: 2, padding: 'clamp(10px,1.4vw,12px)', borderRadius: 9, background: accentColor, color: idx === 0 ? C.accentText : '#111', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)', border: 'none', cursor: busyId ? 'not-allowed' : 'pointer', minHeight: 56, opacity: busyId ? 0.6 : 1 }}>
+                                  {busyId === act.id ? '…' : 'Selesai ✓'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
 
-                  {/* Next booking */}
-                  {next && (
-                    <div style={{ padding: 'clamp(12px,1.6vw,16px)' }}>
-                      <div style={{ fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: '#aaa', textTransform: 'uppercase', marginBottom: 7 }}>→ Berikutnya</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(15px,1.9vw,18px)', color: C.white }}>{next.customer_name || 'Guest'}</div>
-                        {next.total_amount > 0 && (
-                          <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)', color: C.accent }}>{fmt(parseFloat(next.total_amount))}</div>
+                  {/* Next booking — full always. Compact inline-strip mode preserved below but disabled.
+                      To re-enable compact: change isCompact = false to isCompact = activeCount === 1 && !!unassigned */}
+                  {next && (() => {
+                    const isCompact = false // compact mode disabled — screen is large enough
+                    return (
+                      <div style={{ padding: isCompact ? 'clamp(8px,1.1vw,10px) clamp(12px,1.5vw,14px)' : 'clamp(12px,1.5vw,14px)', borderBottom: isCompact ? '1px solid #252523' : 'none' }}>
+                        {!isCompact && <div style={{ fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: '#aaa', textTransform: 'uppercase', marginBottom: 5 }}>→ Berikutnya</div>}
+                        {!isCompact && (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(15px,1.9vw,18px)', color: C.white }}>{next.customer_name || 'Guest'}</div>
+                              {next.slot_time && <span style={{ fontWeight: 700, fontSize: 'clamp(13px,1.6vw,15px)', color: '#aaa', whiteSpace: 'nowrap' }}>{fmtTime(next.slot_time)}</span>}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+                              {(next.booking_services || []).map((s, si) => (
+                                <span key={s.id || si} style={{ display: 'inline-block', background: '#1c1c1a', border: '1px solid #2a2a28', borderRadius: 6, padding: '3px 9px', fontSize: 'clamp(10px,1.1vw,12px)', fontWeight: 500, color: '#bbb' }}>
+                                  {s.service_name || s.name}{s.duration_minutes ? ` · ${s.duration_minutes}m` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        {/* Compact: inline strip — kicker + name/service + time + button */}
+                        {isCompact ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 'clamp(9px,1.0vw,10px)', fontWeight: 700, letterSpacing: '0.12em', color: '#555', textTransform: 'uppercase', marginBottom: 2 }}>→ Berikutnya</div>
+                              <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(13px,1.5vw,15px)', color: C.white, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{next.customer_name || 'Guest'}</div>
+                              {(next.booking_services || []).slice(0, 1).map((s, si) => (
+                                <div key={si} style={{ fontSize: 'clamp(10px,1.1vw,11px)', color: '#888', marginTop: 1 }}>
+                                  {s.service_name || s.name}{s.duration_minutes ? ` · ${s.duration_minutes}m` : ''}
+                                </div>
+                              ))}
+                            </div>
+                            {next.slot_time && (
+                              <span style={{ fontWeight: 700, fontSize: 'clamp(12px,1.4vw,14px)', color: '#aaa', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtTime(next.slot_time)}</span>
+                            )}
+                            <button
+                              onClick={() => { if (!busyId) handleStart(next.id) }}
+                              disabled={!!busyId}
+                              style={{
+                                flexShrink: 0, padding: 'clamp(10px,1.3vw,12px) clamp(14px,1.8vw,18px)', borderRadius: 9,
+                                background: `rgba(245,226,0,0.12)`, color: C.accent,
+                                border: `1.5px solid ${C.accent}`,
+                                fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(11px,1.3vw,13px)',
+                                cursor: busyId ? 'not-allowed' : 'pointer', minHeight: 48,
+                              }}>
+                              {busyId === next.id ? '…' : 'Mulai Juga ↗'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => handleCall(b, next.customer_name)}
+                              style={{ flex: 1, minWidth: 52, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: isCalling ? '#1a3a1a' : '#2a2a28', color: isCalling ? '#4caf50' : '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: 'pointer', minHeight: 56 }}>
+                              {isCalling ? '✓ Dipanggil' : '📢 Panggil'}
+                            </button>
+                            <button onClick={() => !sent && handleClientNotArrived(next.id, b.id)} disabled={sent}
+                              style={{ flex: 1, minWidth: 52, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: sent ? '#1a2a1a' : '#2a2a28', color: sent ? '#4caf50' : '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: sent ? 'default' : 'pointer', minHeight: 56 }}>
+                              {sent ? '✓ Terkirim' : '⚠ Blm Datang'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (activeCount < 2 && !busyId && rawStatus !== 'clocked_out' && rawStatus !== 'on_break') handleStart(next.id)
+                              }}
+                              disabled={activeCount >= 2 || !!busyId || rawStatus === 'clocked_out' || rawStatus === 'on_break'}
+                              style={{
+                                flex: 2, minWidth: 100, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9,
+                                background: activeCount === 0 ? C.white : activeCount === 1 ? `rgba(245,226,0,0.12)` : '#2a2a28',
+                                color:      activeCount === 0 ? C.text  : activeCount === 1 ? C.accent               : '#555',
+                                border: activeCount === 1 ? `1.5px solid ${C.accent}` : '1.5px solid transparent',
+                                fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)',
+                                cursor: activeCount < 2 && !busyId && rawStatus !== 'clocked_out' && rawStatus !== 'on_break' ? 'pointer' : 'not-allowed',
+                                minHeight: 56,
+                              }}>
+                              {busyId === next.id ? '…' : activeCount === 0 ? 'Mulai Melayani →' : activeCount === 1 ? 'Mulai Juga ↗' : 'Tidak tersedia'}
+                            </button>
+                          </div>
                         )}
                       </div>
-                      <div style={{ fontSize: 'clamp(10px,1.2vw,12px)', color: '#999', marginBottom: 12 }}>
-                        {(next.booking_services || []).map(s => s.service_name || s.name).filter(Boolean).join(' + ') || '—'}
-                        {next.slot_time ? ` · ${next.slot_time}` : ''}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button onClick={() => handleCall(b, next.customer_name)}
-                          style={{ flex: 1, minWidth: 52, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: isCalling ? '#1a3a1a' : '#2a2a28', color: isCalling ? '#4caf50' : '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: 'pointer', minHeight: 48 }}>
-                          {isCalling ? '✓ Dipanggil' : '📢 Panggil'}
-                        </button>
-                        <button onClick={() => !sent && handleClientNotArrived(next.id, b.id)} disabled={sent}
-                          style={{ flex: 1, minWidth: 52, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: sent ? '#1a2a1a' : '#2a2a28', color: sent ? '#4caf50' : '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: sent ? 'default' : 'pointer', minHeight: 48 }}>
-                          {sent ? '✓ Terkirim' : '⚠ Blm Datang'}
-                        </button>
-                        <button
-                          onClick={() => canStart && !busyId && handleStart(next.id)}
-                          disabled={!canStart || !!busyId}
-                          style={{ flex: 2, minWidth: 100, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: canStart ? C.white : '#2a2a28', color: canStart ? C.text : '#555', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)', border: 'none', cursor: canStart ? 'pointer' : 'not-allowed', minHeight: 48 }}>
-                          {busyId === next.id ? '…' : active ? 'Selesaikan dulu ↑' : !canStart ? 'Tidak tersedia' : 'Mulai Melayani →'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* No bookings */}
-                  {!active && !next && (
+                  {activeCount === 0 && !next && (
                     <div style={{ padding: 'clamp(12px,1.6vw,16px)', textAlign: 'center' }}>
                       <div style={{ fontSize: 'clamp(11px,1.3vw,13px)', color: '#666' }}>
                         {rawStatus === 'clocked_out' ? 'Belum masuk' : rawStatus === 'on_break' ? 'Sedang istirahat' : 'Antrian kosong'}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Antrian Bebas — shown whenever barber has capacity, even with a far-future next */}
+                  {activeCount < 2 && unassigned && (
+                    <div style={{ padding: 'clamp(12px,1.5vw,14px)', borderTop: '1px solid #252523' }}>
+                      <div style={{ fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: '#4caf50', textTransform: 'uppercase', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        ◎ ANTRIAN BEBAS
+                      </div>
+                      {/* Name + time */}
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 800, fontSize: 'clamp(15px,1.9vw,18px)', color: C.white }}>
+                          {unassigned.customer_name || 'Guest'}
+                        </div>
+                        <span style={{ fontSize: 'clamp(13px,1.6vw,15px)', fontWeight: 700, color: '#aaa', whiteSpace: 'nowrap' }}>
+                          {fmtTime(unassigned.slot_time) || (unassigned.scheduled_at ? new Date(unassigned.scheduled_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' }) : 'Menunggu')}
+                        </span>
+                      </div>
+                      {/* Service chips */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 'clamp(10px,1.4vw,12px)' }}>
+                        {(unassigned.booking_services || []).map((s, si) => (
+                          <span key={s.id || si} style={{ display: 'inline-block', background: '#1c1c1a', border: '1px solid #2a2a28', borderRadius: 6, padding: '3px 9px', fontSize: 'clamp(10px,1.1vw,12px)', fontWeight: 500, color: '#bbb' }}>
+                            {s.service_name || s.name}{s.duration_minutes ? ` · ${s.duration_minutes}m` : ''}
+                          </span>
+                        ))}
+                      </div>
+                      {/* Buttons */}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => handleCall(b, unassigned.customer_name)}
+                          style={{ flex: 1, minWidth: 52, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: '#2a2a28', color: '#888', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 'clamp(11px,1.3vw,13px)', border: 'none', cursor: 'pointer', minHeight: 56 }}>
+                          📢 Panggil
+                        </button>
+                        <button
+                          onClick={() => !busyId && handleClaimAndStart(unassigned.id, b.id)}
+                          disabled={!!busyId}
+                          style={{ flex: 2, minWidth: 100, padding: 'clamp(10px,1.4vw,13px)', borderRadius: 9, background: 'rgba(76,175,80,0.12)', border: '1.5px solid #4caf50', color: '#4caf50', fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 'clamp(12px,1.5vw,14px)', cursor: busyId ? 'not-allowed' : 'pointer', minHeight: 56, opacity: busyId ? 0.6 : 1 }}>
+                          {busyId ? '…' : activeCount === 0 ? 'Ambil & Mulai →' : 'Ambil & Mulai Juga ↗'}
+                        </button>
                       </div>
                     </div>
                   )}

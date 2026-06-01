@@ -23,6 +23,7 @@ async function nextBookingNumber(client, branchId, dateStr) {
 
 // ── Round-tracker helpers (imported from shared service) ──────────────────────
 const { getFreeBarberIds, pickIdleBarber, tryAssignDeferred } = require('../services/barberAssignment')
+const { assignUpcomingDeferred } = require('../services/deferredScheduler')
 
 // ── POST /api/bookings ─────────────────────────────────────────────────────────
 
@@ -427,6 +428,40 @@ router.get('/', requireKioskOrAdmin, branchScope, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ message: 'Internal server error' }) }
 })
 
+// ── GET /api/bookings/unassigned ──────────────────────────────────────────────
+// Returns the single next unassigned booking (barber_id IS NULL, status confirmed)
+// ordered by scheduled_at ASC. Must be declared before /:id to avoid param conflict.
+
+router.get('/unassigned', requireKiosk, branchScope, async (req, res) => {
+  const branch_id = req.branchId
+  try {
+    const { rows } = await pool.query(
+      `SELECT bk.*,
+              COALESCE(bk.guest_name, c.name) AS customer_name,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', bs.id, 'service_id', s.id, 'service_name', s.name, 'duration_minutes', s.duration_minutes, 'price_charged', bs.price_charged))
+                 FROM booking_services bs JOIN services s ON s.id = bs.service_id
+                 WHERE bs.booking_id = bk.id), '[]'
+              ) AS booking_services,
+              (SELECT COALESCE(SUM(bs.price_charged), 0)
+               FROM booking_services bs WHERE bs.booking_id = bk.id) AS total_amount
+       FROM bookings bk
+       LEFT JOIN customers c ON c.id = bk.customer_id
+       WHERE bk.branch_id = $1
+         AND bk.barber_id IS NULL
+         AND bk.status = 'confirmed'
+         AND DATE(bk.scheduled_at AT TIME ZONE 'Asia/Makassar') = CURRENT_DATE
+       ORDER BY bk.scheduled_at ASC, bk.created_at ASC
+       LIMIT 1`,
+      [branch_id]
+    )
+    res.json(rows[0] || null)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+})
+
 // ── GET /api/bookings/:id ──────────────────────────────────────────────────────
 
 router.get('/:id', requireKioskOrAdmin, async (req, res) => {
@@ -546,6 +581,92 @@ router.patch('/:id/start', requireKioskOrAdmin, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK')
     console.error(err); res.status(500).json({ message: 'Internal server error' })
+  } finally {
+    client.release()
+  }
+})
+
+// ── PATCH /api/bookings/:id/claim-and-start ───────────────────────────────────
+// Atomically assigns a barber to an unassigned booking and starts it.
+// Uses SELECT FOR UPDATE SKIP LOCKED to prevent two barbers claiming simultaneously.
+
+router.patch('/:id/claim-and-start', requireKiosk, async (req, res) => {
+  const { barber_id } = req.body
+  if (!barber_id) return res.status(400).json({ message: 'barber_id required' })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    // Lock the booking — SKIP LOCKED means if another barber just claimed it, we get 0 rows
+    const { rows } = await client.query(
+      `SELECT * FROM bookings
+       WHERE id = $1
+         AND barber_id IS NULL
+         AND status = 'confirmed'
+       FOR UPDATE SKIP LOCKED`,
+      [req.params.id]
+    )
+    if (!rows.length) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ message: 'Booking already claimed by another barber' })
+    }
+    const booking = rows[0]
+
+    // Validate barber belongs to the booking's branch and is active
+    const barberCheck = await client.query(
+      `SELECT 1 FROM barbers WHERE id = $1 AND branch_id = $2 AND is_active = true`,
+      [barber_id, booking.branch_id]
+    )
+    if (barberCheck.rowCount === 0) {
+      await client.query('ROLLBACK')
+      return res.status(400).json({ error: 'Barber does not belong to this branch' })
+    }
+
+    // Lock on barber to prevent concurrent capacity bypass (two simultaneous claim-and-start
+    // for different bookings targeting the same barber both passing the < 2 check)
+    await client.query(
+      'SELECT pg_advisory_xact_lock($1)',
+      [parseInt(barber_id.replace(/-/g, '').slice(0, 12), 16) % 2147483647]
+    )
+
+    // Check barber has capacity (< 2 in_progress at this branch)
+    const { rows: active } = await client.query(
+      `SELECT COUNT(*) AS cnt FROM bookings
+       WHERE barber_id = $1 AND branch_id = $2 AND status = 'in_progress'`,
+      [barber_id, booking.branch_id]
+    )
+    if (parseInt(active[0].cnt) >= 2) {
+      await client.query('ROLLBACK')
+      return res.status(409).json({ message: 'Barber already at capacity (2 in_progress)' })
+    }
+
+    // Assign and start atomically
+    const { rows: updated } = await client.query(
+      `UPDATE bookings
+       SET barber_id = $1, status = 'in_progress', started_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [barber_id, booking.id]
+    )
+    const updatedBooking = updated[0]
+
+    // Ensure barber status reflects in_service
+    await client.query(
+      `UPDATE barbers SET status = 'in_service' WHERE id = $1`,
+      [barber_id]
+    )
+
+    await client.query('COMMIT')
+
+    emitEvent(booking.branch_id, 'barber_update', { barber_id: barber_id, status: 'in_service' })
+    emitEvent(booking.branch_id, 'booking_started', { booking_id: booking.id })
+
+    res.json(updatedBooking)
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
   } finally {
     client.release()
   }
@@ -672,6 +793,9 @@ router.patch('/:id/complete', requireKiosk, async (req, res) => {
     } else {
       emitEvent(booking.branch_id, 'payment_trigger', { booking_id: booking.id, id: booking.id, amount: totalAmount })
     }
+
+    // Immediately assign any other waiting deferred bookings now that a barber slot freed up
+    assignUpcomingDeferred().catch(e => console.error('[assignUpcomingDeferred after complete]', e))
 
     res.json({ ...booking, booking_id: booking.id, total_amount: totalAmount })
   } catch (err) {

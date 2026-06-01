@@ -636,11 +636,11 @@ export default function QuickPanel({ branchId, services, triggerPayment, onHome,
                     </div>
                   )}
 
-                  {/* Antrian Bebas — shown whenever barber has capacity, even with a far-future next */}
+                  {/* Belum Ada Kapster — shown whenever barber has capacity, even with a far-future next */}
                   {activeCount < 2 && unassigned && (
                     <div style={{ padding: 'clamp(12px,1.5vw,14px)', borderTop: '1px solid #252523' }}>
                       <div style={{ fontSize: 'clamp(9px,1.1vw,11px)', fontWeight: 700, letterSpacing: '0.12em', color: '#4caf50', textTransform: 'uppercase', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        ◎ ANTRIAN BEBAS
+                        ◎ BELUM ADA KAPSTER
                       </div>
                       {/* Name + time */}
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>

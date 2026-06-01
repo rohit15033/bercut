@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tutorial — Sistem Layanan Baru Bercut</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@700;800;900&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #111110;
+    --card:    #1a1a18;
+    --border:  #2a2a28;
+    --accent:  #F5E200;
+    --green:   #4caf50;
+    --orange:  #ef9a50;
+    --text:    #e8e8e6;
+    --muted:   #666662;
+    --dim:     #3a3a38;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+
+  /* ── Slide engine ── */
+  #deck {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Progress bar */
+  #progress-bar {
+    height: 3px;
+    background: var(--dim);
+    flex-shrink: 0;
+  }
+  #progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.35s ease;
+  }
+
+  /* Chapter pill */
+  #chapter-pill {
+    flex-shrink: 0;
+    text-align: center;
+    padding: 10px 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  #chapter-pill span { color: var(--accent); }
+
+  /* Slide viewport */
+  #viewport {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+  #track {
+    display: flex;
+    height: 100%;
+    transition: transform 0.38s cubic-bezier(0.4,0,0.2,1);
+  }
+  .slide {
+    min-width: 100vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 22px 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Nav row */
+  #nav {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 22px 20px;
+    gap: 12px;
+  }
+  .nav-btn {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px 24px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    min-width: 90px;
+    text-align: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-btn:active { background: var(--dim); }
+  .nav-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #111;
+    flex: 1;
+  }
+  .nav-btn.primary:active { background: #d4c400; }
+  .nav-btn:disabled { opacity: 0.25; pointer-events: none; }
+  #dot-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 2px;
+  }
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--dim);
+    transition: background 0.2s, width 0.2s;
+  }
+  .dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+
+  /* ── Slide content helpers ── */
+  .slide-inner {
+    width: 100%;
+    max-width: 420px;
+    padding-top: 8px;
+    padding-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .slide-icon {
+    font-size: 52px;
+    text-align: center;
+    line-height: 1;
+    padding-top: 8px;
+  }
+
+  .slide-heading {
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 26px;
+    line-height: 1.15;
+    color: #fff;
+    text-align: center;
+  }
+  .slide-heading .hl { color: var(--accent); }
+  .slide-heading .hl-green { color: var(--green); }
+
+  .slide-sub {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #aaa;
+    text-align: center;
+  }
+
+  .callout {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 18px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .callout.accent { border-color: var(--accent); background: rgba(245,226,0,0.06); }
+  .callout.green  { border-color: var(--green);  background: rgba(76,175,80,0.06); }
+  .callout.orange { border-color: var(--orange); background: rgba(239,154,80,0.07); }
+  .callout strong { color: #fff; }
+
+  .step-list { display: flex; flex-direction: column; gap: 12px; }
+  .step-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .step-num {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #111;
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .step-text { font-size: 14px; line-height: 1.6; color: var(--text); padding-top: 4px; }
+  .step-text strong { color: #fff; }
+
+  /* Chapter banner */
+  .chapter-banner {
+    background: linear-gradient(135deg, rgba(245,226,0,0.12) 0%, rgba(245,226,0,0.04) 100%);
+    border: 1.5px solid rgba(245,226,0,0.25);
+    border-radius: 16px;
+    padding: 18px 20px;
+    text-align: center;
+  }
+  .chapter-banner .ch-num {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(245,226,0,0.5);
+    margin-bottom: 6px;
+  }
+  .chapter-banner .ch-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 20px;
+    color: var(--accent);
+    line-height: 1.2;
+  }
+  .chapter-banner .ch-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  /* ── UI Mockups ── */
+  .mockup {
+    background: #0e0e0c;
+    border: 1.5px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    width: 100%;
+  }
+  .mockup-bar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .m-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: #1a1a18;
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 12px;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .m-name {
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    font-size: 14px;
+    color: #fff;
+    flex: 1;
+  }
+  .m-badge {
+    border-radius: 7px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .m-badge.orange { background: #2a1800; color: var(--orange); }
+  .m-badge.green  { background: #0d2010; color: var(--green); }
+  .m-badge.muted  { background: var(--dim); color: var(--muted); }
+
+  .mockup-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .m-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .m-section-label.orange { color: var(--orange); }
+  .m-section-label.muted  { color: var(--muted); }
+  .m-section-label.green  { color: var(--green); }
+
+  .m-booking-card {
+    border-radius: 12px;
+    padding: 10px 12px;
+    border: 1.5px solid;
+    margin-bottom: 6px;
+  }
+  .m-booking-card.yellow { border-color: rgba(245,226,0,0.3); background: rgba(245,226,0,0.06); }
+  .m-booking-card.green  { border-color: rgba(76,175,80,0.3);  background: rgba(76,175,80,0.06); }
+  .m-booking-card.dim    { border-color: var(--border); background: #161614; }
+
+  .m-cust-name { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 13px; color: #fff; }
+  .m-cust-svc  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .m-progress-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  }
+  .m-progress-bar {
+    flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
+  }
+  .m-progress-fill { height: 100%; border-radius: 2px; }
+  .m-progress-fill.yellow { background: var(--accent); }
+  .m-progress-fill.green  { background: var(--green); }
+  .m-elapsed { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+  .m-btn {
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    border: none;
+    width: 100%;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .m-btn.white  { background: #fff;           color: #111; }
+  .m-btn.amber  { background: rgba(245,226,0,0.15); color: var(--accent); border: 1.5px solid rgba(245,226,0,0.35); }
+  .m-btn.dim    { background: var(--dim);     color: var(--muted); }
+  .m-btn.green  { background: rgba(76,175,80,0.15); color: var(--green); border: 1.5px solid rgba(76,175,80,0.35); }
+  .m-btn.red    { background: rgba(239,83,80,0.15);  color: #ef5350; border: 1.5px solid rgba(239,83,80,0.3); }
+
+  .m-btn-row { display: flex; gap: 8px; }
+  .m-btn-row .m-btn { flex: 1; }
+
+  .m-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* Highlight arrow annotation */
+  .annotation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(245,226,0,0.1);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* tip box */
+  .tip {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: rgba(76,175,80,0.07);
+    border: 1.5px solid rgba(76,175,80,0.2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #ccc;
+  }
+  .tip .tip-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  .warn {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: rgba(239,154,80,0.07);
+    border: 1.5px solid rgba(239,154,80,0.2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #ccc;
+  }
+  .warn .warn-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Summary table */
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-label { font-size: 14px; color: #aaa; }
+  .summary-value { font-size: 14px; font-weight: 700; color: #fff; text-align: right; }
+
+  /* Modal mockup */
+  .m-modal {
+    background: #1c1c1a;
+    border: 1.5px solid #333;
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .m-modal-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 15px;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  .m-modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+  .m-chip {
+    display: inline-block;
+    background: #2a2a28;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #ccc;
+    margin: 3px 3px 3px 0;
+  }
+  .m-chip.teal { background: rgba(0,188,212,0.12); color: #4dd0e1; }
+
+  /* intro slide special */
+  .intro-logo {
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 36px;
+    color: var(--accent);
+    text-align: center;
+    letter-spacing: -0.5px;
+    padding-top: 16px;
+  }
+  .intro-tagline {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .divider-line {
+    height: 1px;
+    background: var(--border);
+    width: 100%;
+  }
+
+  .topic-list { display: flex; flex-direction: column; gap: 10px; }
+  .topic-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .topic-icon { font-size: 24px; flex-shrink: 0; }
+  .topic-text strong { display: block; font-size: 14px; color: #fff; font-weight: 700; }
+  .topic-text span   { font-size: 12px; color: var(--muted); }
+
+  /* timeline */
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl-item  { display: flex; gap: 16px; }
+  .tl-line  { display: flex; flex-direction: column; align-items: center; width: 24px; flex-shrink: 0; }
+  .tl-dot   { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--accent); background: var(--bg); flex-shrink: 0; margin-top: 3px; }
+  .tl-dot.green { border-color: var(--green); }
+  .tl-connector { flex: 1; width: 2px; background: var(--border); min-height: 28px; }
+  .tl-content { flex: 1; padding-bottom: 22px; }
+  .tl-label   { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.4; }
+  .tl-desc    { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div id="deck">
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+  <div id="chapter-pill">Bab <span id="chapter-text">—</span></div>
+
+  <div id="viewport">
+    <div id="track">
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 0 — Intro                            -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="Selamat Datang">
+        <div class="slide-inner">
+          <div class="intro-logo">bercut</div>
+          <div class="intro-tagline">Tutorial Kapster</div>
+
+          <div class="divider-line"></div>
+
+          <div class="slide-heading">Cara Kerja<br>Sistem <span class="hl">Baru</span></div>
+          <div class="slide-sub">Tutorial ini menjelaskan 3 hal yang perlu kamu tahu tentang cara kerja antrian sekarang.</div>
+
+          <div class="topic-list">
+            <div class="topic-item">
+              <div class="topic-icon">✂️</div>
+              <div class="topic-text">
+                <strong>Layanan Paralel</strong>
+                <span>Melayani 2 pelanggan sekaligus</span>
+              </div>
+            </div>
+            <div class="topic-item">
+              <div class="topic-icon">🙋</div>
+              <div class="topic-text">
+                <strong>Antrian Bebas</strong>
+                <span>Ambil pelanggan yang belum ditugaskan</span>
+              </div>
+            </div>
+            <div class="topic-item">
+              <div class="topic-icon">⚙️</div>
+              <div class="topic-text">
+                <strong>Penugasan Otomatis</strong>
+                <span>Sistem langsung assign saat kamu bebas</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="tip">
+            <div class="tip-icon">👆</div>
+            <div>Tap tombol <strong style="color:#fff">Lanjut</strong> di bawah untuk mulai. Kamu bisa kembali ke slide mana saja kapan saja.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 1 — Chapter 1 intro                 -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="1 · Layanan Paralel">
+        <div class="slide-inner">
+          <div class="chapter-banner">
+            <div class="ch-num">Bab 1 dari 3</div>
+            <div class="ch-title">Layanan Paralel</div>
+            <div class="ch-sub">Melayani dua pelanggan dalam satu sesi</div>
+          </div>
+
+          <div class="slide-icon">✂️✂️</div>
+          <div class="slide-heading">Apa itu<br><span class="hl">Layanan Paralel?</span></div>
+          <div class="slide-sub">Sekarang kamu bisa <strong style="color:#fff">melayani 2 pelanggan sekaligus</strong> — misalnya, sambil menunggu masker rambut seseorang mengering, kamu bisa langsung potong rambut orang lain.</div>
+
+          <div class="callout accent">
+            <strong>Contoh nyata:</strong><br>
+            Budi sedang pakai masker rambut — perlu tunggu 15 menit. Daripada nganggur, kamu bisa langsung layani Andi yang mau potong rambut di sampingnya.
+          </div>
+
+          <div class="tip">
+            <div class="tip-icon">⚡</div>
+            <div>Maksimal <strong style="color:#fff">2 pelanggan aktif</strong> sekaligus. Tidak bisa lebih dari itu.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 2 — Tombol Mulai                    -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="1 · Layanan Paralel">
+        <div class="slide-inner">
+          <div class="slide-heading">Tombol <span class="hl">Mulai</span><br>Berubah Warna</div>
+          <div class="slide-sub">Warna tombol memberi tahu kamu berapa pelanggan yang sedang aktif.</div>
+
+          <div class="mockup">
+            <div class="mockup-bar">
+              <div class="m-avatar">RZ</div>
+              <div class="m-name">Rizal</div>
+              <div class="m-badge muted">Bebas</div>
+            </div>
+            <div class="mockup-body">
+              <div class="m-section-label muted">Kondisi 0 pelanggan aktif</div>
+              <div class="m-btn white">Mulai Melayani →</div>
+              <div class="annotation">→ Warna putih = belum ada yang aktif</div>
+            </div>
+          </div>
+
+          <div class="mockup">
+            <div class="mockup-bar">
+              <div class="m-avatar">RZ</div>
+              <div class="m-name">Rizal</div>
+              <div class="m-badge orange">1 Aktif</div>
+            </div>
+            <div class="mockup-body">
+              <div class="m-section-label orange">Kondisi 1 pelanggan aktif</div>
+              <div class="m-btn amber">Mulai Juga ↗</div>
+              <div class="annotation">→ Warna kuning = bisa tambah 1 lagi</div>
+            </div>
+          </div>
+
+          <div class="mockup">
+            <div class="mockup-bar">
+              <div class="m-avatar">RZ</div>
+              <div class="m-name">Rizal</div>
+              <div class="m-badge green">2 Aktif</div>
+            </div>
+            <div class="mockup-body">
+              <div class="m-section-label green">Kondisi 2 pelanggan aktif</div>
+              <div class="m-btn dim">Penuh · Selesaikan dulu</div>
+              <div class="annotation" style="border-color:#555;background:rgba(255,255,255,0.04);color:#666">→ Abu-abu = sudah penuh, tidak bisa tambah</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 3 — Tampilan 2 aktif                -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="1 · Layanan Paralel">
+        <div class="slide-inner">
+          <div class="slide-heading">Tampilan Saat<br><span class="hl">2 Aktif</span></div>
+          <div class="slide-sub">Kedua pelanggan tampil sebagai kartu berwarna berbeda supaya tidak tertukar.</div>
+
+          <div class="mockup">
+            <div class="mockup-bar">
+              <div class="m-avatar">RZ</div>
+              <div class="m-name">Rizal</div>
+              <div class="m-badge green">2 Aktif</div>
+            </div>
+            <div class="mockup-body">
+              <div class="m-section-label orange">Sedang Dilayani</div>
+
+              <div class="m-booking-card yellow">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                  <div>
+                    <div class="m-cust-name">Budi Santoso</div>
+                    <div class="m-cust-svc">Masker Rambut · 30m</div>
+                  </div>
+                  <div class="m-btn red" style="width:auto;padding:6px 12px;font-size:12px">Selesai</div>
+                </div>
+                <div class="m-progress-row">
+                  <div class="m-elapsed">18m</div>
+                  <div class="m-progress-bar"><div class="m-progress-fill yellow" style="width:60%"></div></div>
+                  <div class="m-elapsed">Est. 19:45</div>
+                </div>
+              </div>
+
+              <div class="m-booking-card green">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                  <div>
+                    <div class="m-cust-name">Andi Firmansyah</div>
+                    <div class="m-cust-svc">Gunting Rambut · 30m</div>
+                  </div>
+                  <div class="m-btn red" style="width:auto;padding:6px 12px;font-size:12px">Selesai</div>
+                </div>
+                <div class="m-progress-row">
+                  <div class="m-elapsed">5m</div>
+                  <div class="m-progress-bar"><div class="m-progress-fill green" style="width:17%"></div></div>
+                  <div class="m-elapsed">Est. 19:57</div>
+                </div>
+              </div>
+
+              <div class="m-btn dim">Penuh · Selesaikan dulu</div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>Tips biar tidak ketukar:</strong><br>
+            Kartu <span style="color:var(--accent)">kuning</span> = pelanggan pertama yang kamu mulai.<br>
+            Kartu <span style="color:var(--green)">hijau</span> = pelanggan kedua yang ditambahkan.
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 4 — Selesai + konfirmasi            -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="1 · Layanan Paralel">
+        <div class="slide-inner">
+          <div class="slide-heading">Tap <span class="hl">Selesai</span><br>untuk Bayar</div>
+          <div class="slide-sub">Setelah kamu tap <strong style="color:#fff">Selesai</strong>, akan muncul konfirmasi dulu sebelum layar pembayaran terbuka untuk pelanggan.</div>
+
+          <div class="mockup">
+            <div class="mockup-body" style="padding:14px">
+              <div class="m-modal">
+                <div class="m-modal-title">Selesai melayani Budi Santoso?</div>
+                <div class="m-modal-sub">Layar pembayaran akan muncul otomatis untuk pelanggan.</div>
+                <div style="margin-bottom:10px">
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase">Layanan</div>
+                  <span class="m-chip">Masker Rambut</span>
+                  <span class="m-chip">Creambath</span>
+                </div>
+                <div style="margin-bottom:14px">
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase">Tambahan</div>
+                  <span class="m-chip teal">🛒 Minuman ×1</span>
+                </div>
+                <div class="m-btn-row">
+                  <div class="m-btn dim">Batal</div>
+                  <div class="m-btn white" style="flex:2">Ya, Selesai ✓</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num">1</div>
+              <div class="step-text">Cek nama pelanggan sudah benar</div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <div class="step-text">Pastikan layanan dan tambahan sudah sesuai</div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <div class="step-text">Tap <strong>Ya, Selesai ✓</strong> — layar bayar langsung terbuka di depan pelanggan</div>
+            </div>
+          </div>
+
+          <div class="warn">
+            <div class="warn-icon">⚠️</div>
+            <div>Tap <strong style="color:#fff">Batal</strong> kalau kamu salah pilih. Pelanggan belum diproses apapun.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 5 — Chapter 2 intro                 -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="2 · Antrian Bebas">
+        <div class="slide-inner">
+          <div class="chapter-banner">
+            <div class="ch-num">Bab 2 dari 3</div>
+            <div class="ch-title">Antrian Bebas</div>
+            <div class="ch-sub">Ambil pelanggan yang belum punya kapster</div>
+          </div>
+
+          <div class="slide-icon">🙋</div>
+          <div class="slide-heading">Apa itu<br><span class="hl">Antrian Bebas?</span></div>
+          <div class="slide-sub">Kadang ada pelanggan yang booking tapi belum ditugaskan ke kapster manapun. Kamu bisa <strong style="color:#fff">langsung mengambilnya</strong> dari layar kiosk.</div>
+
+          <div class="callout accent">
+            <strong>Kapan ini berguna?</strong><br>
+            Kamu sudah selesai dengan pelanggan sebelumnya, atau lagi nunggu masker kering, tapi sistem belum auto-assign ke kamu. Daripada nunggu, langsung ambil sendiri.
+          </div>
+
+          <div class="callout">
+            <strong>Siapa yang bisa lihat Antrian Bebas?</strong><br>
+            Semua kapster yang punya slot kosong (masih di bawah 2 aktif). Siapa yang tap duluan, dialah yang dapat.
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 6 — Cara ambil antrian bebas        -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="2 · Antrian Bebas">
+        <div class="slide-inner">
+          <div class="slide-heading">Cara <span class="hl">Ambil</span><br>Antrian Bebas</div>
+          <div class="slide-sub">Bagian Antrian Bebas muncul di bawah kartu kamu di kiosk, kalau ada pelanggan yang belum ditugaskan.</div>
+
+          <div class="mockup">
+            <div class="mockup-bar">
+              <div class="m-avatar">RZ</div>
+              <div class="m-name">Rizal</div>
+              <div class="m-badge orange">1 Aktif</div>
+            </div>
+            <div class="mockup-body">
+              <div class="m-section-label orange">Sedang Dilayani</div>
+              <div class="m-booking-card yellow">
+                <div class="m-cust-name">Budi Santoso</div>
+                <div class="m-cust-svc">Masker Rambut · menunggu...</div>
+              </div>
+
+              <div class="m-divider"></div>
+
+              <div class="m-section-label muted">Berikutnya · 16:30</div>
+              <div class="m-booking-card dim">
+                <div class="m-cust-name">Chandra W.</div>
+                <div class="m-cust-svc">Gunting Rambut · 30m</div>
+              </div>
+
+              <div class="m-divider"></div>
+
+              <div class="m-section-label green">🙋 Antrian Bebas · 15:45</div>
+              <div class="m-booking-card green">
+                <div class="m-cust-name">Deni Kusuma</div>
+                <div class="m-cust-svc">Gunting + Cuci · 45m</div>
+              </div>
+              <div class="m-btn amber">Ambil &amp; Mulai Juga ↗</div>
+            </div>
+          </div>
+
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num">1</div>
+              <div class="step-text">Lihat bagian <strong>Antrian Bebas</strong> (hijau) di bawah kartu kamu</div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <div class="step-text">Tap <strong>Ambil &amp; Mulai →</strong> (atau <strong>Ambil &amp; Mulai Juga ↗</strong> kalau sudah ada 1 aktif)</div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <div class="step-text">Sistem langsung assign ke kamu dan pelanggan masuk ke daftar aktif</div>
+            </div>
+          </div>
+
+          <div class="tip">
+            <div class="tip-icon">⚡</div>
+            <div>Kalau dua kapster tap bersamaan, yang pertama dapat. Yang kedua akan lihat antrian sudah diambil dan layar refresh otomatis.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 7 — Chapter 3 intro                 -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="3 · Penugasan Otomatis">
+        <div class="slide-inner">
+          <div class="chapter-banner">
+            <div class="ch-num">Bab 3 dari 3</div>
+            <div class="ch-title">Penugasan Otomatis</div>
+            <div class="ch-sub">Sistem assign sendiri saat kamu bebas</div>
+          </div>
+
+          <div class="slide-icon">⚙️</div>
+          <div class="slide-heading">Sistem<br><span class="hl">Assign Otomatis</span></div>
+          <div class="slide-sub">Kamu <strong style="color:#fff">tidak perlu selalu ambil manual</strong>. Sistem secara otomatis akan menugaskan pelanggan ke kamu pada waktu yang tepat.</div>
+
+          <div class="callout accent">
+            <strong>Kapan sistem assign otomatis?</strong><br>
+            Setiap kali kamu selesai melayani pelanggan (<strong>tap Selesai</strong>), sistem langsung cek: apakah ada booking yang akan dimulai dalam <strong>30 menit ke depan</strong>? Kalau ada, langsung ditugaskan ke kamu.
+          </div>
+
+          <div class="callout">
+            <strong>Catatan penting:</strong><br>
+            Penugasan otomatis hanya terjadi kalau kamu masih di bawah batas 2 pelanggan aktif. Kalau sudah penuh (2 aktif), sistem tidak akan assign sampai kamu selesaikan salah satu.
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 8 — Alur otomatis                   -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="3 · Penugasan Otomatis">
+        <div class="slide-inner">
+          <div class="slide-heading">Alur <span class="hl">Lengkapnya</span></div>
+
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-line">
+                <div class="tl-dot"></div>
+                <div class="tl-connector"></div>
+              </div>
+              <div class="tl-content">
+                <div class="tl-label">Pelanggan booking online / walk-in</div>
+                <div class="tl-desc">Masuk sebagai "Antrian Bebas" — belum punya kapster</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line">
+                <div class="tl-dot"></div>
+                <div class="tl-connector"></div>
+              </div>
+              <div class="tl-content">
+                <div class="tl-label">30 menit sebelum jadwal</div>
+                <div class="tl-desc">Sistem cek kapster mana yang bebas. Kalau ketemu, langsung di-assign otomatis</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line">
+                <div class="tl-dot"></div>
+                <div class="tl-connector"></div>
+              </div>
+              <div class="tl-content">
+                <div class="tl-label">Kapster tap Selesai pada pelanggan lain</div>
+                <div class="tl-desc">Sistem langsung re-cek dan assign kalau ada yang sesuai dalam 30 menit</div>
+              </div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-line">
+                <div class="tl-dot green"></div>
+              </div>
+              <div class="tl-content">
+                <div class="tl-label" style="color:var(--green)">Booking muncul di kartu "Berikutnya"</div>
+                <div class="tl-desc">Kamu tinggal tap Mulai saat pelanggan datang</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="warn">
+            <div class="warn-icon">⏳</div>
+            <div>Kalau tidak ada kapster yang bebas dalam 30 menit sebelum jadwal, booking tetap jadi <strong style="color:#fff">Antrian Bebas</strong> sampai ada kapster yang mengambilnya manual.</div>
+          </div>
+
+          <div class="tip">
+            <div class="tip-icon">✅</div>
+            <div>Kamu tidak perlu lakuin apa-apa untuk penugasan otomatis — sistem yang kerja sendiri setiap kali ada perubahan status.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════ -->
+      <!-- SLIDE 9 — Ringkasan                       -->
+      <!-- ══════════════════════════════════════════ -->
+      <div class="slide" data-chapter="Ringkasan">
+        <div class="slide-inner">
+          <div class="slide-icon">🎉</div>
+          <div class="slide-heading">Kamu Sudah<br><span class="hl">Siap!</span></div>
+          <div class="slide-sub">Ini ringkasan singkat yang perlu kamu ingat:</div>
+
+          <div class="callout" style="padding:0;overflow:hidden">
+            <div class="summary-row" style="padding:14px 16px">
+              <div class="summary-label">Tombol putih</div>
+              <div class="summary-value">Mulai pelanggan pertama</div>
+            </div>
+            <div class="summary-row" style="padding:14px 16px">
+              <div class="summary-label">Tombol kuning</div>
+              <div class="summary-value" style="color:var(--accent)">Tambah pelanggan ke-2</div>
+            </div>
+            <div class="summary-row" style="padding:14px 16px">
+              <div class="summary-label">Tombol abu-abu</div>
+              <div class="summary-value" style="color:var(--muted)">Sudah penuh (2 aktif)</div>
+            </div>
+            <div class="summary-row" style="padding:14px 16px">
+              <div class="summary-label">Antrian Bebas</div>
+              <div class="summary-value" style="color:var(--green)">Tap Ambil &amp; Mulai</div>
+            </div>
+            <div class="summary-row" style="padding:14px 16px">
+              <div class="summary-label">Auto-assign</div>
+              <div class="summary-value">Otomatis, 30 menit sebelum</div>
+            </div>
+          </div>
+
+          <div class="tip">
+            <div class="tip-icon">💡</div>
+            <div>Kalau ada yang bingung atau ada masalah di sistem, hubungi penanggung jawab kiosk. Jangan coba-coba restart kiosk sendiri.</div>
+          </div>
+
+          <div class="callout green" style="text-align:center">
+            <strong style="color:var(--green)">Selamat bekerja! 💪</strong><br>
+            <span style="font-size:13px;color:#aaa">Sistem ini dibuat untuk bantu kamu kerja lebih efisien.</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /track -->
+  </div><!-- /viewport -->
+
+  <div id="nav">
+    <button class="nav-btn" id="btn-prev" onclick="go(-1)">← Kembali</button>
+    <div id="dot-row"></div>
+    <button class="nav-btn primary" id="btn-next" onclick="go(1)">Lanjut →</button>
+  </div>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide')
+  const track  = document.getElementById('track')
+  const fill   = document.getElementById('progress-fill')
+  const chText = document.getElementById('chapter-text')
+  const dotRow = document.getElementById('dot-row')
+  const btnPrev = document.getElementById('btn-prev')
+  const btnNext = document.getElementById('btn-next')
+
+  const total = slides.length
+  let cur = 0
+
+  // Build dots
+  slides.forEach((_, i) => {
+    const d = document.createElement('div')
+    d.className = 'dot'
+    d.onclick = () => goTo(i)
+    dotRow.appendChild(d)
+  })
+
+  function render() {
+    track.style.transform = `translateX(-${cur * 100}vw)`
+    fill.style.width = `${((cur + 1) / total) * 100}%`
+    chText.textContent = slides[cur].dataset.chapter || '—'
+    btnPrev.disabled = cur === 0
+    btnNext.textContent = cur === total - 1 ? 'Mulai Ulang' : 'Lanjut →'
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === cur))
+    // Scroll active slide to top
+    slides[cur].scrollTop = 0
+  }
+
+  function go(dir) {
+    if (dir === 1 && cur === total - 1) { goTo(0); return }
+    goTo(Math.max(0, Math.min(total - 1, cur + dir)))
+  }
+
+  function goTo(idx) {
+    cur = idx
+    render()
+  }
+
+  // Swipe support
+  let startX = 0, startY = 0
+  document.getElementById('viewport').addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX
+    startY = e.touches[0].clientY
+  }, { passive: true })
+  document.getElementById('viewport').addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX
+    const dy = e.changedTouches[0].clientY - startY
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
+  }, { passive: true })
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') go(1)
+    if (e.key === 'ArrowLeft') go(-1)
+  })
+
+  render()
+</script>
+</body>
+</html>

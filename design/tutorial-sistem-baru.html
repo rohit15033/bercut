@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Tutorial — Sistem Layanan Baru Bercut</title>
+<title>Panduan Kapster — Bercut</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@700;800;900&display=swap');
 
@@ -90,33 +90,37 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 22px 20px;
-    gap: 12px;
+    padding: 10px 16px 18px;
+    gap: 10px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
   }
   .nav-btn {
-    background: var(--card);
-    border: 1.5px solid var(--border);
-    border-radius: 14px;
-    color: var(--text);
+    background: #2a2a28;
+    border: 2px solid #444442;
+    border-radius: 16px;
+    color: #fff;
     font-family: 'DM Sans', sans-serif;
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 700;
-    padding: 14px 24px;
+    padding: 16px 22px;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
-    min-width: 90px;
+    min-width: 100px;
     text-align: center;
     -webkit-tap-highlight-color: transparent;
+    letter-spacing: -0.2px;
   }
-  .nav-btn:active { background: var(--dim); }
+  .nav-btn:active { background: #3a3a38; }
   .nav-btn.primary {
     background: var(--accent);
     border-color: var(--accent);
     color: #111;
     flex: 1;
+    font-size: 18px;
   }
-  .nav-btn.primary:active { background: #d4c400; }
-  .nav-btn:disabled { opacity: 0.25; pointer-events: none; }
+  .nav-btn.primary:active { background: #d4c400; border-color: #d4c400; }
+  .nav-btn:disabled { opacity: 0.2; pointer-events: none; }
   #dot-row {
     display: flex;
     gap: 6px;
@@ -417,23 +421,6 @@
   }
   .m-chip.teal { background: rgba(0,188,212,0.12); color: #4dd0e1; }
 
-  /* intro slide special */
-  .intro-logo {
-    font-family: 'Inter', sans-serif;
-    font-weight: 900;
-    font-size: 36px;
-    color: var(--accent);
-    text-align: center;
-    letter-spacing: -0.5px;
-    padding-top: 16px;
-  }
-  .intro-tagline {
-    font-size: 13px;
-    color: var(--muted);
-    text-align: center;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
 
   .divider-line {
     height: 1px;
@@ -481,12 +468,13 @@
       <!-- ══════════════════════════════════════════ -->
       <div class="slide" data-chapter="Selamat Datang">
         <div class="slide-inner">
-          <div class="intro-logo">bercut</div>
-          <div class="intro-tagline">Tutorial Kapster</div>
+          <div style="text-align:center;padding-top:12px">
+            <img src="/assets/bercut-logo-transparent.png" alt="Bercut" style="width:180px;height:auto;object-fit:contain">
+          </div>
 
           <div class="divider-line"></div>
 
-          <div class="slide-heading">Cara Kerja<br>Sistem <span class="hl">Baru</span></div>
+          <div class="slide-heading">Panduan<br><span class="hl">Kapster</span></div>
           <div class="slide-sub">Tutorial ini menjelaskan 3 hal yang perlu kamu tahu tentang cara kerja antrian sekarang.</div>
 
           <div class="topic-list">
